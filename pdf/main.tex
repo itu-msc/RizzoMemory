@@ -1,0 +1,137 @@
+\documentclass[12pt]{article}
+\usepackage[hidelinks]{hyperref}
+\usepackage{biblatex}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{setspace}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+% \usepackage{xspace}
+
+\graphicspath{{images/}}
+
+\definecolor{bluekeywords}{rgb}{0,0,1}
+\definecolor{greencomments}{rgb}{0,0.5,0}
+\definecolor{redstrings}{rgb}{0.64,0.08,0.08}
+\definecolor{xmlcomments}{rgb}{0.5,0.5,0.5}
+\definecolor{types}{rgb}{0.17,0.57,0.68}
+\definecolor{backcolour}{RGB}{248,246,240}
+\definecolor{methods}{RGB}{255,193,7}
+
+\lstdefinestyle{full}{
+  language=[Objective]Caml,
+  captionpos=b,
+  numbers=none,
+  backgroundcolor=\color{backcolour},
+  frameshape={RYR}{Y}{Y}{RYR},
+  showspaces=false,
+  showtabs=false,
+  breaklines=true,
+  showstringspaces=false,
+  breakatwhitespace=true,
+  commentstyle=\color{greencomments},
+  emph={
+    int,char,double,float,unsigned,void,bool,string,
+    unit,list,option,some,none,
+    Types,Rizzo,Channel,channel,Signal,signal,later,delayOnce,
+    signal_data,_,sync,
+    \'a,\'b,\'c % needs to be here too
+  },
+  emphstyle={\color{types}},
+  otherkeywords={
+    % partial,var,get,set, % ,value
+    1,2,3,4,5,6,7,8,9,0,
+    \'a,\'b,\'c % needs to be here too
+    % N, sum, result, arr
+  },
+  morekeywords=[2]{1,2,3,4,5,6,7,8,9,0},
+  % morekeywords=[3]{scan,filter},
+  keywordstyle=\color{bluekeywords},
+  keywordstyle=[2]{\color{greencomments}},
+  keywordstyle=[3]{\color{methods}},
+  stringstyle=\color{redstrings},
+  basicstyle=\linespread{1.1}\ttfamily\small,
+}
+
+\lstdefinestyle{appendix}{
+  breaklines=true,
+  basicstyle=\ttfamily,
+}
+
+\definecolor{matred}{RGB}{224,102,102}
+\definecolor{matgrey}{RGB}{100,100,100}
+\newcommand{\comment}[1]{\noindent\textcolor{matred}{#1}}
+\newcommand{\note}[1]{\noindent\textcolor{matgrey}{#1}}
+
+\definecolor{mytorq}{rgb}{.18,.83,.78}
+\newcommand{\todo}[1]{\textcolor{mytorq}{TODO: #1}}
+
+\newcommand{\laterA}{\textcircled{\raisebox{-0.3ex}{\ensuremath{\forall}}}}
+\newcommand{\laterE}{\textcircled{\raisebox{-0.3ex}{\ensuremath{\exists}}}}
+
+\pdfstringdefDisableCommands{%
+  \def\laterA{∀}%
+  \def\laterE{∃}%
+  % \let\xspace\relax
+}
+
+\addbibresource{references.bib}
+
+\title{
+  \rule{\textwidth}{0.5pt}\\[4mm]
+  \huge{\textbf{Rizzo memory management}}\\[2mm]
+  \large{Masters of Science in Computer Science}\\
+  \large{Masters Thesis}\\
+  \large{KISPECI1SE}\\[4mm]
+  \small{\textit{IT University of Copenhagen}}\\
+  \rule{\textwidth}{0.5pt}\\
+}
+
+\author{
+  \begin{tabular}{rr}
+  Patrick Bohn Matthiesen & \texttt{pmat@itu.dk} \\
+  Tobias Skovbæk Brund & \texttt{tbru@itu.dk} \\
+  Supervisor: Patrick Bahr & \texttt{paba@itu.dk} \\
+  \end{tabular}
+  \\[4mm]
+  \small{GitHub: \url{https://github.com/itu-msc/RizzoMemory}}
+}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\clearpage
+
+\begin{abstract}
+\todo{abstract goes here}
+\end{abstract}
+\setcounter{page}{1}
+\clearpage
+
+% \setcounter{tocdepth}{1}
+\tableofcontents
+\clearpage
+
+\begin{sloppypar}
+  \onehalfspacing{}
+  \lstset{style=full}
+  \input{sections/introduction/main.tex}\clearpage
+  \input{sections/body/main.tex}\clearpage
+  \input{sections/conclusion/main.tex}\clearpage
+\end{sloppypar}
+
+\printbibliography[title=References]
+\addcontentsline{toc}{section}{References}
+\clearpage
+
+\appendix
+\pagenumbering{gobble}
+\lstset{style=appendix}
+\input{appendix/main.tex}
+
+\end{document}

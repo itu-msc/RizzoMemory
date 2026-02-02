@@ -1,0 +1,151 @@
+@article{bahr_asynchronous_2023,
+  title        = {Asynchronous Modal {FRP}},
+  volume       = {7},
+  issn         = {2475-1421},
+  url          = {https://dl.acm.org/doi/10.1145/3607847},
+  doi          = {10.1145/3607847},
+  abstract     = {{PATRICK} {BAHR}, {IT} University of Copenhagen, Denmark {RASMUS} {EJLERS} {MØGELBERG}, {IT} University of Copenhagen, Denmark Over the past decade, a number of languages for functional reactive programming ({FRP}) have been suggested, which use modal types to ensure properties like causality, productivity and lack of space leaks. So far, almost all of these languages have included a modal operator for delay on a global clock. For some applications, however, a global clock is unnatural and leads to leaky abstractions as well as ineﬃcient implementations. While modal languages without a global clock have been proposed, no operational properties have been proved about them, yet. This paper proposes Async {RaTT}, a new modal language for asynchronous {FRP}, equipped with an operational semantics mapping complete programs to machines that take asynchronous input signals and produce output signals. The main novelty of Async {RaTT} is a new modality for asynchronous delay, allowing each output channel to be associated at runtime with the set of input channels it depends on, thus causing the machine to only compute new output when necessary. We prove a series of operational properties including causality, productivity and lack of space leaks. We also show that, although the set of input channels associated with an output channel can change during execution, upper bounds on these can be determined statically by the type system. {CCS} Concepts: • Software and its engineering → Functional languages; Data ﬂow languages; Recursion; • Theory of computation → Operational semantics.},
+  pages        = {476--510},
+  issue        = {{ICFP}},
+  journaltitle = {Proceedings of the {ACM} on Programming Languages},
+  shortjournal = {Proc. {ACM} Program. Lang.},
+  author       = {Bahr, Patrick and Møgelberg, Rasmus Ejlers},
+  urldate      = {2025-09-12},
+  date         = {2023-08-30},
+  langid       = {english}
+}
+
+@inproceedings{ElliottHudak97:Fran,
+  title     = {Functional Reactive Animation},
+  url       = {http://conal.net/papers/icfp97/},
+  author    = {Conal Elliott and Paul Hudak},
+  booktitle = {International Conference on Functional Programming},
+  year      = 1997
+}
+
+@incollection{gebser_asynchronous_2023,
+  location  = {Cham},
+  title     = {Asynchronous Reactive Programming with Modal Types in Haskell},
+  volume    = {14512},
+  isbn      = {978-3-031-52038-9},
+  url       = {https://link.springer.com/10.1007/978-3-031-52038-9_2},
+  abstract  = {The implementation of asynchronous systems, in particular graphical user interfaces, is traditionally based on an imperative model that uses shared mutable state and callbacks. While eﬃcient, the combination of shared mutable state and callbacks is notoriously diﬃcult to reason about and prone to errors. Functional reactive programming ({FRP}) provides an elegant alternative and recent theoretical advances in modal {FRP} suggest that it can be eﬃcient as well.},
+  pages     = {18--36},
+  booktitle = {Practical Aspects of Declarative Languages},
+  publisher = {Springer Nature Switzerland},
+  author    = {Bahr, Patrick and Houlborg, Emil and Rørdam, Gregers Thomas Skat},
+  editor    = {Gebser, Martin and Sergey, Ilya},
+  urldate   = {2025-11-01},
+  date      = {2023},
+  langid    = {english},
+  doi       = {10.1007/978-3-031-52038-9_2},
+  note      = {Series Title: Lecture Notes in Computer Science}
+}
+
+@misc{rizzo_modal_2025,
+  title         = {Simple Modal Types for Functional Reactive Programming},
+  author        = {Patrick Bahr},
+  year          = {2025},
+  eprint        = {2512.09412},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.PL},
+  url           = {https://arxiv.org/abs/2512.09412},
+  doi           = {10.48550/arXiv.2512.09412}
+}
+
+@inproceedings{10.1145/2500365.2500588,
+  author    = {Krishnaswami, Neelakantan R.},
+  title     = {Higher-order functional reactive programming without spacetime leaks},
+  year      = {2013},
+  isbn      = {9781450323260},
+  publisher = {Association for Computing Machinery},
+  address   = {New York, NY, USA},
+  url       = {https://doi.org/10.1145/2500365.2500588},
+  doi       = {10.1145/2500365.2500588},
+  abstract  = {Functional reactive programming (FRP) is an elegant approach to declaratively specify reactive systems. However, the powerful abstractions of FRP have historically made it difficult to predict and control the resource usage of programs written in this style.In this paper, we give a new language for higher-order reactive programming. Our language generalizes and simplifies prior type systems for reactive programming, by supporting the use of streams of streams, first-class functions, and higher-order operations. We also support many temporal operations beyond streams, such as terminatable streams, events, and even resumptions with first-class schedulers. Furthermore, our language supports an efficient implementation strategy permitting us to eagerly deallocate old values and statically rule out spacetime leaks, a notorious source of inefficiency in reactive programs. Furthermore, these memory guarantees are achieved without the use of a complex substructural type discipline.We also show that our implementation strategy of eager deallocation is safe, by showing the soundness of our type system with a novel step-indexed Kripke logical relation.},
+  booktitle = {Proceedings of the 18th ACM SIGPLAN International Conference on Functional Programming},
+  pages     = {221-232},
+  numpages  = {12},
+  keywords  = {temporal logic, kripke logical relations, guarded recursion, functional reactive programming, dataflow, comonads, capabilities},
+  location  = {Boston, Massachusetts, USA},
+  series    = {ICFP '13}
+}
+
+@article{neel_krishnaswami_2013,
+  author     = {Krishnaswami, Neelakantan R.},
+  title      = {Higher-order functional reactive programming without spacetime leaks},
+  year       = {2013},
+  issue_date = {September 2013},
+  publisher  = {Association for Computing Machinery},
+  address    = {New York, NY, USA},
+  volume     = {48},
+  number     = {9},
+  issn       = {0362-1340},
+  url        = {https://doi.org/10.1145/2544174.2500588},
+  doi        = {10.1145/2544174.2500588},
+  abstract   = {Functional reactive programming (FRP) is an elegant approach to declaratively specify reactive systems. However, the powerful abstractions of FRP have historically made it difficult to predict and control the resource usage of programs written in this style.In this paper, we give a new language for higher-order reactive programming. Our language generalizes and simplifies prior type systems for reactive programming, by supporting the use of streams of streams, first-class functions, and higher-order operations. We also support many temporal operations beyond streams, such as terminatable streams, events, and even resumptions with first-class schedulers. Furthermore, our language supports an efficient implementation strategy permitting us to eagerly deallocate old values and statically rule out spacetime leaks, a notorious source of inefficiency in reactive programs. Furthermore, these memory guarantees are achieved without the use of a complex substructural type discipline.We also show that our implementation strategy of eager deallocation is safe, by showing the soundness of our type system with a novel step-indexed Kripke logical relation.},
+  journal    = {SIGPLAN Not.},
+  month      = sep,
+  pages      = {221-232},
+  numpages   = {12},
+  keywords   = {temporal logic, kripke logical relations, guarded recursion, functional reactive programming, dataflow, comonads, capabilities}
+}
+
+@misc{adjs,
+  title   = {adjs},
+  url     = {https://github.com/neel-krishnaswami/adjs},
+  author  = {Krishnaswami, Neelakantan R.},
+  urldate = {2025-12-13}
+}
+
+@article{FRP_NOW,
+  author     = {Ploeg, Atze van der and Claessen, Koen},
+  title      = {Practical principled FRP: forget the past, change the future, FRPNow!},
+  year       = {2015},
+  issue_date = {September 2015},
+  publisher  = {Association for Computing Machinery},
+  address    = {New York, NY, USA},
+  volume     = {50},
+  number     = {9},
+  issn       = {0362-1340},
+  url        = {https://doi-org.kb-itu.idm.oclc.org/10.1145/2858949.2784752},
+  doi        = {10.1145/2858949.2784752},
+  abstract   = {We present a new interface for practical Functional Reactive Programming (FRP) that (1) is close in spirit to the original FRP ideas, (2) does not have the original space-leak problems, without using arrows or advanced types, and (3) provides a simple and expressive way for performing IO actions from FRP code. We also provide a denotational semantics for this new interface, and a technique (using Kripke logical relations) for reasoning about which FRP functions may "forget their past", i.e. which functions do not have an inherent space-leak. Finally, we show how we have implemented this interface as a Haskell library called FRPNow.},
+  journal    = {SIGPLAN Not.},
+  month      = aug,
+  pages      = {302-314},
+  numpages   = {13},
+  keywords   = {Functional Reactive Programming, Kripke Logical Relations, Purely Functional IO, Space-leak}
+}
+
+@incollection{yampa_hudak_2003,
+  location  = {Berlin, Heidelberg},
+  title     = {Arrows, Robots, and Functional Reactive Programming},
+  isbn      = {978-3-540-44833-4},
+  url       = {https://doi.org/10.1007/978-3-540-44833-4_6},
+  abstract  = {Functional reactive programming},
+  pages     = {159--187},
+  booktitle = {Advanced Functional Programming: 4th International School, {AFP} 2002, Oxford, {UK}, August 19-24, 2002. Revised Lectures},
+  publisher = {Springer},
+  author    = {Hudak, Paul and Courtney, Antony and Nilsson, Henrik and Peterson, John},
+  editor    = {Jeuring, Johan and Jones, Simon L. Peyton},
+  urldate   = {2025-12-13},
+  date      = {2003},
+  langid    = {english},
+  doi       = {10.1007/978-3-540-44833-4_6},
+  keywords  = {Event Stream, Functional Programming, Mobile Robot, Signal Function, Wheel Speed, Yampa}
+}
+
+@misc{froc_frp,
+  title   = {froc},
+  url     = {https://github.com/jaked/froc},
+  author  = {Jake Donham},
+  urldate = {2025-12-13}
+}
+
+@misc{reactive_banana,
+  title   = {reactive-banana},
+  url     = {https://hackage.haskell.org/package/reactive-banana},
+  author  = {Heinrich Apfelmus},
+  urldate = {2025-12-13}
+}
