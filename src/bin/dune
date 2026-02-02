@@ -1,0 +1,4 @@
+(executable
+ (public_name rizzoc)
+ (name main)
+ (libraries rizzoc))

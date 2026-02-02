@@ -1,0 +1,6 @@
+(library
+ (name rizzoc))
+
+(menhir (modules parser))
+
+(ocamllex (modules lexer))
