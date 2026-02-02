@@ -1,0 +1,2 @@
+# RizzoMemory
+MSc thesis
