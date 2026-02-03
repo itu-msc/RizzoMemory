@@ -62,7 +62,6 @@ and free_vars_fn (env: StringSet.t) = function
   | FnInc (x, f) | FnDec (x, f) ->
       if StringSet.mem x env then free_vars_fn env f
       else StringSet.add x (free_vars_fn env f)
-
 and free_vars fn = free_vars_fn StringSet.empty fn
 
 type ownership =
@@ -217,8 +216,7 @@ let build_callers (p:program) : StringSet.t StringMap.t =
         scan_body caller callers rest
   in
   List.fold_left
-    (fun callers (f_name, Fun (_params, body)) ->
-      scan_body f_name callers body)
+    (fun callers (f_name, Fun (_params, body)) -> scan_body f_name callers body)
     StringMap.empty p
 
 let infer_all (p:program) : parameter_ownership =
