@@ -1,8 +1,12 @@
 
 module Ast = struct 
-  type ast = Ast.ast
+  type program = Ast.program
 end
 
-let parse_string (s : string) : Ast.ast =
+module RefCount = struct
+include Refcount
+end
+
+let parse_string (s : string) =
   let lexbuf = Lexing.from_string s in
   Parser.main Lexer.read lexbuf
