@@ -4,6 +4,7 @@
 - [x] Impliment basic increment and decrement functions
 - [ ] Add Collect for Borrowed signature inference
 - [ ] Add `reset`/`reuse`
+- [ ] Consider using a *reverse call graph* for `collectO` for performance.
 
 ## Adapting immutable beans for Rizzo expressions(?)
 - [ ] How do we represent necessary Rizzo constructors (delayed, later, signal, sum + tuples(?))
@@ -32,3 +33,4 @@
     - [ ] Describe the Ullrich & De Moura work (?)
 - [ ] Explain the implementation details
   - [ ] Memory management
+
