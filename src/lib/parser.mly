@@ -1,13 +1,13 @@
 
 %{
-open Ast
+open! Ast
 %}
 
 %token EOF
 
-%start <Ast.ast> main
+%start <Ast.program> main
 
 %%
 
 main:
-	| EOF { Empty }
+	| EOF { [] }
