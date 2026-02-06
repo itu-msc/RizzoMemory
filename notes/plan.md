@@ -22,6 +22,11 @@
 - [ ] Note down the performance goals of Perceus
 - [ ] Implement a basic version of the Perceus optimizations
 
+## Evaluate the memory management system
+- [ ] Decide: How we woud like to evaluate, which activities does it include? Measurements? Etc.
+- [ ] Evaluate our adaptation of Ullrich & De Moura.
+- [ ] Evaluate our use of Perceus(?)
+
 ## Rizzo Syntax design
 - [ ] Design syntax for Rizzo
 - [ ] Make code examples
