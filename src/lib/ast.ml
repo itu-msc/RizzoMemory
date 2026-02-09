@@ -2,10 +2,11 @@
 type const = 
   | CUnit
   | CInt of int
+  | CBool of bool
 
 type unary_op =
   | Fst | Snd (* tuple elimination *)
-  (* | Inl | Inr *) (* constructors for sum type, alternatively we can have Left,Right,Both for sync type? *)
+  (* | Inl | Inr *) (* constructors for sum type *)
 
 type binary_op =
   | SigCons
