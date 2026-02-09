@@ -8,7 +8,7 @@
 - [x] Consider using a *reverse call graph* for `collectO` for performance.
 - [ ] Transform Rizzo AST to an intermediate language that fulfil the assumptions on page 4-5 of Ullrich & de Moura. This includes at least:
   - [ ] Eta expansion
-  - [ ] Lambda lifting
+  - [x] Lambda lifting
   - [ ] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
   - [ ] Dead let-binding (code) elimination
   - [ ] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...

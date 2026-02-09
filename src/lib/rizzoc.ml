@@ -23,6 +23,7 @@ module Transformations = struct
   module ANF = struct
     let anf_expr = Transform_rc.ANF.normalize_expr
     let anf = Transform_rc.ANF.normalize_program
+    let lift = Transform_lift.lift
   end
 
   let to_rc_ir = Transform_rc.to_rc_intermediate_representation
@@ -38,7 +39,6 @@ module Transformations = struct
       (c_name, RefCount.Fun (params, Refcount.insert_dec_many params ref_counted_body var_env))
     in
     beta, List.map insert_ref_count constants
-
 end
 
 module Utilities = struct include Utilities end
