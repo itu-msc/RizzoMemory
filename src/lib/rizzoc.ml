@@ -32,8 +32,10 @@ module Transformations = struct
   
   let auto_ref_count (program: Ast.program) = 
     let module StringMap = Map.Make(String) in
+    (* TODO: builtins? - For example deref and assign for mutable ref *)
+    let builtins = StringMap.of_list [ "ref", [RefCount.Owned] ] in
     let constants = to_rc_ir (ANF.anf program) in
-    let beta = Refcount.infer_all constants in
+    let beta = Refcount.infer_all ~builtins:builtins constants in
     let insert_ref_count (c_name, RefCount.Fun (params, c_body)) = 
       let params_ownership = Refcount.lookup_params beta c_name in
       let var_env = StringMap.of_list @@ List.combine params params_ownership in

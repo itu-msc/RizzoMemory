@@ -86,7 +86,7 @@ type parameter_ownership = ownership list StringMap.t
 let lookup_params (b:parameter_ownership) (c:string) : ownership list =
   match StringMap.find_opt c b with
   | Some xs -> xs
-  | None -> failwith ("unknown function in beta: " ^ c)
+  | None -> failwith (Printf.sprintf "unknown function in beta: '%s'" c)
 
 (** Helper function to prepare [x] for use in an owned context. *)
 let insert_inc x v f beta_env = match lookup beta_env x with
@@ -231,7 +231,7 @@ let build_callers (p:program) : StringSet.t StringMap.t =
     (fun callers (f_name, Fun (_params, body)) -> scan_body f_name callers body)
     StringMap.empty p
 
-let infer_all (p:program) : parameter_ownership =
+let infer_all ?(builtins:parameter_ownership = StringMap.empty) (p:program) : parameter_ownership =
   let callers = build_callers p in
 
   (* init: all Borrowed *)
@@ -239,7 +239,7 @@ let infer_all (p:program) : parameter_ownership =
     List.fold_left
       (fun b (name, Fun (params, _body)) ->
         StringMap.add name (List.map (fun _ -> Borrowed) params) b)
-      StringMap.empty p
+      builtins p
   in
 
   let prog_map =

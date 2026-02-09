@@ -63,12 +63,13 @@ let get_name = function
 
 let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr = 
   match e with
+  (*TODO: should EApp(EVar "ref", [EVar x]) become RCtor(1, [x]) ?*)
   (* assumption: f (EVar x1) (EVar x2) (EVar x3) ... *)
   | EApp (EVar f, xs) -> RCall (f, List.map get_name xs) (* TODO: partial apps *)
   | EBinary (SigCons, EVar n1, EVar n2)
   | ETuple (EVar n1, EVar n2) -> RCtor (2, [n1; n2])
-  | EUnary (Fst, EVar x)  -> RCall ("fst", [x])
-  | EUnary (Snd, EVar x)  -> RCall ("snd", [x])
+  | EUnary (Fst, EVar x)  -> RProj (0, x)
+  | EUnary (Snd, EVar x)  -> RProj (1, x)
   | EConst (const) -> (
       match const with
       | CUnit -> RCtor (0, [])
@@ -89,12 +90,13 @@ and expr_to_fn_body (e: Ast.expr) : Refcount.fn_body =
     let x = ANF.new_var () in 
     FnLet (x, expr_to_rexpr e, FnCase (x, List.map expr_to_fn_body cases))
   | _ -> 
+    (* TODO: should ANF not handle this? *)
     let x = ANF.new_var () in 
     FnLet (x, expr_to_rexpr e, FnRet x)
 
 let to_rc_intermediate_representation (p: Ast.program) : Refcount.program =
   let to_fun = function
-  | EFun (params, body) -> Fun (params, expr_to_fn_body (ANF.normalize_expr body)) 
+  | EFun (params, body) -> Fun (params, expr_to_fn_body body) 
   | _ -> failwith "TODO: only top level functions"
   in
   List.map (fun (TLet (name, rhs)) -> name, to_fun rhs) p

@@ -70,7 +70,13 @@ let infer_borrow_status_example () =
   print_parameter_ownerships beta
 
 
-let example_anf = 
+let example_anf_then_rc () = 
+  (*let id = fun x -> x
+    let garbage_sig = fun x -> 
+      let my_sig = (case x of x | (let y = id x in y)) :: (id x) in
+      id my_sig
+    let _ = fun x -> garbage_sig x
+  *)
   let program: Ast.program = [
     TLet("id", EFun(["x"], EVar "x"));
     TLet("garbage_sig", EFun(["x"], 
@@ -84,9 +90,34 @@ let example_anf =
       EApp (EVar "garbage_sig", [EVar "x"])
     ))
   ] in
+  Format.printf "Original program:\n%a\n" Ast.pp_program program;
   (* how can entry borrow x? *)
   let beta, program_rc = Transformations.auto_ref_count program in
   print_parameter_ownerships beta;
+  program_rc 
+  |> List.iter (fun (c, Fun (_, b)) ->
+    Format.printf "!!%s:\n%a\n!!\n" c pp_fnbody b
+  )
+
+let example_anf () = 
+  (*let _ = 
+      let my_sig = (case x of f | (id g)) :: never in
+      id my_sig
+  *)
+  let program: Ast.program = [
+    TLet("id", EFun(["x"], EVar "x"));
+    TLet("some", EFun(["g"], EVar "g"));
+    TLet("_", EFun(["x"; "g"], 
+      let case = Ast.ECase (EVar "x", [EVar "none"; EApp (EVar "some", [EVar "g"])]) in
+      let sig_cons = Ast.EBinary(SigCons, case, EVar "never") in
+      let my_sig = sig_cons in
+      ELet("my_sig", my_sig, EApp (EVar "id", [EVar "my_sig"])
+    )))
+  ] in
+  Format.printf "Original program:\n%a\n" Ast.pp_program program;
+  let t = Rizzoc.Transformations.ANF.anf program in
+  Format.printf "After ANF:\n%a\n" Ast.pp_program t;
+  let _, program_rc = Transformations.auto_ref_count t in 
   program_rc 
   |> List.iter (fun (c, Fun (_, b)) ->
     Format.printf "!!%s:\n%a\n!!\n" c pp_fnbody b
