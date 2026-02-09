@@ -13,6 +13,7 @@ depends: [
   "ocaml"
   "menhir"
   "dune" {>= "3.20"}
+  "alcotest" {with-test}
   "odoc" {with-doc}
 ]
 build: [

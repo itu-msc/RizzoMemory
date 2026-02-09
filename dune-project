@@ -21,9 +21,12 @@
  (name rizzoc)
  (synopsis "Rizzo memory model")
  (description "A longer description")
- (depends ocaml menhir dune)
+ (depends
+  ocaml
+  menhir
+  dune
+  (alcotest :with-test))
  (tags
-  ("FRP"
-   "functional reactive programming")))
+  ("FRP" "functional reactive programming")))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
