@@ -2,14 +2,14 @@
 
 ## Counting immutable beans paper (Ullrich & de Moura)
 
-- [x] Impliment basic increment and decrement functions
+- [x] Implement basic increment and decrement functions
 - [x] Add Collect for Borrowed signature inference
 - [ ] Add `reset`/`reuse`
 - [x] Consider using a *reverse call graph* for `collectO` for performance.
 - [ ] Transform Rizzo AST to an intermediate language that fulfil the assumptions on page 4-5 of Ullrich & de Moura. This includes at least:
   - [ ] Eta expansion
   - [x] Lambda lifting
-  - [ ] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
+  - [x] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
   - [ ] Dead let-binding (code) elimination
   - [ ] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...
   - [x] A-Normalization (ANF, Flanagan et al.). May have to be more aggressive, since we need all arguments to be variables.
@@ -39,7 +39,7 @@
 ## Rizzo type checking
 
 - [ ] We could do bidirectional typing
-- [ ] Implement typechecker
+- [ ] Implement type checker
 - [ ] (OPT) Implement type inference
 
 ## Implement LSP server for Rizzo (if time permits)

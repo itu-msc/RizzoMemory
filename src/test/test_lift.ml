@@ -16,7 +16,7 @@ let test_lift_preserves_top_level_order () =
 		TLet ("b", EConst (CInt 2));
 	] in
 
-	let transformed = ANF.lift p in
+	let transformed = lift p in
 
 	Alcotest.check program_testable "top-level order preserved" p transformed
 
@@ -27,7 +27,7 @@ let test_lift_free_vars_exclude_params_and_outer_locals () =
 		TLet ("f", EFun (["x"], EFun (["y"], EVar "x")));
 	] in
 
-	let transformed = ANF.lift p in
+	let transformed = lift p in
 
 	Utils.new_name_reset ();
 	let outer_name = Utils.new_name "lifted_fun" in
@@ -48,7 +48,7 @@ let test_lift_deduplicates_free_vars () =
 		TLet ("f", EFun (["y"], ETuple (EVar "x", EVar "x")));
 	] in
 
-	let transformed = ANF.lift p in
+	let transformed = lift p in
 
 	Utils.new_name_reset ();
 	let lifted_name = Utils.new_name "lifted_fun" in

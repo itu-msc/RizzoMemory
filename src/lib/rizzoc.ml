@@ -23,8 +23,10 @@ module Transformations = struct
   module ANF = struct
     let anf_expr = Transform_rc.ANF.normalize_expr
     let anf = Transform_rc.ANF.normalize_program
-    let lift = Transform_lift.lift
   end
+  let lift = Transform_lift.lift
+  let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
+  let eliminate_copy_propagation_program = Transform_copr.copy_propagate
 
   let to_rc_ir = Transform_rc.to_rc_intermediate_representation
   
