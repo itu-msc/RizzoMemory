@@ -5,7 +5,7 @@ open Rizzoc.Transformations
 let program_testable = Alcotest.testable Ast.pp_program Ast.eq_program
 
 let test_anf_case_is_lifted_to_top () = 
-  ANF.reset_var_counter ();
+  Utilities.new_name_reset ();
 
   let id = EVar "id" in
   let y = EVar "y" in
@@ -18,8 +18,8 @@ let test_anf_case_is_lifted_to_top () =
   let transformed = ANF.anf p in
 
   (* let x = case y of id y; let #var1 = id y in id #var1 *)
-  ANF.reset_var_counter ();
-  let varName = ANF.new_var () in
+  Utilities.new_name_reset ();
+  let varName = Utilities.new_var () in
   let varValue = EVar varName in
   let expected:program = [
     TLet("x", ECase(y, [
@@ -31,7 +31,7 @@ let test_anf_case_is_lifted_to_top () =
   Alcotest.check program_testable "case is lifted to top level" expected transformed
 
 let test_anf_signal_cons_becomes_let () =
-  ANF.reset_var_counter ();
+  Utilities.new_name_reset ();
   let x = EVar "x" in
   let y = EVar "y" in
   (* let z = x :: y *)
@@ -42,8 +42,8 @@ let test_anf_signal_cons_becomes_let () =
   let transformed = ANF.anf p in
 
   (* let #var1 = x :: y in ref (#var1) *)
-  ANF.reset_var_counter ();
-  let varName = ANF.new_var () in
+  Utilities.new_name_reset ();
+  let varName = Utilities.new_var () in
   let varValue = EVar varName in
   let ref_var = EVar "ref" in
   let expected:program = [

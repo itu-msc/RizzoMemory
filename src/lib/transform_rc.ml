@@ -6,9 +6,7 @@ module ANF = struct
   | EVar _ -> true
   | _ -> false
 
-  let var_cnt = ref 0
-  let reset_cnt () = var_cnt := 0
-  let new_var () = incr var_cnt; Printf.sprintf "#var%d" !var_cnt
+  let new_var () = Utilities.new_var ()
 
   (* Pretty much exactly: Flanagan et. al 1993 *)
   let rec normalize_expr m = normalize m Fun.id
@@ -16,7 +14,7 @@ module ANF = struct
   | EConst _ | EVar _ -> k m
   | EFun (params, body) -> k (EFun (params, normalize_expr body))
   | ELet (x, m1, m2) -> normalize m1 (
-    fun n1 -> 
+    fun n1 ->
       let body = normalize m2 k in
       ELet(x, n1, body)
     )
@@ -66,7 +64,7 @@ let get_name = function
 let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr = 
   match e with
   (* assumption: f (EVar x1) (EVar x2) (EVar x3) ... *)
-  | EApp (EVar f, xs) -> RCall (f, List.map get_name xs)(* TODO: partial apps *)
+  | EApp (EVar f, xs) -> RCall (f, List.map get_name xs) (* TODO: partial apps *)
   | EBinary (SigCons, EVar n1, EVar n2)
   | ETuple (EVar n1, EVar n2) -> RCtor (2, [n1; n2])
   | EUnary (Fst, EVar x)  -> RCall ("fst", [x])

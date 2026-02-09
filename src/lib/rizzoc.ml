@@ -21,9 +21,6 @@ end
 
 module Transformations = struct
   module ANF = struct
-    let new_var () = Transform_rc.ANF.new_var ()
-    let reset_var_counter () = Transform_rc.ANF.reset_cnt ()
-
     let anf_expr = Transform_rc.ANF.normalize_expr
     let anf = Transform_rc.ANF.normalize_program
   end
@@ -44,6 +41,7 @@ module Transformations = struct
 
 end
 
+module Utilities = struct include Utilities end
 
 let parse_string (s : string) =
   let lexbuf = Lexing.from_string s in
