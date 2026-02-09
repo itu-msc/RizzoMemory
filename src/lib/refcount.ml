@@ -5,11 +5,7 @@ module StringMap = Map.Make(String)
 type rexpr = (* expr in their RC IR *)
   | RCall of string * string list
   | RPartialApp of string * string list
-(*They write:
-'All presented program transformations can be 
-readily extended to a system with n-ary variable applications' 
-*)
-  | RVarApp of string * string 
+  | RVarApp of string * string  (* TODO: do we want n-ary var-app? *)
   | RCtor of int * string list
   | RProj of int * string
 
@@ -41,6 +37,7 @@ let rec pp_fnbody out = function
   | FnInc (x, f) -> Format.fprintf out "inc %s;@ %a" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "dec %s;@ %a" x pp_fnbody f
 
+(* The parameter list *)
 let delta (p:program) (x:string) = List.assoc x p
 
 let rec free_vars_expr (env: StringSet.t) = function
@@ -72,32 +69,46 @@ let is_owned = function
   | Owned -> true 
   | Borrowed -> false
 
+(** Environment for keeping track of borrow status of local variables.
+    Ullirch & De Moura call it 'βₗ'. *)
 type beta_env = ownership StringMap.t
 let lookup env x = 
   match StringMap.find_opt x env with
   | None -> Owned
   | Some b -> b
 
+(** Mapping of 'borrowing signatures'. For every function it returns a list describing 
+    the ownership it requires for each of its parameters.
+
+    Ullirch & De Moura call it 'β' (beta)
+*)
 type parameter_ownership = ownership list StringMap.t
 let lookup_params (b:parameter_ownership) (c:string) : ownership list =
   match StringMap.find_opt c b with
   | Some xs -> xs
   | None -> failwith ("unknown function in beta: " ^ c)
 
+(** Helper function to prepare [x] for use in an owned context. *)
 let insert_inc x v f beta_env = match lookup beta_env x with
   | Owned when not (StringSet.mem x v) -> f
   | _ -> FnInc (x, f)
 
-(* var -> rexpr -> beta_env -> rexpr *)
+(** Inserts a decrement instruction if [x] is owned and no longer needed in [f] *)
 let insert_dec x f env = match lookup env x with
   | Owned when not (StringSet.mem x (free_vars f)) -> FnDec (x, f)
   | _ -> f
 
+(** calls [insert_dec] multiple times :) *)
 let rec insert_dec_many xs f beta_env = match xs with
   | [] -> f
   | x :: xs -> insert_dec_many xs (insert_dec x f beta_env) beta_env
 
-(* delta(c) *)
+(** Inserts inc/dec instructions. Ullirch & De Moura call it 'C'.
+    
+  [var_ownership]: environment of borrow status of local variables
+  
+  [func_ownership]: environment of borrow status for parameters of all global functions
+*)
 let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_body = match _f with
   | FnRet x -> insert_inc x StringSet.empty _f var_ownerships
   | FnCase (x, fs) as case -> 
@@ -107,7 +118,7 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
   (* The Lets*)
   | FnLet (y, RProj (i, x), f) -> 
     (match lookup var_ownerships x with
-    | Owned -> 
+    | Owned ->
       let compiled_f = insert_dec x (insert_rc f var_ownerships func_ownerships) var_ownerships in
       FnLet (y, RProj (i, x), FnInc(y, compiled_f))
     | Borrowed -> 
@@ -141,7 +152,8 @@ and c_app (vars: string list) (bs: ownership list) (_f:fn_body) beta_env : fn_bo
   | [], _, FnLet(z, e, f) -> FnLet(z, e, f)
   | _ -> failwith "Not implemented"
 
-
+(** Collects variables of an [fn_body] that can not be marked as [Borrowed].
+    Ullirch & De Moura call it 'collect' *)
 let rec collect func_ownerships (_f:fn_body) : StringSet.t = 
   match _f with
   | FnRet _ -> StringSet.empty
