@@ -1,4 +1,16 @@
 
+module Location = struct
+include Location
+end
+
+module Lexer = struct
+include Lexer
+end
+
+module Parser = struct
+include Parser
+end
+
 module Ast = struct 
 include Ast
 end
@@ -8,13 +20,19 @@ include Refcount
 end
 
 module Transformations = struct
-  let anf_expr = Transform_rc.ANF.normalize_expr
-  let anf = Transform_rc.ANF.normalize_program
+  module ANF = struct
+    let new_var () = Transform_rc.ANF.new_var ()
+    let reset_var_counter () = Transform_rc.ANF.reset_cnt ()
+
+    let anf_expr = Transform_rc.ANF.normalize_expr
+    let anf = Transform_rc.ANF.normalize_program
+  end
+
   let to_rc_ir = Transform_rc.to_rc_intermediate_representation
   
   let auto_ref_count (program: Ast.program) = 
     let module StringMap = Map.Make(String) in
-    let constants = to_rc_ir (anf program) in
+    let constants = to_rc_ir (ANF.anf program) in
     let beta = Refcount.infer_all constants in
     let insert_ref_count (c_name, RefCount.Fun (params, c_body)) = 
       let params_ownership = Refcount.lookup_params beta c_name in

@@ -12,7 +12,7 @@
   - [ ] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
   - [ ] Dead let-binding (code) elimination
   - [ ] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...
-  - [ ] A-Normalization (ANF, Flanagan et al.). May have to be more aggressive, since we need all arguments to be variables.
+  - [x] A-Normalization (ANF, Flanagan et al.). May have to be more aggressive, since we need all arguments to be variables.
 
 ## Adapting immutable beans for Rizzo expressions(?)
 

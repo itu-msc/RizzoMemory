@@ -6,9 +6,9 @@ module ANF = struct
   | EVar _ -> true
   | _ -> false
 
-  let new_var = 
-    let cnt = ref 0 in
-    fun () -> incr cnt; Printf.sprintf "#var%d" !cnt
+  let var_cnt = ref 0
+  let reset_cnt () = var_cnt := 0
+  let new_var () = incr var_cnt; Printf.sprintf "#var%d" !var_cnt
 
   (* Pretty much exactly: Flanagan et. al 1993 *)
   let rec normalize_expr m = normalize m Fun.id
