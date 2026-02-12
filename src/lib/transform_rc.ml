@@ -52,7 +52,6 @@ let get_name = function
 
 let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr = 
   match e with
-  (*TODO: should EApp(EVar "ref", [EVar x]) become RCtor(1, [x]) ?*)
   (* assumption: f (EVar x1) (EVar x2) (EVar x3) ... *)
   | EApp (EVar f, xs) -> RCall (f, List.map get_name xs) (* TODO: partial apps *)
   | EBinary (SigCons, EVar n1, EVar n2) -> RSignal { head = n1; tail = n2 }
@@ -62,6 +61,7 @@ let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr =
   | EConst (const) -> (
       match const with
       | CUnit -> RCtor (0, [])
+      | CNever -> RCtor (0, [])
       | CInt n -> RCtor (1, [string_of_int n])
       | CBool b -> RCtor (1, [string_of_bool b])
     )

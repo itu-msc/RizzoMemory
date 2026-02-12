@@ -2,6 +2,11 @@ open! Ast
 module StringSet = Set.Make(String)
 module StringMap = Map.Make(String)
 
+(* type primitive = (* reconsider this later if we add records / classes / objects *)
+  | PInt of int
+  | PBool of bool
+  | PUnit *)
+
 type rexpr = (* expr in their RC IR *)
   | RCall of string * string list
   | RPartialApp of string * string list
@@ -44,7 +49,7 @@ let rec pp_fnbody out = function
 
 let pp_ref_counted_program out (p: program) =
   let pp_fn out (name, Fun (params, body)) =
-    Format.fprintf out "fun %s(%a) =@ %a" name
+    Format.fprintf out "fun %s(%a) =@,  @[<v>%a@]" name
       (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) params
       pp_fnbody body
   in

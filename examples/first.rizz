@@ -1,1 +1,6 @@
-fun s mybool = match mybool with 5 | 2 | 17
+fun const x = x :: never
+
+fun main x = 
+    let mysync = sync 2 4 in 
+    let thing = mysync :: const 3 in
+    (thing, mysync)

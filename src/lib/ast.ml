@@ -3,19 +3,27 @@ module Loc = Location
 
 type const = 
   | CUnit
+  | CNever
   | CInt of int
   | CBool of bool
 
 type unary_op =
   | Fst | Snd (* tuple elimination *)
+  | UWait | UWatch | UTail | UDelay
   (* | Inl | Inr *) (* constructors for sum type *)
 
 type binary_op =
   | SigCons
+  | BSync | BOstar | BLaterApp
   (* | Add | Mul | Sub | Div | Eq | Lt | Leq *)
 
 (** Source location for an expression node *)
 type location = Location.t
+
+type pattern =
+  | PWildcard
+  | PVar of string
+  | PSigCons of pattern * pattern
 
 type expr =
   | EConst of const
@@ -55,6 +63,7 @@ let rec eq_expr a b =
 
 let pp_const out = function
   | CUnit -> Format.fprintf out "()"
+  | CNever -> Format.fprintf out "never"
   | CInt i -> Format.fprintf out "%d" i
   | CBool b -> Format.fprintf out "%b" b
 
@@ -67,10 +76,22 @@ let rec pp_expr out =
   | EFun (params, body) -> fprintf out "fun (%s) -> %a" (String.concat ", " params) pp_expr body
   | EApp (f, args) -> fprintf out "%a(%a)" pp_expr f (pp_print_list ~pp_sep:(fun out () -> fprintf out ", ") pp_expr) args
   | EUnary (op, e) -> 
-    let op_str = match op with Fst -> "fst" | Snd -> "snd" in
+    let op_str = match op with 
+    | Fst -> "fst" 
+    | Snd -> "snd"
+    | UWait -> "wait"
+    | UWatch -> "watch"
+    | UTail -> "tail"
+    | UDelay -> "delay"
+    in
     fprintf out "%s %a" op_str pp_expr e
   | EBinary (op, e1, e2) ->
-    let op_str = match op with SigCons -> "::" in
+    let op_str = match op with 
+    | SigCons -> "::" 
+    | BSync -> "sync"
+    | BOstar -> "(*)"
+    | BLaterApp -> "(>)"
+    in
     fprintf out "(%a %s %a)" pp_expr e1 op_str pp_expr e2
   | ETuple (e1, e2) -> fprintf out "(%a, %a)" pp_expr e1 pp_expr e2
   | ECase (e, cases) ->
