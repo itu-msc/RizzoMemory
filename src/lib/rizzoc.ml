@@ -45,8 +45,8 @@ end
 
 module Transformations = struct
   module ANF = struct
-    let anf_expr = Transform_rc.ANF.normalize_expr
-    let anf = Transform_rc.ANF.normalize_program
+    let anf_expr = Transform_anf.normalize_expr
+    let anf = Transform_anf.normalize_program
   end
   let lift = Transform_lift.lift
   let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
@@ -66,7 +66,7 @@ module Transformations = struct
 
   let auto_ref_count (program: Ast.program) = 
     let module StringMap = Map.Make(String) in
-    let constants = to_rc_ir (ANF.anf program) in
+    let constants = to_rc_ir program in
     let beta = Refcount.infer_all ~builtins:builtins constants in
     let insert_ref_count (c_name, RefCount.Fun (params, c_body)) = 
       let params_ownership = Refcount.lookup_params beta c_name in
@@ -85,6 +85,4 @@ let apply_transforms p =
   |> Transformations.eliminate_copy_propagation_program
   |> Transformations.ANF.anf
 
-let ref_count p = 
-  let _, p' = Transformations.auto_ref_count p in
-  p'
+let ref_count p = snd @@ Transformations.auto_ref_count p

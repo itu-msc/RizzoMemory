@@ -23,6 +23,7 @@ let test_lift_preserves_top_level_order () =
 let test_lift_free_vars_exclude_params_and_outer_locals () =
 	Utils.new_name_reset ();
 
+	(* let f = fun x -> fun y -> x *)
 	let p:program = [
 		TLet ("f", EFun (["x"], EFun (["y"], EVar "x")));
 	] in
@@ -30,13 +31,17 @@ let test_lift_free_vars_exclude_params_and_outer_locals () =
 	let transformed = lift p in
 
 	Utils.new_name_reset ();
-	let outer_name = Utils.new_name "lifted_fun" in
 	let inner_name = Utils.new_name "lifted_fun" in
 
+	(*TODO: should we differentiate TLet and TFun?
+		fun lifted_fun2 x y -> x 
+		let f = fun x -> lifted_fun1(x)
+	*)
 	let expected:program = [
 		TLet (inner_name, EFun (["x"; "y"], EVar "x"));
-		TLet (outer_name, EFun (["x"], EApp (EVar inner_name, [EVar "x"])));
-		TLet ("f", EVar outer_name);
+		TLet ("f", EFun(["x"], EApp (EVar inner_name, [EVar "x"])))
+		(* TLet (outer_name, EFun (["x"], EApp (EVar inner_name, [EVar "x"]))); *)
+		(* TLet ("f", EVar outer_name); *)
 	] in
 
 	Alcotest.check program_testable "free vars exclude params/outer locals" expected transformed
@@ -44,18 +49,19 @@ let test_lift_free_vars_exclude_params_and_outer_locals () =
 let test_lift_deduplicates_free_vars () =
 	Utils.new_name_reset ();
 
+	(* let f = fun z -> fun y -> (x,x)*)
 	let p:program = [
-		TLet ("f", EFun (["y"], ETuple (EVar "x", EVar "x")));
+		TLet ("f", EFun(["z"], EFun (["y"], ETuple (EVar "x", EVar "x"))));
 	] in
 
 	let transformed = lift p in
 
 	Utils.new_name_reset ();
-	let lifted_name = Utils.new_name "lifted_fun" in
-
+	let lifted = Utils.new_name "lifted_fun" in
+	(* let f = fun z -> lifted_fun1(x) - looks weird but we are not type checking? *)
 	let expected:program = [
-		TLet (lifted_name, EFun (["x"; "y"], ETuple (EVar "x", EVar "x")));
-		TLet ("f", EApp (EVar lifted_name, [EVar "x"]));
+		TLet (lifted, EFun(["x"; "y"], ETuple(EVar "x", EVar "x")));
+		TLet ("f", EFun (["z"], EApp (EVar lifted, [EVar "x"])));
 	] in
 
 	Alcotest.check program_testable "free vars are deduplicated" expected transformed

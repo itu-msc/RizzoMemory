@@ -30,7 +30,7 @@ let () =
 		Format.printf "Parsed:\n%a\n\n" Ast.pp_program program;
     let transformed = Rizzoc.apply_transforms program in
     Format.printf "Transformed:\n%a\n\n" Ast.pp_program transformed;
-    let rc_program = Rizzoc.ref_count program in
+    let rc_program = Rizzoc.ref_count transformed in
     Format.printf "Reference counted:\n%a\n" RefCount.pp_ref_counted_program rc_program
 	with
 	| Rizzoc.Parser.Error (loc, msg) ->

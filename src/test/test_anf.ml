@@ -31,7 +31,7 @@ let test_anf_case_is_lifted_to_top () =
 
   Alcotest.check program_testable "case is lifted to top level" expected transformed
 
-let test_anf_signal_cons_becomes_let () =
+let test_anf_signal_cons_unchanged () =
   Utilities.new_name_reset ();
   let x = EVar "x" in
   let y = EVar "y" in
@@ -42,42 +42,33 @@ let test_anf_signal_cons_becomes_let () =
 
   let transformed = ANF.anf p in
 
-  (* let #var1 = x :: y in ref (#var1) *)
+  (* EXPECT UNALTERED PROGRAM  *)
   Utilities.new_name_reset ();
-  let varName = Utilities.new_var () in
-  let varValue = EVar varName in
-  let ref_var = EVar "ref" in
-  let expected:program = [
-    TLet("z", ELet(varName, EBinary(SigCons, x, y), EApp(ref_var, [varValue])))
-  ] in
-
+  let expected:program = p in
   Alcotest.check program_testable "signal cons becomes let" expected transformed
 
 let test_anf_case_and_signal () =
-  (* let my_sig = (case x of x | 0) :: (never)*)
+  (* (case x of x | 0) :: never *)
   Utilities.new_name_reset ();
   let x = EVar "x" in
   let case = ECase(x, [x; EConst (CInt 0)]) in
   let e = EBinary(SigCons, case, EVar "never") in
   let transformed = ANF.anf_expr e in
   (* case x of 
-     (let #var1 = x :: never in let my_sig = ref #var1)
-     (let #var2 = 0 in let #var3 = #var2 :: never in let my_sig = ref #var3)
+     (x :: never)
+     (let var1 = 0 in var1 :: never)
   *)
   Utilities.new_name_reset ();
   let varName1 = Utilities.new_var () in
-  let varName2 = Utilities.new_var () in
-  let varName3 = Utilities.new_var () in
   let expected =  ECase(x, [
-      ELet(varName1, EBinary(SigCons, x, EVar "never"), EApp(EVar "ref", [EVar varName1]));
-      ELet(varName2, EConst (CInt 0), 
-        ELet(varName3, EBinary(SigCons, EVar varName2, EVar "never"), EApp(EVar "ref", [EVar varName3])))
+      EBinary(SigCons, x, EVar "never");
+      ELet(varName1, EConst (CInt 0), EBinary(SigCons, EVar varName1, EVar "never"))
     ])
   in
   Alcotest.check expr_testable "case and signal cons together" expected transformed
 
 let test_case_is_lifted_out_of_let () = 
-  (* let my_fun = fun x -> let y = case false of 0 | 1 in y :: x *)
+  (* let my_fun = fun x -> let y = (case false of 0 | 1) in y :: x *)
   Utilities.new_name_reset ();
   let my_fun = EFun(["x"], 
     ELet("y", ECase(EConst (CBool false), [EConst (CInt 0); EConst (CInt 1)]), 
@@ -92,24 +83,22 @@ let test_case_is_lifted_out_of_let () =
   (* let my_fun = fun x -> 
       let var1 = false in 
       case var1 of 
-        (let y = 0 in let var2 = y :: x in ref var2) 
-      | (let y = 1 in let var3 = y :: x in ref var3) *)
+        (let y = 0 in y :: x) 
+      | (let y = 1 in y :: x) *)
   Utilities.new_name_reset ();
   let var1 = Utilities.new_var () in
-  let var2 = Utilities.new_var () in
-  let var3 = Utilities.new_var () in
   let expected = [ TLet("my_fun", EFun(["x"], 
     ELet(var1, EConst (CBool false), 
     ECase(EVar var1, [
-      ELet("y", EConst (CInt 0), ELet(var2, EBinary(SigCons, EVar "y", EVar "x"), EApp(EVar "ref", [EVar var2])));
-      ELet("y", EConst (CInt 1), ELet(var3, EBinary(SigCons, EVar "y", EVar "x"), EApp(EVar "ref", [EVar var3])))
+      ELet("y", EConst (CInt 0), EBinary(SigCons, EVar "y", EVar "x"));
+      ELet("y", EConst (CInt 1), EBinary(SigCons, EVar "y", EVar "x"))
     ]))))] in
   Alcotest.check program_testable "case is lifted out of let" expected transformed
 
 
 let anf_tests = [
   "case is lifted", `Quick, test_anf_case_is_lifted_to_top;
-  "signal cons becomes ref", `Quick, test_anf_signal_cons_becomes_let;
+  "signal cons becomes ref", `Quick, test_anf_signal_cons_unchanged;
   "case and signal cons together", `Quick, test_anf_case_and_signal;
   "case is lifted out of let", `Quick, test_case_is_lifted_out_of_let
 ]
