@@ -3,6 +3,7 @@
 ## Going forward
 
 - Complete the rizzo constructor mappings. Signal special case. 
+  - SPECIAL CASE SIGNAL: We have decided that it is the concern of the runtime to get a reference to the previous/next siganls in the heap based on the cursor AND correctly reference counting these.
 
 ## Questions
 - Why do we even need mutable references? What would go wrong if we added a `set` operation to the immutable beans calculus.

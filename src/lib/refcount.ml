@@ -7,6 +7,7 @@ type rexpr = (* expr in their RC IR *)
   | RPartialApp of string * string list
   | RVarApp of string * string  (* TODO: do we want n-ary var-app? *)
   | RCtor of int * string list
+  | RSignal of { head: string; tail: string; } (* at runtime this will also include next/prev fields of heap *)
   | RProj of int * string
 
 type fn_body = 
@@ -25,6 +26,7 @@ let pp_rexpr out = function
   | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) ys
   | RVarApp (x, y) -> Format.fprintf out "%s %s" x y
   | RCtor (i, ys) -> Format.fprintf out "Ctor%d(%a)" i (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) ys
+  | RSignal { head; tail } -> Format.fprintf out "Signal(%s, %s)" head tail
   | RProj (i, x) -> Format.fprintf out "proj_%d %s" i x
 
 let rec pp_fnbody out = function
@@ -46,7 +48,7 @@ let pp_ref_counted_program out (p: program) =
       (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) params
       pp_fnbody body
   in
-  Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n") pp_fn) p
+  Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_fn) p
 
 (* The parameter list *)
 let delta (p:program) (x:string) = List.assoc x p
@@ -61,6 +63,9 @@ let rec free_vars_expr (env: StringSet.t) = function
       List.fold_left (fun acc y -> if StringSet.mem y env then acc else StringSet.add y acc) StringSet.empty ys
   | RProj (_i, x) ->
       if StringSet.mem x env then StringSet.empty else StringSet.singleton x
+  | RSignal { head; tail } ->
+      let acc = if StringSet.mem head env then StringSet.empty else StringSet.singleton head in
+      if StringSet.mem tail env then acc else StringSet.add tail acc
 and free_vars_fn (env: StringSet.t) = function
   | FnRet x -> if StringSet.mem x env then StringSet.empty else (StringSet.singleton x)
   | FnLet (x, rhs, f) -> StringSet.union (free_vars_expr env rhs) (free_vars_fn (StringSet.add x env) f)
@@ -150,6 +155,9 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
     let bs = List.map (fun _ -> Owned) ys in
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app ys bs (FnLet (z, RCtor(i,ys), compiled_f)) var_ownerships
+  | FnLet (z, RSignal { head; tail }, f) ->
+    let compiled_f = insert_rc f var_ownerships func_ownerships in
+    c_app [head; tail] [Owned; Owned] (FnLet (z, RSignal { head; tail }, compiled_f)) var_ownerships
   | FnInc _ | FnDec _ -> failwith "Increment and Decrement should not exist prior to this step!"
 
 and c_app (vars: string list) (bs: ownership list) (_f:fn_body) beta_env : fn_body = 
@@ -172,7 +180,8 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
     List.fold_left (fun acc case -> StringSet.union acc (collect func_ownerships case)) StringSet.empty cases
   | FnInc _ | FnDec _ -> failwith "no inc/dec in collect"
   (* The lets *)
-  | FnLet (_, RCtor _, rest) -> collect func_ownerships rest
+  | FnLet (_, RCtor _, rest)
+  | FnLet (_, RSignal _, rest) -> collect func_ownerships rest
   | FnLet (_, RCall (c, xs), rest) -> 
     let owned_args = 
       List.combine xs (lookup_params func_ownerships c)

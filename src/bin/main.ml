@@ -27,11 +27,11 @@ let () =
 	ensure_rizz_extension input_file;
 	try
 		let program = Rizzoc.Parser.parse_file input_file in
-		Format.printf "%a\n" Ast.pp_program program;
+		Format.printf "Parsed:\n%a\n\n" Ast.pp_program program;
     let transformed = Rizzoc.apply_transforms program in
-    Format.printf "%a\n" Ast.pp_program transformed;
+    Format.printf "Transformed:\n%a\n\n" Ast.pp_program transformed;
     let rc_program = Rizzoc.ref_count program in
-    Format.printf "%a\n" RefCount.pp_ref_counted_program rc_program
+    Format.printf "Reference counted:\n%a\n" RefCount.pp_ref_counted_program rc_program
 	with
 	| Rizzoc.Parser.Error (loc, msg) ->
 			Location.show_error_context loc msg;

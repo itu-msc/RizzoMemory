@@ -28,19 +28,8 @@ module ANF = struct
     normalize_name x (fun x' -> ECase (x', List.map (fun c' -> normalize c' k) cases))
   | EApp (f, args) -> 
     normalize_name f (fun t -> normalize_name_mult args (fun ts -> k (EApp (t, ts))))
-  | EBinary (SigCons, e1, e2) ->
-    (* convert to 
-      let #var_e1 = e1 in 
-      let #var_e2 = e2 in 
-      let #var_s = #var_e1 :: #var_e2 in 
-      EApp ("ref", [#var_s]) *)
-    normalize_name e1 (fun e1' -> normalize_name e2 (fun e2' -> 
-      let s = new_var () in
-      let body = k (EApp (EVar "ref", [EVar s])) in
-      ELet(s, EBinary (SigCons, e1', e2'), body)))
-  (* TODO: general case binary op*)
-  (* | EBinary (op, e1, e2) ->
-    normalize_name e1 (fun e1' -> normalize_name e2 (fun e2' -> k (EBinary (op, e1', e2')))) *)
+  | EBinary (op, e1, e2) ->
+    normalize_name e1 (fun e1' -> normalize_name e2 (fun e2' -> k (EBinary (op, e1', e2'))))
   | EUnary (op, e) -> normalize_name e (fun e' -> k (EUnary (op, e')))
   | ETuple (e1, e2) -> 
     normalize_name e1 (fun e1' -> normalize_name e2 (fun e2' -> k (ETuple (e1', e2'))))
@@ -66,7 +55,7 @@ let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr =
   (*TODO: should EApp(EVar "ref", [EVar x]) become RCtor(1, [x]) ?*)
   (* assumption: f (EVar x1) (EVar x2) (EVar x3) ... *)
   | EApp (EVar f, xs) -> RCall (f, List.map get_name xs) (* TODO: partial apps *)
-  | EBinary (SigCons, EVar n1, EVar n2)
+  | EBinary (SigCons, EVar n1, EVar n2) -> RSignal { head = n1; tail = n2 }
   | ETuple (EVar n1, EVar n2) -> RCtor (2, [n1; n2])
   | EUnary (Fst, EVar x)  -> RProj (0, x)
   | EUnary (Snd, EVar x)  -> RProj (1, x)

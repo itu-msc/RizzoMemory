@@ -13,7 +13,8 @@ include Parser
 exception Error of Location.t * string
 
 let parse_with lexbuf =
-  try Parser.main Lexer.read lexbuf with
+  try Parser.main Lexer.read lexbuf 
+  with
   | Lexer.Error _ as exn ->
       raise exn
   | exn ->
@@ -53,10 +54,19 @@ module Transformations = struct
 
   let to_rc_ir = Transform_rc.to_rc_intermediate_representation
   
+  let builtins = 
+    let module StringMap = Map.Make(String) in
+    StringMap.of_list [ 
+      ("wait", [RefCount.Owned]);
+
+      ("ref", [RefCount.Owned]);
+      ("deref", [RefCount.Borrowed]);
+      ("assign", [RefCount.Owned; RefCount.Borrowed]);
+      ]
+
   let auto_ref_count (program: Ast.program) = 
     let module StringMap = Map.Make(String) in
     (* TODO: builtins? - For example deref and assign for mutable ref *)
-    let builtins = StringMap.of_list [ "ref", [RefCount.Owned] ] in
     let constants = to_rc_ir (ANF.anf program) in
     let beta = Refcount.infer_all ~builtins:builtins constants in
     let insert_ref_count (c_name, RefCount.Fun (params, c_body)) = 
