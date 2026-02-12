@@ -40,6 +40,7 @@ let rec lift (p:program) : program =
 
 and lift_top_expr (globals: top_expr list ref) (te: top_expr) : top_expr =
   match te with
+  | TLet (x, EFun (params, body)) -> TLet (x, EFun (params, lift_expr globals body))
   | TLet (x, e) -> TLet (x, lift_expr globals e)
 
 and lift_expr (globals: top_expr list ref) (e: expr) = match e with

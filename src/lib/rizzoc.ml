@@ -69,3 +69,13 @@ module Transformations = struct
 end
 
 module Utilities = struct include Utilities end
+
+let apply_transforms p =
+  p
+  |> Transformations.lift
+  |> Transformations.eliminate_copy_propagation_program
+  |> Transformations.ANF.anf
+
+let ref_count p = 
+  let _, p' = Transformations.auto_ref_count p in
+  p'

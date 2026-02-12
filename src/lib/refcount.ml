@@ -32,10 +32,21 @@ let rec pp_fnbody out = function
   | FnLet (y, r, f) ->
         Format.fprintf out "let %s = %a in@ %a" y pp_rexpr r pp_fnbody f
   | FnCase (x, fs) ->
-      Format.fprintf out "case %s of@ @[<v>%a@]" x
-        (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@ | ") pp_fnbody) fs
+      let pp_branch out f =
+        Format.fprintf out "@[<hov 2>| %a@]" pp_fnbody f
+      in
+      Format.fprintf out "match %s with@,  @[%a@]" x
+        (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_branch) fs
   | FnInc (x, f) -> Format.fprintf out "inc %s;@ %a" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "dec %s;@ %a" x pp_fnbody f
+
+let pp_ref_counted_program out (p: program) =
+  let pp_fn out (name, Fun (params, body)) =
+    Format.fprintf out "fun %s(%a) =@ %a" name
+      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) params
+      pp_fnbody body
+  in
+  Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n") pp_fn) p
 
 (* The parameter list *)
 let delta (p:program) (x:string) = List.assoc x p
