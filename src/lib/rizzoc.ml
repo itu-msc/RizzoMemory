@@ -9,6 +9,29 @@ end
 
 module Parser = struct
 include Parser
+
+exception Error of Location.t * string
+
+let parse_with lexbuf =
+  try Parser.main Lexer.read lexbuf with
+  | Lexer.Error _ as exn ->
+      raise exn
+  | exn ->
+      let loc = Location.mk lexbuf.Lexing.lex_start_p lexbuf.Lexing.lex_curr_p in
+      let msg = Printf.sprintf "Menhir parse error: %s" (Printexc.to_string exn) in
+      raise (Error (loc, msg))
+
+let parse_string (s : string) =
+  let lexbuf = Lexing.from_string s in
+  parse_with lexbuf
+
+let parse_file (filename : string) =
+  let ic = open_in filename in
+  let lexbuf = Lexing.from_channel ic in
+  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = filename };
+  let result = parse_with lexbuf in
+  close_in ic;
+  result
 end
 
 module Ast = struct 
@@ -46,7 +69,3 @@ module Transformations = struct
 end
 
 module Utilities = struct include Utilities end
-
-let parse_string (s : string) =
-  let lexbuf = Lexing.from_string s in
-  Parser.main Lexer.read lexbuf
