@@ -1,5 +1,18 @@
 open Rizzoc
 
+let contains_substring ~(text : string) ~(substring : string) : bool =
+  let text_len = String.length text in
+  let sub_len = String.length substring in
+  let rec go index =
+    if index + sub_len > text_len then
+      false
+    else if String.sub text index sub_len = substring then
+      true
+    else
+      go (index + 1)
+  in
+  if sub_len = 0 then true else go 0
+
 let test_valid_document_has_no_diagnostics () =
   let text = "let x = 1\nfun id y = y\n" in
   let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
@@ -14,9 +27,65 @@ let test_invalid_document_reports_diagnostic () =
       Alcotest.(check bool) "message not empty" true (String.length first.Language_service.message > 0);
       Alcotest.(check int) "line is zero-based" 0 first.Language_service.range.start_pos.line
 
+let test_missing_paren_reports_friendly_message () =
+  let text =
+    "fun main x =\n"
+    ^ "  match x with\n"
+    ^ "  | 4 -> (x\n"
+    ^ "  | 6 -> x\n"
+  in
+  let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
+  match result.Language_service.diagnostics with
+  | [] -> Alcotest.fail "expected parse diagnostic"
+  | first :: _ ->
+      Alcotest.(check bool)
+        "does not expose menhir internals"
+        false
+        (contains_substring ~text:first.Language_service.message ~substring:"MenhirBasics.Error");
+      Alcotest.(check bool)
+        "mentions missing close paren"
+        true
+        (contains_substring ~text:first.Language_service.message ~substring:"missing ')'" );
+      Alcotest.(check int)
+        "range points to opening delimiter line"
+        2
+        first.Language_service.range.start_pos.line
+
+let test_malformed_match_branch_reports_hint () =
+  let text =
+    "fun main x =\n"
+    ^ "  match x with\n"
+    ^ "  | 1 x\n"
+  in
+  let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
+  match result.Language_service.diagnostics with
+  | [] -> Alcotest.fail "expected parse diagnostic"
+  | first :: _ ->
+      Alcotest.(check bool)
+        "mentions expected match branch shape"
+        true
+        (contains_substring ~text:first.Language_service.message ~substring:"expected '| <pattern> -> <expr>'")
+
+let test_unexpected_bracket_reports_hint () =
+  let text = "let x = [1\n" in
+  let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
+  match result.Language_service.diagnostics with
+  | [] -> Alcotest.fail "expected lexer diagnostic"
+  | first :: _ ->
+      let message = first.Language_service.message in
+      let has_bracket_hint =
+        contains_substring ~text:message ~substring:"bracket"
+        || contains_substring ~text:message ~substring:"Unexpected character: ["
+      in
+      if not has_bracket_hint then
+        Alcotest.failf "mentions bracket unsupported (message was: %s)" message
+
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
+  "missing paren gives friendly diagnostic", `Quick, test_missing_paren_reports_friendly_message;
+  "malformed match branch gives hint", `Quick, test_malformed_match_branch_reports_hint;
+  "unexpected bracket gives hint", `Quick, test_unexpected_bracket_reports_hint;
   "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in

@@ -2,7 +2,7 @@
     "name": "rizz-lsp",
     "displayName": "Rizz Language Support",
     "description": "Language Server Protocol client for .rizz files",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "publisher": "local",
     "license": "MIT",
     "repository": {
@@ -71,17 +71,20 @@
         }
     },
     "scripts": {
-        "compile": "tsc -p ./",
+        "compile": "npm run bundle",
+        "bundle": "esbuild ./src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=./out/extension.js",
+        "typecheck": "tsc -p ./ --noEmit",
         "watch": "tsc -watch -p ./",
-        "vscode:prepublish": "npm run compile",
-        "package:vsix": "vsce package --no-dependencies",
-        "install:local": "npm run package:vsix && code --install-extension rizz-lsp-0.0.1.vsix --force"
+        "vscode:prepublish": "npm run typecheck && npm run bundle",
+        "package:vsix": "vsce package",
+        "install:local": "npm run package:vsix && code --install-extension rizz-lsp-0.0.2.vsix --force"
     },
     "devDependencies": {
         "@vscode/vsce": "^3.7.1",
-        "@types/node": "^20.14.0",
+        "@types/node": "^22.19.11",
         "@types/vscode": "^1.90.0",
-        "typescript": "^5.5.4"
+        "esbuild": "^0.27.3",
+        "typescript": "^5.9.3"
     },
     "dependencies": {
         "vscode-languageclient": "^9.0.1"
