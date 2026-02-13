@@ -13,9 +13,16 @@ let rec free_vars_expr e : StringSet.t =
   | EUnary (_, e) -> free_vars_expr e
   | ELet (x, e1, e2) ->
     StringSet.union (free_vars_expr e1) (StringSet.remove x (free_vars_expr e2))
+  | EIfe (cond, e1, e2) ->
+    StringSet.union (free_vars_expr cond) (StringSet.union (free_vars_expr e1) (free_vars_expr e2))
   | ECase (scrutinee, branches) -> 
     let scrutinee_fv = free_vars_expr scrutinee in
-    List.fold_left StringSet.union scrutinee_fv (List.map free_vars_expr branches)
+    List.fold_left
+      (fun acc (pattern, branch) ->
+        let branch_fv = StringSet.diff (free_vars_expr branch) (StringSet.of_list @@ Ast.pattern_bound_vars pattern) in
+        StringSet.union acc branch_fv)
+      scrutinee_fv
+      branches
   | EFun (params, body) ->
     (* fun x -> let z = 2 in fun y -> x + z + y  
       => 
@@ -53,8 +60,10 @@ and lift_expr (globals: top_expr list ref) (e: expr) = match e with
       let lifted_e2 = lift_expr globals e2 in
       ELet (x, lifted_e1, lifted_e2)
   | ETuple (e1, e2) -> ETuple (lift_expr globals e1, lift_expr globals e2)
+  | EIfe (cond, e1, e2) -> 
+    EIfe (lift_expr globals cond, lift_expr globals e1, lift_expr globals e2)
   | ECase (scrutinee, branches) -> 
-    ECase (lift_expr globals scrutinee, List.map (lift_expr globals) branches)
+    ECase (lift_expr globals scrutinee, List.map (fun (p, b) -> (p, lift_expr globals b)) branches)
   | EFun (params, body) ->
     let fv = StringSet.to_list (StringSet.diff (free_vars_expr body) (StringSet.of_list params)) in
     let name = Utilities.new_name "lifted_fun" in

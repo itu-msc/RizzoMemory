@@ -3,4 +3,8 @@ fun const x = x :: never
 fun main x = 
     let mysync = sync 2 4 in 
     let thing = mysync :: const 3 in
-    (thing, mysync)
+    let conditional = (if (thing == 3) then (thing :: mysync) else thing) in
+    match thing with
+    | 4 -> (thing, wait mysync)
+    | 6 -> (wait mysync, "thing thing \n", "sdafdsaf")
+

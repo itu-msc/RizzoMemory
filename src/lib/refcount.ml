@@ -56,7 +56,7 @@ let pp_ref_counted_program out (p: program) =
   Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_fn) p
 
 (* The parameter list *)
-let delta (p:program) (x:string) = List.assoc x p
+let delta (p:program) (x:string) = List.assoc_opt x p
 
 let rec free_vars_expr (env: StringSet.t) = function
   | RCall (_c, ys) | RPartialApp (_c, ys) ->

@@ -57,6 +57,7 @@ let read_line filename line_num =
 let show_error_context loc msg =
   let open Lexing in
   let line = loc.start_pos.pos_lnum in
+  
   let col_start = loc.start_pos.pos_cnum - loc.start_pos.pos_bol in
   let col_end = loc.end_pos.pos_cnum - loc.end_pos.pos_bol in
   let filename = loc.start_pos.pos_fname in

@@ -57,11 +57,7 @@ module Transformations = struct
   let builtins = 
     let module StringMap = Map.Make(String) in
     StringMap.of_list [
-      "sync", [RefCount.Owned; RefCount.Owned];
-      "wait", [RefCount.Owned];
-      "watch", [RefCount.Owned];
-      "tail", [RefCount.Owned];
-      "delay", [RefCount.Owned];
+      "equality", [RefCount.Borrowed; RefCount.Borrowed];
     ]
 
   let auto_ref_count (program: Ast.program) = 
@@ -84,5 +80,6 @@ let apply_transforms p =
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
   |> Transformations.ANF.anf
+  |> Transformations.eliminate_copy_propagation_program
 
 let ref_count p = snd @@ Transformations.auto_ref_count p

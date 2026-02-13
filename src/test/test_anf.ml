@@ -10,7 +10,7 @@ let test_anf_case_is_lifted_to_top () =
 
   let id = EVar "id" in
   let y = EVar "y" in
-  let case = ECase(y, [y; EApp(id, [y])]) in
+  let case = ECase(y, [(PVar "y", y); (PWildcard, EApp(id, [y]))]) in
   (* let x = id (case y of y; id y) *)
   let p:program = [
     TLet("x", EApp(id, [case]))
@@ -24,8 +24,8 @@ let test_anf_case_is_lifted_to_top () =
   let varValue = EVar varName in
   let expected:program = [
     TLet("x", ECase(y, [
-      EApp(id, [y]);
-      ELet(varName, EApp (id, [y]), EApp(id, [varValue]))
+      (PVar "y", EApp(id, [y]));
+      (PWildcard, ELet(varName, EApp (id, [y]), EApp(id, [varValue])))
     ]))
   ] in
 
@@ -51,7 +51,7 @@ let test_anf_case_and_signal () =
   (* (case x of x | 0) :: never *)
   Utilities.new_name_reset ();
   let x = EVar "x" in
-  let case = ECase(x, [x; EConst (CInt 0)]) in
+  let case = ECase(x, [(PVar "x", x); (PWildcard, EConst (CInt 0))]) in
   let e = EBinary(SigCons, case, EVar "never") in
   let transformed = ANF.anf_expr e in
   (* case x of 
@@ -61,8 +61,8 @@ let test_anf_case_and_signal () =
   Utilities.new_name_reset ();
   let varName1 = Utilities.new_var () in
   let expected =  ECase(x, [
-      EBinary(SigCons, x, EVar "never");
-      ELet(varName1, EConst (CInt 0), EBinary(SigCons, EVar varName1, EVar "never"))
+      (PVar "x", EBinary(SigCons, x, EVar "never"));
+      (PWildcard, ELet(varName1, EConst (CInt 0), EBinary(SigCons, EVar varName1, EVar "never")))
     ])
   in
   Alcotest.check expr_testable "case and signal cons together" expected transformed
@@ -71,7 +71,7 @@ let test_case_is_lifted_out_of_let () =
   (* let my_fun = fun x -> let y = (case false of 0 | 1) in y :: x *)
   Utilities.new_name_reset ();
   let my_fun = EFun(["x"], 
-    ELet("y", ECase(EConst (CBool false), [EConst (CInt 0); EConst (CInt 1)]), 
+    ELet("y", ECase(EConst (CBool false), [(PConst (CBool false), EConst (CInt 0)); (PWildcard, EConst (CInt 1))]), 
       EBinary(SigCons, EVar "y", EVar "x"))
   ) in
   let p:program = [
@@ -90,8 +90,8 @@ let test_case_is_lifted_out_of_let () =
   let expected = [ TLet("my_fun", EFun(["x"], 
     ELet(var1, EConst (CBool false), 
     ECase(EVar var1, [
-      ELet("y", EConst (CInt 0), EBinary(SigCons, EVar "y", EVar "x"));
-      ELet("y", EConst (CInt 1), EBinary(SigCons, EVar "y", EVar "x"))
+      (PConst (CBool false), ELet("y", EConst (CInt 0), EBinary(SigCons, EVar "y", EVar "x")));
+      (PWildcard, ELet("y", EConst (CInt 1), EBinary(SigCons, EVar "y", EVar "x")))
     ]))))] in
   Alcotest.check program_testable "case is lifted out of let" expected transformed
 

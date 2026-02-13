@@ -35,8 +35,16 @@ let eliminate_copy_propagation (e: expr) : expr =
           | _ -> ELet (x, e1', aux env e2)
         )
     | ETuple (e1, e2) -> ETuple (aux env e1, aux env e2)
+    | EIfe (cond, e1, e2) -> 
+        EIfe (aux env cond, aux env e1, aux env e2)
     | ECase (scrutinee, branches) ->
-        ECase (aux env scrutinee, List.map (aux env) branches)
+        ECase (
+          aux env scrutinee,
+          List.map
+            (fun (pattern, branch) ->
+              let env' = remove_keys (Ast.pattern_bound_vars pattern) env in
+              (pattern, aux env' branch))
+            branches)
     | EFun (params, body) ->
         let env' = remove_keys params env in
         EFun (params, aux env' body)

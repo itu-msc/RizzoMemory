@@ -16,6 +16,12 @@ and normalize (m:expr) k = match m with
     let body = normalize m2 k in
     ELet(x, n1, body)
   )
+| EIfe (cond, e1, e2) -> 
+  normalize_name cond (fun cond' -> 
+    let e1' = normalize e1 k in
+    let e2' = normalize e2 k in
+    EIfe (cond', e1', e2')
+  )
 | ECase (x, cases) ->
   (* we cannot allow creating let #var = case ... in
     id (case ls of (Nil) (tail ls) =>
@@ -23,7 +29,7 @@ and normalize (m:expr) k = match m with
     case ls of
     (id Nil)
     (id (tail ls)) *)
-  normalize_name x (fun x' -> ECase (x', List.map (fun c' -> normalize c' k) cases))
+  normalize_name x (fun x' -> ECase (x', List.map (fun (p, c') -> (p, normalize c' k)) cases))
 | EApp (f, args) -> 
   normalize_name f (fun t -> normalize_name_mult args (fun ts -> k (EApp (t, ts))))
 | EBinary (op, e1, e2) ->
@@ -38,6 +44,25 @@ and normalize_name m k = (* TODO: can case cause problems here? *)
 and normalize_name_mult ms k = match ms with
 | [] -> k []
 | m :: ms -> normalize_name m (fun t -> normalize_name_mult ms (fun t' -> k (t :: t')))
+(* and normalize_pattern p name acc = 
+  match p with
+  | PWildcard | PConst _ -> acc
+  | PVar x -> failwith ""
+  | PTuple (p1, p2) as p -> 
+    let p1 = fst p in let p2 = snd p in failwith ""
+    (* match mytuple with 
+      | (x,y) -> x + y
+      becomes
+      case mytuple of 
+      ( let x = proj1 mytuple in let y = proj2 mytuple i x + y )
+    *)
+
+    (* match x with (p1, p2) => let p1 = fst x in let p2 = snd p2 in body ? *)
+    (* match x with (p1, (p2, p3) => let p1 = fst x in let p2 = )*)
+    (* let acc = normalize_pattern p1 acc in
+
+    normalize_pattern p2 acc *)
+  | _ -> acc *)
 
 let normalize_program (p: program) : program =
   List.map (fun (TLet (x,e)) -> TLet (x, normalize_expr e)) p
