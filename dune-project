@@ -25,6 +25,7 @@
   ocaml
   menhir
   dune
+  yojson
   (alcotest :with-test))
  (tags
   ("FRP" "functional reactive programming")))

@@ -13,6 +13,7 @@ include Parser
 exception Error of Location.t * string
 
 let parse_with lexbuf =
+  Ast.clear_locations ();
   try Parser.main Lexer.read lexbuf 
   with
   | Lexer.Error _ as exn ->
@@ -24,6 +25,11 @@ let parse_with lexbuf =
 
 let parse_string (s : string) =
   let lexbuf = Lexing.from_string s in
+  parse_with lexbuf
+
+let parse_string_with_filename ~(filename : string) (s : string) =
+  let lexbuf = Lexing.from_string s in
+  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = filename };
   parse_with lexbuf
 
 let parse_file (filename : string) =
@@ -81,6 +87,10 @@ module Transformations = struct
 end
 
 module Utilities = struct include Utilities end
+
+module Language_service = struct
+include Language_service
+end
 
 let apply_transforms p =
   p

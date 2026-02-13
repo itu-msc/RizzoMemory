@@ -1,13 +1,12 @@
 {
 open Parser
 
-exception Error of string
+exception Error of Location.t * string
 
 (* Helper to create error with location from lexbuf *)
 let error lexbuf msg =
   let loc = Location.mk lexbuf.Lexing.lex_start_p lexbuf.Lexing.lex_curr_p in
-  Location.show_error_context loc msg;
-  raise (Error msg)
+  raise (Error (loc, msg))
 
 let parse_unicode_escape s =
   if String.length s = 0 || String.length s > 6 then

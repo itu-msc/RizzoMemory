@@ -1,0 +1,28 @@
+{
+    "scopeName": "source.rizz",
+    "name": "Rizz",
+    "patterns": [
+        {
+            "name": "keyword.control.rizz",
+            "match": "\\b(let|fun|match|with|if|then|else|in)\\b"
+        },
+        {
+            "name": "constant.language.rizz",
+            "match": "\\b(true|false|never|unit)\\b"
+        },
+        {
+            "name": "string.quoted.double.rizz",
+            "begin": "\"",
+            "end": "\""
+        },
+        {
+            "name": "constant.numeric.rizz",
+            "match": "\\b[0-9]+\\b"
+        },
+        {
+            "name": "comment.line.double-slash.rizz",
+            "match": "//.*$"
+        }
+    ],
+    "uuid": "f58b8db5-74dc-4d53-a0f7-9ec52e4ea999"
+}

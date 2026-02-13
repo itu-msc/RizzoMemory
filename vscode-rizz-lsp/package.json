@@ -1,0 +1,93 @@
+{
+    "name": "rizz-lsp",
+    "displayName": "Rizz Language Support",
+    "description": "Language Server Protocol client for .rizz files",
+    "version": "0.0.1",
+    "publisher": "local",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/itu-msc/RizzoMemory.git",
+        "directory": "vscode-rizz-lsp"
+    },
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "activationEvents": [
+        "onLanguage:rizz",
+        "onCommand:rizzLsp.checkHealth"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "rizzLsp.checkHealth",
+                "title": "Rizz: Check LSP Health",
+                "category": "Rizz"
+            }
+        ],
+        "languages": [
+            {
+                "id": "rizz",
+                "aliases": [
+                    "Rizz",
+                    "rizz"
+                ],
+                "extensions": [
+                    ".rizz"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "rizz",
+                "scopeName": "source.rizz",
+                "path": "./syntaxes/rizz.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "title": "Rizz LSP",
+            "properties": {
+                "rizzLsp.server.command": {
+                    "type": "string",
+                    "default": "opam",
+                    "description": "Command used to launch the Rizz language server"
+                },
+                "rizzLsp.server.args": {
+                    "type": "array",
+                    "default": [
+                        "exec",
+                        "--",
+                        "dune",
+                        "exec",
+                        "rizzolsp"
+                    ],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Arguments used to launch the Rizz language server"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "vscode:prepublish": "npm run compile",
+        "package:vsix": "vsce package --no-dependencies",
+        "install:local": "npm run package:vsix && code --install-extension rizz-lsp-0.0.1.vsix --force"
+    },
+    "devDependencies": {
+        "@vscode/vsce": "^3.7.1",
+        "@types/node": "^20.14.0",
+        "@types/vscode": "^1.90.0",
+        "typescript": "^5.5.4"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    }
+}

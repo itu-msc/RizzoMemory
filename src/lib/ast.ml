@@ -54,6 +54,37 @@ type top_expr =
 
 type program = top_expr list
 
+module ExprLocTable = Hashtbl.Make(struct
+  type t = expr
+  let equal a b = a == b
+  let hash v = Hashtbl.hash (Obj.magic v : int)
+end)
+
+module TopExprLocTable = Hashtbl.Make(struct
+  type t = top_expr
+  let equal a b = a == b
+  let hash v = Hashtbl.hash (Obj.magic v : int)
+end)
+
+let expr_locations : location ExprLocTable.t = ExprLocTable.create 1024
+let top_expr_locations : location TopExprLocTable.t = TopExprLocTable.create 128
+
+let clear_locations () =
+  ExprLocTable.clear expr_locations;
+  TopExprLocTable.clear top_expr_locations
+
+let register_expr_location (expr : expr) (loc : location) =
+  ExprLocTable.replace expr_locations expr loc
+
+let register_top_expr_location (top : top_expr) (loc : location) =
+  TopExprLocTable.replace top_expr_locations top loc
+
+let location_of_expr (expr : expr) : location option =
+  ExprLocTable.find_opt expr_locations expr
+
+let location_of_top_expr (top : top_expr) : location option =
+  TopExprLocTable.find_opt top_expr_locations top
+
 let rec pattern_bound_vars = function
   | PWildcard | PConst _ -> []
   | PVar x -> [x]

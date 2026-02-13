@@ -33,6 +33,9 @@ let () =
     let rc_program = Rizzoc.ref_count transformed in
 		Format.printf "Reference counted:\n%a\n" RefCount.pp_ref_counted_program rc_program
 	with
+	| Rizzoc.Lexer.Error (loc, msg) ->
+			Location.show_error_context loc msg;
+			exit 1
 	| Rizzoc.Parser.Error (loc, msg) ->
 			Location.show_error_context loc msg;
 			exit 1

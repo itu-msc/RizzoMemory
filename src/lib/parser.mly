@@ -23,6 +23,16 @@ let rec tuple_pattern_of_list = function
   | [a; b] -> PTuple (a, b)
   | a :: rest -> PTuple (a, tuple_pattern_of_list rest)
 
+let with_expr_loc start_pos end_pos expr =
+  let loc = Location.mk start_pos end_pos in
+  Ast.register_expr_location expr loc;
+  expr
+
+let with_top_loc start_pos end_pos top =
+  let loc = Location.mk start_pos end_pos in
+  Ast.register_top_expr_location top loc;
+  top
+
 (* When you expand the parser, you can use location tracking helpers:
    - $startpos : starting position of the symbol
    - $endpos   : ending position of the symbol
@@ -69,9 +79,9 @@ top_exprs:
 
 top_expr:
   | LET name=ID EQ body=expr
-      { TLet (name, body) }
+    { with_top_loc $startpos $endpos (TLet (name, body)) }
   | FUN name=ID params=nonempty_id_list EQ body=expr
-      { TLet (name, EFun (params, body)) }
+    { with_top_loc $startpos $endpos (TLet (name, with_expr_loc $startpos(body) $endpos(body) (EFun (params, body)))) }
 
 nonempty_id_list:
   | x=ID { [x] }
@@ -79,15 +89,15 @@ nonempty_id_list:
 
 expr:
   | left=expr EQEQ right=expr
-      { EBinary (Eq, left, right) }
+    { with_expr_loc $startpos $endpos (EBinary (Eq, left, right)) }
   | LET x=ID EQ e1=expr IN e2=expr
-      { ELet (x, e1, e2) }
+    { with_expr_loc $startpos $endpos (ELet (x, e1, e2)) }
   | IF e1=expr THEN e2=expr ELSE e3=expr
-      { EIfe (e1, e2, e3) }
+    { with_expr_loc $startpos $endpos (EIfe (e1, e2, e3)) }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
-      { let _ = leading in ECase (scrutinee, first :: rest) }
+    { let _ = leading in with_expr_loc $startpos $endpos (ECase (scrutinee, first :: rest)) }
   | FUN params=nonempty_id_list ARROW body=expr
-      { check_unique_params params; EFun (params, body) }
+    { check_unique_params params; with_expr_loc $startpos $endpos (EFun (params, body)) }
   | e=pipe_expr
       { e }
 
@@ -106,29 +116,29 @@ match_case_tail:
 
 pipe_expr:
   | left=pipe_expr PIPE_GT right=cons_expr
-      { EApp (right, [left]) }
+    { with_expr_loc $startpos $endpos (EApp (right, [left])) }
   | e=cons_expr
       { e }
 
 cons_expr:
   | left=app_expr CONS right=cons_expr
-      { EBinary (SigCons, left, right) }
+    { with_expr_loc $startpos $endpos (EBinary (SigCons, left, right)) }
   | e=app_expr
       { e }
 
 app_expr:
-  | WAIT e1=atom { EUnary(UWait, e1) }
-  | TAIL e1=atom { EUnary(UTail, e1) }
-  | SYNC e1=atom e2=atom { EBinary(BSync, e1, e2) }
-  | WATCH e1=atom { EUnary(UWatch, e1) }
-  | LATERAPP e1=atom e2=atom { EBinary(BLaterApp, e1, e2) }
-  | DELAY e1=atom { EUnary(UDelay, e1) }
-  | OSTAR e1=atom e2=atom { EBinary(BOStar, e1, e2) }
+  | WAIT e1=atom { with_expr_loc $startpos $endpos (EUnary(UWait, e1)) }
+  | TAIL e1=atom { with_expr_loc $startpos $endpos (EUnary(UTail, e1)) }
+  | SYNC e1=atom e2=atom { with_expr_loc $startpos $endpos (EBinary(BSync, e1, e2)) }
+  | WATCH e1=atom { with_expr_loc $startpos $endpos (EUnary(UWatch, e1)) }
+  | LATERAPP e1=atom e2=atom { with_expr_loc $startpos $endpos (EBinary(BLaterApp, e1, e2)) }
+  | DELAY e1=atom { with_expr_loc $startpos $endpos (EUnary(UDelay, e1)) }
+  | OSTAR e1=atom e2=atom { with_expr_loc $startpos $endpos (EBinary(BOStar, e1, e2)) }
   | head=atom tail=app_args
       {
         match tail with
         | [] -> head
-        | args -> EApp (head, args)
+        | args -> with_expr_loc $startpos $endpos (EApp (head, args))
       }
 
 app_args:
@@ -136,14 +146,14 @@ app_args:
   | a=atom rest=app_args { a :: rest }
 
 atom:
-  | x=ID { EVar x }
-  | i=INT { EConst (CInt i) }
-  | s=STRING { EConst (CString s) }
-  | TRUE { EConst (CBool true) }
-  | FALSE { EConst (CBool false) }
-  | UNIT { EConst CUnit }
-  | NEVER { EConst CNever }
-  | LPAREN es=tuple_expr_list RPAREN { tuple_expr_of_list es }
+  | x=ID { with_expr_loc $startpos $endpos (EVar x) }
+  | i=INT { with_expr_loc $startpos $endpos (EConst (CInt i)) }
+  | s=STRING { with_expr_loc $startpos $endpos (EConst (CString s)) }
+  | TRUE { with_expr_loc $startpos $endpos (EConst (CBool true)) }
+  | FALSE { with_expr_loc $startpos $endpos (EConst (CBool false)) }
+  | UNIT { with_expr_loc $startpos $endpos (EConst CUnit) }
+  | NEVER { with_expr_loc $startpos $endpos (EConst CNever) }
+  | LPAREN es=tuple_expr_list RPAREN { with_expr_loc $startpos $endpos (tuple_expr_of_list es) }
   | LPAREN e=expr COLON ann=type_expr RPAREN { let _ = ann in e }
   | LPAREN e=expr RPAREN { e }
 

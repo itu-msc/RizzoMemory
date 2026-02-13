@@ -20,10 +20,14 @@ let test_lexer_error_has_location () =
     pos_bol = 0;
   };
   
-  (* The lexer raises Error with just the message, not the location *)
-  Alcotest.check_raises "lexer raises error on invalid character"
-    (Lexer.Error "Unexpected character: '@'")
-    (fun () -> let _ = Lexer.read lexbuf in ())
+  (try
+     let _ = Lexer.read lexbuf in
+     Alcotest.fail "expected lexer error"
+   with
+   | Lexer.Error (loc, msg) ->
+       Alcotest.(check string) "lexer message" "Unexpected character: '@'" msg;
+       Alcotest.(check int) "line" 3 loc.Location.start_pos.Lexing.pos_lnum
+   | _ -> Alcotest.fail "unexpected exception")
 
 let test_show_error_context () =
   let test_file = "test_location_temp.rz" in

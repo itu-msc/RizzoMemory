@@ -2,3 +2,8 @@
  (public_name rizzoc)
  (name main)
  (libraries rizzoc))
+
+(executable
+ (public_name rizzolsp)
+ (name rizzolsp)
+ (libraries rizzoc yojson))
