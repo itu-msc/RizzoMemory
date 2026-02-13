@@ -30,6 +30,13 @@ let ctorMappings =
     ("unit", 0);
     ("int", 0);
     ("string", 0);
+    ("add", 0);
+    ("mul", 0);
+    ("sub", 0);
+    ("div", 0);
+    ("eq", 0);
+    ("lt", 0);
+    ("leq", 0);
     ("false", 0);
     ("true", 1);
   ]

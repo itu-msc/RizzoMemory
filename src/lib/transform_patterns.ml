@@ -69,7 +69,7 @@ and compile_match_cases scrutinee cases =
   match cases with
   | [] -> failwith "Tried created another match branch - but there were no more cases in match expression"
   | (pat, case) :: rest -> 
-    compile_pattern pat scrutinee 
+    compile_pattern pat scrutinee
       (fun _ -> case) 
       (fun () -> compile_match_cases scrutinee rest)
 and compile_match e = match e with
