@@ -16,10 +16,6 @@
     "categories": [
         "Programming Languages"
     ],
-    "activationEvents": [
-        "onLanguage:rizz",
-        "onCommand:rizzLsp.checkHealth"
-    ],
     "main": "./out/extension.js",
     "contributes": {
         "commands": [

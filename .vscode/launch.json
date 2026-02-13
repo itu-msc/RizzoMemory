@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Rizz Extension (repo root)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-rizz-lsp",
+        "--folder-uri=${workspaceFolder}",
+        "--disable-extensions"
+      ],
+      "outFiles": ["${workspaceFolder}/vscode-rizz-lsp/out/**/*.js"],
+      "preLaunchTask": "rizz: prepare extension host"
+    }
+  ]
+}

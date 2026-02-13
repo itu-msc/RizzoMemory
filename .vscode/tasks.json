@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "rizz: build server",
+      "type": "shell",
+      "command": "opam",
+      "args": ["exec", "--", "dune", "build"],
+      "problemMatcher": []
+    },
+    {
+      "label": "rizz: compile extension",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "compile"],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-rizz-lsp"
+      },
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "rizz: install local extension",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "install:local"],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-rizz-lsp"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "rizz: prepare extension host",
+      "dependsOn": ["rizz: build server", "rizz: compile extension"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    }
+  ]
+}

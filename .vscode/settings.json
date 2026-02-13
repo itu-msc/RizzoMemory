@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.rizz": "rizz"
+  },
+  "rizzLsp.server.command": "opam",
+  "rizzLsp.server.args": ["exec", "--", "dune", "exec", "rizzolsp"]
+}
