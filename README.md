@@ -6,17 +6,30 @@ MSc thesis
 
 - Build: `opam exec -- dune build`
 - Run compiler on a source file: `opam exec -- dune exec rizzoc ./examples/first.rizz`
-- Start language server (stdio): `opam exec -- dune exec rizzolsp`
 
-## VS Code extension (local testing)
+## LSP and VS Code extension
 
-- Folder: `vscode-rizz-lsp`
-- Install deps: `cd vscode-rizz-lsp && npm install`
-- Compile: `npm run compile`
+To run the LSP server, use the command:
 
-### From repository root (recommended)
+- LSP server: `opam exec -- dune exec rizzolsp`
 
-- Open this repository folder in VS Code.
+### VS Code extension development
+
+The VS Code extension is located in the `vscode-rizz-lsp` folder.
+It can easily be installed with
+
+```
+cd vscode-rizz-lsp && npm install && cd ..
+npm run ext:install
+```
+This installs the dependencies, builds the project and then installs the extension locally.
+
+> To compile the bundle with no VSIX: `npm run compile`
+
+### Debugging the extension
+
+For development you might want to run the extension in a debug session, which allows you to set breakpoints and inspect variables in the LSP server code. To do this, you can run the debug configuration `Run Rizz Extension (repo root)` from the repository root. This will launch a new VS Code window with the extension loaded. You can then open any `.rizz` file to see diagnostics, symbols, definitions, and hover information provided by the LSP server.
+
 - Run debug config: `Run Rizz Extension (repo root)`.
 - Then open any `.rizz` file to get diagnostics, symbols, definition, and hover.
 
