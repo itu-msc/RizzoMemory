@@ -69,7 +69,7 @@ let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr =
       | CNever -> RCtor (idof "never", [])
       | CInt n -> RCtor (idof "int", [string_of_int n])
       | CString s -> 
-        RCtor (idof "string", ["\"" ^ s ^ "\""])
+        RCtor (idof "string", [Printf.sprintf "%S" s])
       | CBool b -> if b then RCtor (idof "true", []) else RCtor (idof "false", [])
     )
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
