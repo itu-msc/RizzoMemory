@@ -58,6 +58,13 @@ module Transformations = struct
     let module StringMap = Map.Make(String) in
     StringMap.of_list [
       "equality", [RefCount.Borrowed; RefCount.Borrowed];
+      "eq", [RefCount.Borrowed; RefCount.Borrowed];
+      "lt", [RefCount.Borrowed; RefCount.Borrowed];
+      "leq", [RefCount.Borrowed; RefCount.Borrowed];
+      "add", [RefCount.Borrowed; RefCount.Borrowed];
+      "sub", [RefCount.Borrowed; RefCount.Borrowed];
+      "mul", [RefCount.Borrowed; RefCount.Borrowed];
+      "div", [RefCount.Borrowed; RefCount.Borrowed];
     ]
 
   let auto_ref_count (program: Ast.program) = 
@@ -80,6 +87,6 @@ let apply_transforms p =
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
   |> Transformations.ANF.anf
-  |> Transformations.eliminate_copy_propagation_program
+  |> Transformations.eliminate_copy_propagation_program (* TODO *)
 
 let ref_count p = snd @@ Transformations.auto_ref_count p

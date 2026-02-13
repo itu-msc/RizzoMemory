@@ -9,6 +9,8 @@ let ctor_wait_i = 1
 
 
 module M = Map.Make(String)
+(* consider if we can do this in a way that 
+  makes the compiler complain if we dont have the entries*)
 let ctorMappings = 
   M.of_list [
     (*Laters*)
@@ -30,13 +32,6 @@ let ctorMappings =
     ("unit", 0);
     ("int", 0);
     ("string", 0);
-    ("add", 0);
-    ("mul", 0);
-    ("sub", 0);
-    ("div", 0);
-    ("eq", 0);
-    ("lt", 0);
-    ("leq", 0);
     ("false", 0);
     ("true", 1);
   ]
@@ -61,7 +56,7 @@ let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr =
   | EBinary (BSync, EVar n1, EVar n2) -> RCtor (idof "sync", [n1; n2])
   | EBinary (BLaterApp, EVar n1, EVar n2) -> RCtor (idof "later_app", [n1; n2])
   | EBinary (BOStar, EVar n1, EVar n2) -> RCtor (idof "ostar", [n1; n2])
-  | EBinary (op, EVar n1, EVar n2) -> RCtor (idof (op_to_application op), [n1; n2])
+  | EBinary (op, EVar n1, EVar n2) -> RCall (op_to_application op, [n1; n2])
   | EUnary (UWait, EVar n) -> RCtor (idof "wait", [n])
   | EUnary (UTail, EVar n) -> RCtor (idof "tail", [n])
   | EUnary (UWatch, EVar n) -> RCtor (idof "watch", [n])
