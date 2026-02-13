@@ -80,12 +80,136 @@ let test_unexpected_bracket_reports_hint () =
       if not has_bracket_hint then
         Alcotest.failf "mentions bracket unsupported (message was: %s)" message
 
+let has_semantic_token ~(tokens : Language_service.semantic_token list) ~(line : int) ~(character : int) ~(kind : Language_service.semantic_token_kind) ~(declaration : bool) : bool =
+  List.exists
+    (fun (token : Language_service.semantic_token) ->
+      let token_range = Language_service.semantic_token_range token in
+      token_range.start_pos.line = line
+      && token_range.start_pos.character = character
+      && Language_service.semantic_token_kind token = kind
+      && Language_service.semantic_token_is_declaration token = declaration)
+    tokens
+
+let test_semantic_tokens_mvp () =
+  let text =
+    "fun id x = x\n"
+    ^ "let y = id\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "function declaration token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:0
+       ~character:4
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  Alcotest.(check bool)
+    "variable declaration token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:4
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false);
+  Alcotest.(check bool)
+    "function reference token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:8
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false)
+
+let test_semantic_tokens_include_local_let_declaration () =
+  let text =
+    "fun main x =\n"
+    ^ "  let y = x in\n"
+    ^ "  y\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "local let binding declaration token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:6
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false)
+
+let test_semantic_tokens_include_builtin_operators () =
+  let text =
+    "fun main x =\n"
+    ^ "  let mysync = sync 2 4 in\n"
+    ^ "  let y = wait mysync in\n"
+    ^ "  let z = watch mysync in\n"
+    ^ "  delay y\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "sync token as function"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:15
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  Alcotest.(check bool)
+    "wait token as function"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:2
+       ~character:10
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  Alcotest.(check bool)
+    "watch token as function"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:3
+       ~character:10
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  Alcotest.(check bool)
+    "delay token as function"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:4
+       ~character:2
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false)
+
+let test_semantic_tokens_include_function_parameters () =
+  let text = "fun const x = x :: never\n" in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "function parameter token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:0
+       ~character:10
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false)
+
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
   "missing paren gives friendly diagnostic", `Quick, test_missing_paren_reports_friendly_message;
   "malformed match branch gives hint", `Quick, test_malformed_match_branch_reports_hint;
   "unexpected bracket gives hint", `Quick, test_unexpected_bracket_reports_hint;
+  "semantic tokens MVP", `Quick, test_semantic_tokens_mvp;
+  "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
+  "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
+  "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
   "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in

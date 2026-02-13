@@ -128,6 +128,49 @@ let json_of_hover (hover : LS.hover_info) : Yojson.Safe.t =
     ("range", json_of_range hover.range)
   ]
 
+let semantic_token_type_index = function
+  | LS.SemanticFunction -> 0
+  | LS.SemanticVariable -> 1
+
+let semantic_token_modifier_mask (token : LS.semantic_token) : int =
+  if LS.semantic_token_is_declaration token then 1 else 0
+
+let semantic_token_length (token : LS.semantic_token) : int =
+  let token_range = LS.semantic_token_range token in
+  max 1 (token_range.end_pos.character - token_range.start_pos.character)
+
+let compare_semantic_token (left : LS.semantic_token) (right : LS.semantic_token) : int =
+  let left_range = LS.semantic_token_range left in
+  let right_range = LS.semantic_token_range right in
+  let by_line = compare left_range.start_pos.line right_range.start_pos.line in
+  if by_line <> 0 then by_line
+  else compare left_range.start_pos.character right_range.start_pos.character
+
+let json_of_semantic_tokens (tokens : LS.semantic_token list) : Yojson.Safe.t =
+  let sorted = List.sort compare_semantic_token tokens in
+  let rec encode prev_line prev_char acc = function
+    | [] -> List.rev acc
+    | token :: rest ->
+        let token_range = LS.semantic_token_range token in
+        let line = token_range.start_pos.line in
+        let start_char = token_range.start_pos.character in
+        let delta_line = line - prev_line in
+        let delta_start = if delta_line = 0 then start_char - prev_char else start_char in
+        let encoded =
+          [
+            `Int delta_line;
+            `Int delta_start;
+            `Int (semantic_token_length token);
+            `Int (semantic_token_type_index (LS.semantic_token_kind token));
+            `Int (semantic_token_modifier_mask token);
+          ]
+        in
+        encode line start_char (List.rev_append encoded acc) rest
+  in
+  `Assoc [
+    ("data", `List (encode 0 0 [] sorted))
+  ]
+
 let response ~id ~result =
   send_json (`Assoc [
     ("jsonrpc", `String "2.0");
@@ -222,7 +265,14 @@ let process_request ~method_name ~id ~params =
             ("textDocumentSync", `Int 1);
             ("documentSymbolProvider", `Bool true);
             ("definitionProvider", `Bool true);
-            ("hoverProvider", `Bool true)
+            ("hoverProvider", `Bool true);
+            ("semanticTokensProvider", `Assoc [
+              ("legend", `Assoc [
+                ("tokenTypes", `List [`String "function"; `String "variable"]);
+                ("tokenModifiers", `List [`String "declaration"])
+              ]);
+              ("full", `Bool true)
+            ])
           ]);
           ("serverInfo", `Assoc [
             ("name", `String "rizzolsp");
@@ -280,6 +330,16 @@ let process_request ~method_name ~id ~params =
         Some (match hover with Some h -> json_of_hover h | None -> `Null)
       in
       response ~id ~result:(match result with Some value -> value | None -> `Null)
+  | "textDocument/semanticTokens/full" ->
+      let result =
+        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
+        let* uri = text_document |> member "uri" |> to_option to_string in
+        let* text = text_for_uri uri in
+        let filename = path_of_uri uri in
+        let tokens = LS.semantic_tokens ~uri ~filename:(Some filename) ~text in
+        Some (json_of_semantic_tokens tokens)
+      in
+      response ~id ~result:(match result with Some value -> value | None -> `Assoc [("data", `List [])])
   | "shutdown" -> response ~id ~result:`Null
   | _ -> error_response ~id ~code:(-32601) ~message:("Method not found: " ^ method_name)
 

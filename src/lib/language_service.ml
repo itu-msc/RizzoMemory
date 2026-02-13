@@ -41,6 +41,20 @@ type hover_info = {
   contents: string;
 }
 
+type semantic_token_kind =
+  | SemanticFunction
+  | SemanticVariable
+
+type semantic_token = {
+  range: range;
+  kind: semantic_token_kind;
+  declaration: bool;
+}
+
+let semantic_token_range (token : semantic_token) : range = token.range
+let semantic_token_kind (token : semantic_token) : semantic_token_kind = token.kind
+let semantic_token_is_declaration (token : semantic_token) : bool = token.declaration
+
 type analysis_result = {
   diagnostics: diagnostic list;
 }
@@ -437,3 +451,219 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
       |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
       |> first_opt
       |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
+
+let semantic_kind_of_symbol_kind = function
+  | Function -> SemanticFunction
+  | Variable -> SemanticVariable
+
+let compare_range_position (left : range) (right : range) : int =
+  let by_start_line = compare left.start_pos.line right.start_pos.line in
+  if by_start_line <> 0 then
+    by_start_line
+  else
+    let by_start_char = compare left.start_pos.character right.start_pos.character in
+    if by_start_char <> 0 then
+      by_start_char
+    else
+      compare left.end_pos.character right.end_pos.character
+
+let valid_single_line_range (token_range : range) : bool =
+  token_range.start_pos.line = token_range.end_pos.line
+  && token_range.end_pos.character > token_range.start_pos.character
+
+let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string) : semantic_token list =
+  let filename =
+    match filename with
+    | Some path when String.length path > 0 -> path
+    | _ -> if String.length uri = 0 then "<memory>.rizz" else uri
+  in
+  match parse_with_filename ~filename text with
+  | Error _ -> []
+  | Ok program ->
+      let lines = lines_of_text text in
+      let declarations = top_level_declarations ~text program in
+      let declaration_tokens =
+        declarations
+        |> List.map (fun (_name, symbol_kind, token_range) ->
+               {
+                 range = token_range;
+                 kind = semantic_kind_of_symbol_kind symbol_kind;
+                 declaration = false;
+               })
+      in
+      let declaration_kind_by_name =
+        declarations
+        |> List.map (fun (name, symbol_kind, _range) -> (name, semantic_kind_of_symbol_kind symbol_kind))
+      in
+      let kind_for_name name =
+        match List.find_opt (fun (candidate, _) -> candidate = name) declaration_kind_by_name with
+        | Some (_, kind) -> kind
+        | None -> SemanticVariable
+      in
+      let references = ref [] in
+      let local_declarations = ref [] in
+      let parameter_declarations = ref [] in
+      let builtins = ref [] in
+      let identifier_spans_in_line (line : string) : (string * int * int) list =
+        let len = String.length line in
+        let rec collect index acc =
+          if index >= len then
+            List.rev acc
+          else if is_ident_char line.[index] then
+            let rec scan_end j =
+              if j < len && is_ident_char line.[j] then scan_end (j + 1) else j
+            in
+            let end_index = scan_end index in
+            let name = String.sub line index (end_index - index) in
+            collect end_index ((name, index, end_index) :: acc)
+          else
+            collect (index + 1) acc
+        in
+        collect 0 []
+      in
+      let range_for_local_let_binding ~(name : string) ~(binding_expr_range : range) : range =
+        let line_no = binding_expr_range.start_pos.line in
+        match safe_line lines line_no with
+        | Some line_text ->
+            (match find_identifier_in_line ~line:line_text ~name ~from_col:binding_expr_range.start_pos.character with
+             | Some (start_col, end_col) ->
+                 {
+                   start_pos = { line = line_no; character = start_col };
+                   end_pos = { line = line_no; character = end_col };
+                 }
+             | None ->
+                 {
+                   start_pos = { line = line_no; character = binding_expr_range.start_pos.character };
+                   end_pos = { line = line_no; character = binding_expr_range.start_pos.character + String.length name };
+                 })
+        | None ->
+            {
+              start_pos = binding_expr_range.start_pos;
+              end_pos = { line = binding_expr_range.start_pos.line; character = binding_expr_range.start_pos.character + String.length name };
+            }
+      in
+      let range_for_keyword ~(name : string) ~(expr_range : range) : range option =
+        let line_no = expr_range.start_pos.line in
+        match safe_line lines line_no with
+        | Some line_text ->
+            (match find_identifier_in_line ~line:line_text ~name ~from_col:expr_range.start_pos.character with
+             | Some (start_col, end_col) ->
+                 Some
+                   {
+                     start_pos = { line = line_no; character = start_col };
+                     end_pos = { line = line_no; character = end_col };
+                   }
+             | None -> None)
+        | None -> None
+      in
+      let push_builtin_keyword ~(name : string) (expr : Ast.expr) =
+        match Ast.location_of_expr expr with
+        | Some loc ->
+            (match range_for_keyword ~name ~expr_range:(range_of_location loc) with
+             | Some keyword_range ->
+                 builtins := {
+                   range = keyword_range;
+                   kind = SemanticFunction;
+                   declaration = false;
+                 } :: !builtins
+             | None -> ())
+        | None -> ()
+      in
+      let add_top_level_function_params (top : Ast.top_expr) : unit =
+        match top with
+        | Ast.TLet (function_name, Ast.EFun (params, _)) when params <> [] ->
+            (match Ast.location_of_top_expr top with
+             | Some loc ->
+                 let top_range = range_of_location loc in
+                 let line_no = top_range.start_pos.line in
+                 (match safe_line lines line_no with
+                  | Some line_text ->
+                      let header_end =
+                        match String.index_from_opt line_text top_range.start_pos.character '=' with
+                        | Some idx -> idx
+                        | None -> String.length line_text
+                      in
+                      let spans =
+                        identifier_spans_in_line line_text
+                        |> List.filter (fun (_, start_col, _) ->
+                               start_col >= top_range.start_pos.character
+                               && start_col < header_end)
+                      in
+                      let spans_after_function_name =
+                        let rec drop_until_function_name = function
+                          | [] -> []
+                          | (name, _, _) :: rest when name = function_name -> rest
+                          | _ :: rest -> drop_until_function_name rest
+                        in
+                        drop_until_function_name spans
+                      in
+                      let rec add_params remaining_params remaining_spans =
+                        match remaining_params with
+                        | [] -> ()
+                        | param_name :: rest_params ->
+                            let rec seek = function
+                              | [] -> ()
+                              | (name, start_col, end_col) :: rest_spans ->
+                                  if name = param_name then (
+                                    parameter_declarations :=
+                                      {
+                                        range =
+                                          {
+                                            start_pos = { line = line_no; character = start_col };
+                                            end_pos = { line = line_no; character = end_col };
+                                          };
+                                        kind = SemanticVariable;
+                                        declaration = false;
+                                      }
+                                      :: !parameter_declarations;
+                                    add_params rest_params rest_spans)
+                                  else
+                                    seek rest_spans
+                            in
+                            seek remaining_spans
+                      in
+                      add_params params spans_after_function_name
+                  | None -> ())
+             | None -> ())
+        | _ -> ()
+      in
+      let push_reference expr =
+        match expr with
+        | Ast.EVar name ->
+            (match Ast.location_of_expr expr with
+             | Some loc ->
+                 references := {
+                   range = range_of_location loc;
+                   kind = kind_for_name name;
+                   declaration = false;
+                 } :: !references
+             | None -> ())
+              | Ast.ELet (name, _, _) ->
+                (match Ast.location_of_expr expr with
+                 | Some loc ->
+                   let binding_range = range_for_local_let_binding ~name ~binding_expr_range:(range_of_location loc) in
+                   local_declarations := {
+                     range = binding_range;
+                     kind = SemanticVariable;
+                     declaration = false;
+                   } :: !local_declarations
+                 | None -> ())
+              | Ast.EUnary (Ast.UWait, _) ->
+                push_builtin_keyword ~name:"wait" expr
+              | Ast.EUnary (Ast.UWatch, _) ->
+                push_builtin_keyword ~name:"watch" expr
+              | Ast.EUnary (Ast.UDelay, _) ->
+                push_builtin_keyword ~name:"delay" expr
+              | Ast.EBinary (Ast.BSync, _, _) ->
+                push_builtin_keyword ~name:"sync" expr
+        | _ -> ()
+      in
+      let visit_top = function
+        | Ast.TLet (_, rhs) as top ->
+            add_top_level_function_params top;
+            iter_expr push_reference rhs
+      in
+      List.iter visit_top program;
+      (declaration_tokens @ !parameter_declarations @ !local_declarations @ !references @ !builtins)
+      |> List.filter (fun token -> valid_single_line_range token.range)
+      |> List.sort (fun left right -> compare_range_position left.range right.range)
