@@ -1,0 +1,74 @@
+open Refcount
+
+let emit_c_code (p:program) (filename:string) =
+  let module M = Map.Make(String) in
+  let arity_map = M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) p) in
+  let out_file = open_out filename in
+  let write = output_string out_file in
+  let rec emit_program (p: program) : unit = 
+    write "#include \"core.h\"\n\n";
+    List.iter emit_fn p;
+    match List.assoc_opt "entry" p with
+    | Some _ -> write "void main() {\n    rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n}\n"
+    | None -> failwith "No entry point found"
+  and emit_fn (name, Fun (params, body)) : unit = 
+    write (Printf.sprintf "rz_box_t %s(rz_function_t* fun_context) {\n" name);
+    write ("rz_box_t* args = ARGS_OF_BOXED(fun_context);\n");
+    List.iteri (fun i param -> 
+      write (Printf.sprintf "rz_box_t %s = args[%d];\n" param i)
+    ) params;
+    emit_fn_body body;
+    write "}\n\n"
+  and emit_fn_body fn = match fn with
+    | FnRet x -> write (Printf.sprintf "return %s;\n" x)
+    | FnLet (var, e, body) -> 
+      write (Printf.sprintf "rz_box_t %s = " var); emit_rexpr e; write ";\n";
+      emit_fn_body body
+    | FnCase (scrutinee, branches) ->
+      write (Printf.sprintf "switch (rz_unbox_ptr(%s)->header.tag) {\n" scrutinee);
+      branches 
+      |> List.iteri (fun tag branch_fn -> 
+        write (Printf.sprintf "case %d:\n" tag);
+        emit_fn_body branch_fn;
+        write "break;\n";
+      );
+      write "}\n"
+    | FnDec (x, f) -> 
+      if Option.is_none (int_of_string_opt x) then
+        write (Printf.sprintf "rz_refcount_dec_box(%s);\n" x);
+      emit_fn_body f
+    | FnInc (x,f) -> 
+      if Option.is_none (int_of_string_opt x) then
+        write (Printf.sprintf "rz_refcount_inc_box(%s);\n" x);
+      emit_fn_body f
+
+  and emit_rexpr e = 
+    (* it may be that we are referencing a 'constant'/'global' function, then we have to emit a lift *)
+    let mk_args_string args = args 
+      |> List.map (fun arg -> match M.find_opt arg arity_map with
+        | None -> arg
+        | Some arity -> Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){}, 0)" arg arity
+      ) 
+      |> String.concat ", "
+    in
+    let s = match e with
+    | RCall ("eq", args) -> Printf.sprintf "rz_eq(%s, %s)" (List.nth args 0) (List.nth args 1)
+    | RCall (f, args) -> 
+      Printf.sprintf "rz_call(%s, (rz_box_t[]){%s}, %d)" f (mk_args_string args) (List.length args)
+    | RCtor (_, [a]) when Option.is_some (int_of_string_opt a) ->
+      Printf.sprintf "rz_make_int(%s)" a (* TODO: what are we gonna doo*)
+    | RCtor (tag, args) -> 
+      Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d, %s))" tag (List.length args) (mk_args_string args)
+    | RVarApp (f, x) -> 
+      Printf.sprintf "rz_apply1(rz_unbox_ptr(%s), %s)" f x
+    | RPartialApp (f, args) -> (match M.find_opt f arity_map with
+        | None -> failwith (Printf.sprintf "Function %s not found in arity map" f)
+        | Some arity -> 
+          let num_args = List.length args in
+          let args = mk_args_string args in
+          Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" f arity args num_args
+      )
+    | RProj (i, x) -> Printf.sprintf "((rz_object_fields_t*)rz_unbox_ptr(%s))->fields[%d]" x i
+    | RSignal _ -> failwith "Signals not implemented yet"
+    in write s
+  in emit_program p

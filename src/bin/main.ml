@@ -31,7 +31,8 @@ let () =
     let transformed = Rizzoc.apply_transforms program in
     Format.printf "Transformed:\n%a\n\n" Ast.pp_program transformed;
     let rc_program = Rizzoc.ref_count transformed in
-		Format.printf "Reference counted:\n%a\n" RefCount.pp_ref_counted_program rc_program
+		Format.printf "Reference counted:\n%a\n" RefCount.pp_ref_counted_program rc_program;
+		Rizzoc.emit rc_program "output.c"
 	with
 	| Rizzoc.Lexer.Error (loc, msg) ->
 			Location.show_error_context loc msg;

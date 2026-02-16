@@ -6,10 +6,6 @@ let get_name =
   | EConst c -> Refcount.Const c
   | _ -> failwith "get_name failed: expected variable or constant"
 
-let ctor_never_i = 0
-let ctor_wait_i = 1
-
-
 module M = Map.Make(String)
 (* consider if we can do this in a way that 
   makes the compiler complain if we dont have the entries*)
@@ -37,7 +33,9 @@ let ctorMappings =
     ("false", 0);
     ("true", 1);
   ]
-let idof name = M.find name ctorMappings
+let idof name = match M.find_opt name ctorMappings with
+  | Some id -> id
+  | None -> failwith (Printf.sprintf "Constructor '%s' not found in mapping" name)
 
 let op_to_application = function
   | Add -> "add"
@@ -49,10 +47,22 @@ let op_to_application = function
   | Leq -> "leq"
   | _ -> failwith "unsupported operator"
 
-let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr = 
+(* strings are names of globals, option indicates arity with None for values *)
+type globals_env = int option M.t
+
+let rec expr_to_rexpr (globals: globals_env) (e: Ast.expr): Refcount.rexpr = 
   match e with
   (* assumption: f (EVar x1) (EVar x2) (EVar x3) ... *)
-  | EApp (EVar f, xs) -> RCall (f, List.map get_name xs) (* TODO: partial apps *)
+  | EApp (EVar "fst", [EVar x]) -> RProj (0, x) (*TODO: parser doesn't accept these*)
+  | EApp (EVar "snd", [EVar x]) -> RProj (1, x)
+  | EApp (EVar f, xs) ->
+    (match M.find_opt f globals with
+      | None | Some None -> 
+        RVarApp(f, get_name (List.hd xs)) (*TODO: AST has variable apps with multible args - this calculus cannot *)
+      | Some Some arity -> 
+        if arity = List.length xs 
+        then RCall (f, List.map get_name xs)
+        else RPartialApp (f, List.map get_name xs))
   | EBinary (SigCons, n1, n2) -> RSignal { head = get_name n1; tail = get_name n2 }
   | ETuple (n1, n2) -> RCtor (idof "tuple", [get_name n1; get_name n2])
   | EBinary (BSync, n1, n2) -> RCtor (idof "sync", [get_name n1; get_name n2])
@@ -75,7 +85,9 @@ let rec expr_to_rexpr (e: Ast.expr) : Refcount.rexpr =
     )
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
 
-and expr_to_fn_body (e: Ast.expr) : Refcount.fn_body = 
+and expr_to_fn_body globals (e: Ast.expr) : Refcount.fn_body = 
+  let expr_to_fn_body = expr_to_fn_body globals in
+  let expr_to_rexpr = expr_to_rexpr globals in
   match e with
   | EVar x -> FnRet (Var x)
   | EConst c -> FnRet (Const c)
@@ -97,8 +109,15 @@ and expr_to_fn_body (e: Ast.expr) : Refcount.fn_body =
     FnLet (x, expr_to_rexpr e, FnRet (Refcount.Var x))
 
 let to_rc_intermediate_representation (p: Ast.program) : Refcount.program =
+  let globals: globals_env = 
+    let mapper = function 
+    | TLet(name, EFun (params, _)) -> (name, Some (List.length params))
+    | TLet(name, _) -> (name, None)
+    in
+    List.map mapper p |> M.of_list
+  in
   let to_fun = function
-  | EFun (params, body) -> Refcount.Fun (params, expr_to_fn_body body) 
+  | EFun (params, body) -> Refcount.Fun (params, expr_to_fn_body globals body) 
   | _ -> failwith "TODO: only top level functions"
   in
   List.map (fun (TLet (name, rhs)) -> name, to_fun rhs) p
