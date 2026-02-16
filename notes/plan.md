@@ -44,8 +44,8 @@
 
 ## Implement LSP server for Rizzo (if time permits)
 
-- [ ] Set up basic LSP server
-- [ ] Add syntax highlighting
+- [x] Set up basic LSP server
+- [x] Add syntax highlighting
 - [ ] Add error reporting
 - [ ] Add code completion
 - [ ] Add go-to-definition
