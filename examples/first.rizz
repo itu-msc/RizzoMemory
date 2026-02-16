@@ -1,5 +1,9 @@
 fun customFunc x = x :: never
 
+fun nestedFunc x = 
+    let inner = fun y -> fun z -> x :: delay y :: z in
+    inner :: never
+
 fun main x = 
     let mysync = sync 2 4 in 
     let thing = mysync :: customFunc 3 in

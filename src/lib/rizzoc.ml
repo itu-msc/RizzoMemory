@@ -54,6 +54,8 @@ module Transformations = struct
     let anf_expr = Transform_anf.normalize_expr
     let anf = Transform_anf.normalize_program
   end
+  let eliminate_consecutive_lambdas = Transform_lambda.eliminate_consecutive_lambdas_expr
+  let eliminate_consecutive_lambdas_program = Transform_lambda.eliminate_consecutive_lambdas_program
   let lift = Transform_lift.lift
   let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transform_copr.copy_propagate
@@ -94,6 +96,7 @@ end
 
 let apply_transforms p =
   p
+  |> Transformations.eliminate_consecutive_lambdas_program
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
   |> Transformations.ANF.anf

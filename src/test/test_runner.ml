@@ -6,6 +6,7 @@ let () =
     "LANGUAGE SERVICE TESTS", Test_language_service.tests;
     "ANF TESTS", Test_anf.anf_tests;
     "LIFT TESTS", Test_lift.lift_tests;
+    "LAMBDA TESTS", Test_lambda.lambda_tests;
     "COPY PROP TESTS", Test_copr.tests_copy_propagation;
   ]
 
