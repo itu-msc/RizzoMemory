@@ -2,21 +2,20 @@ open! Ast
 module StringSet = Set.Make(String)
 module StringMap = Map.Make(String)
 
-(* type primitive = (* reconsider this later if we add records / classes / objects *)
-  | PInt of int
-  | PBool of bool
-  | PUnit *)
+type primitive =
+  | Const of Ast.const
+  | Var of string
 
 type rexpr = (* expr in their RC IR *)
-  | RCall of string * string list
-  | RPartialApp of string * string list
-  | RVarApp of string * string  (* TODO: do we want n-ary var-app? *)
-  | RCtor of int * string list
-  | RSignal of { head: string; tail: string; } (* at runtime this will also include next/prev fields of heap *)
+  | RCall of string * primitive list
+  | RPartialApp of string * primitive list
+  | RVarApp of string * primitive  (* TODO: do we want n-ary var-app? *)
+  | RCtor of int * primitive list
+  | RSignal of { head: primitive; tail: primitive; } (* at runtime this will also include next/prev fields of heap, the tail can only be a var or never *)
   | RProj of int * string
 
 type fn_body = 
-  | FnRet of string
+  | FnRet of primitive
   | FnLet of string * rexpr * fn_body
   | FnCase of string * fn_body list
   | FnInc of string * fn_body
@@ -26,16 +25,20 @@ type fn = Fun of string list * fn_body
 
 type program = (string * fn) list
 
+let pp_primitive out = function
+  | Var x -> Format.pp_print_string out x
+  | Const c -> Ast.pp_const out c
+
 let pp_rexpr out = function
-  | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) ys
-  | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) ys
-  | RVarApp (x, y) -> Format.fprintf out "%s %s" x y
-  | RCtor (i, ys) -> Format.fprintf out "Ctor%d(%a)" i (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) ys
-  | RSignal { head; tail } -> Format.fprintf out "Signal(%s, %s)" head tail
+  | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_primitive) ys
+  | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_primitive) ys
+  | RVarApp (x, y) -> Format.fprintf out "%s %a" x pp_primitive y
+  | RCtor (i, ys) -> Format.fprintf out "Ctor%d(%a)" i (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_primitive) ys
+  | RSignal { head; tail } -> Format.fprintf out "Signal(%a, %a)" pp_primitive head pp_primitive tail
   | RProj (i, x) -> Format.fprintf out "proj_%d %s" i x
 
 let rec pp_fnbody out = function
-  | FnRet x -> Format.fprintf out "ret %a" Format.pp_print_string x
+  | FnRet x -> Format.fprintf out "ret %a" pp_primitive x
   | FnLet (y, r, f) ->
         Format.fprintf out "let %s = %a in@ %a" y pp_rexpr r pp_fnbody f
   | FnCase (x, fs) ->
@@ -58,21 +61,33 @@ let pp_ref_counted_program out (p: program) =
 (* The parameter list *)
 let delta (p:program) (x:string) = List.assoc_opt x p
 
+let add_if_member (p:primitive) (env: StringSet.t) : StringSet.t =
+  match p with
+  | Var x -> if StringSet.mem x env then env else StringSet.add x env
+  | Const _ -> env
+
 let rec free_vars_expr (env: StringSet.t) = function
   | RCall (_c, ys) | RPartialApp (_c, ys) ->
-      List.fold_left (fun acc y -> if StringSet.mem y env then acc else StringSet.add y acc) StringSet.empty ys
+      List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty ys
   | RVarApp (x, y) ->
       let acc = if StringSet.mem x env then StringSet.empty else StringSet.singleton x in
-      if StringSet.mem y env then acc else StringSet.add y acc
+      add_if_member y acc
   | RCtor (_i, ys) ->
-      List.fold_left (fun acc y -> if StringSet.mem y env then acc else StringSet.add y acc) StringSet.empty ys
+      List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty ys
   | RProj (_i, x) ->
       if StringSet.mem x env then StringSet.empty else StringSet.singleton x
   | RSignal { head; tail } ->
-      let acc = if StringSet.mem head env then StringSet.empty else StringSet.singleton head in
-      if StringSet.mem tail env then acc else StringSet.add tail acc
+      let acc =
+        match head with
+        | Var h -> if StringSet.mem h env then StringSet.empty else StringSet.singleton h
+        | _ -> StringSet.empty 
+      in
+      add_if_member tail acc
 and free_vars_fn (env: StringSet.t) = function
-  | FnRet x -> if StringSet.mem x env then StringSet.empty else (StringSet.singleton x)
+  | FnRet x -> 
+    (match x with
+    | Var r -> if StringSet.mem r env then StringSet.empty else StringSet.singleton r
+    | _ -> StringSet.empty)
   | FnLet (x, rhs, f) -> StringSet.union (free_vars_expr env rhs) (free_vars_fn (StringSet.add x env) f)
   | FnCase (x, fs) ->
       let env' = StringSet.add x env in
@@ -110,17 +125,26 @@ let lookup_params (b:parameter_ownership) (c:string) : ownership list =
   | None -> failwith (Printf.sprintf "unknown function in beta: '%s'" c)
 
 (** Helper function to prepare [x] for use in an owned context. *)
-let insert_inc x v f beta_env = match lookup beta_env x with
-  | Owned when not (StringSet.mem x v) -> f
-  | _ -> FnInc (x, f)
+let insert_inc (x:primitive) v f beta_env = 
+  match x with
+  | Var x -> 
+    (match lookup beta_env x with
+    | Owned when not (StringSet.mem x v) -> f
+    | _ -> FnInc (x, f))
+  | Const _ -> f
 
 (** Inserts a decrement instruction if [x] is owned and no longer needed in [f] *)
-let insert_dec x f env = match lookup env x with
-  | Owned when not (StringSet.mem x (free_vars f)) -> FnDec (x, f)
-  | _ -> f
+let insert_dec (x:primitive) f env =
+  match x with
+  | Var x ->
+    (match lookup env x with
+    | Owned when not (StringSet.mem x (free_vars f)) -> FnDec (x, f)
+    | _ -> f)
+  | Const _ -> f
 
 (** calls [insert_dec] multiple times :) *)
-let rec insert_dec_many xs f beta_env = match xs with
+let rec insert_dec_many xs f beta_env = 
+  match xs with
   | [] -> f
   | x :: xs -> insert_dec_many xs (insert_dec x f beta_env) beta_env
 
@@ -130,17 +154,18 @@ let rec insert_dec_many xs f beta_env = match xs with
   
   [func_ownership]: environment of borrow status for parameters of all global functions
 *)
-let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_body = match _f with
+let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_body = 
+  match _f with
   | FnRet x -> insert_inc x StringSet.empty _f var_ownerships
   | FnCase (x, fs) as case -> 
-    let ys = StringSet.to_list (free_vars case) in
+    let ys = StringSet.to_list (free_vars case) |> List.map (fun s -> Var s) in
     let compiled_fs = List.map (fun f -> insert_dec_many ys (insert_rc f var_ownerships func_ownerships) var_ownerships) fs in
     FnCase (x, compiled_fs)
   (* The Lets*)
   | FnLet (y, RProj (i, x), f) -> 
     (match lookup var_ownerships x with
     | Owned ->
-      let compiled_f = insert_dec x (insert_rc f var_ownerships func_ownerships) var_ownerships in
+      let compiled_f = insert_dec (Var x) (insert_rc f var_ownerships func_ownerships) var_ownerships in
       FnLet (y, RProj (i, x), FnInc(y, compiled_f))
     | Borrowed -> 
       let beta_env' = StringMap.add y Borrowed var_ownerships in
@@ -155,7 +180,7 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
     c_app ys (lookup_params func_ownerships c) (FnLet (z, RPartialApp(c,ys), compiled_f)) var_ownerships
   | FnLet (z, RVarApp (x,y), f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
-    c_app [x;y] [Owned; Owned] (FnLet (z, RVarApp(x,y), compiled_f)) var_ownerships
+    c_app [Var x;y] [Owned; Owned] (FnLet (z, RVarApp(x,y), compiled_f)) var_ownerships
   | FnLet (z, RCtor(i,ys), f) ->
     let bs = List.map (fun _ -> Owned) ys in
     let compiled_f = insert_rc f var_ownerships func_ownerships in
@@ -165,10 +190,10 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
     c_app [head; tail] [Owned; Owned] (FnLet (z, RSignal { head; tail }, compiled_f)) var_ownerships
   | FnInc _ | FnDec _ -> failwith "Increment and Decrement should not exist prior to this step!"
 
-and c_app (vars: string list) (bs: ownership list) (_f:fn_body) beta_env : fn_body = 
+and c_app (vars: primitive list) (bs: ownership list) (_f:fn_body) beta_env : fn_body = 
   match vars, bs, _f with
   | y::ys', Owned::bs', FnLet (_,_, f) ->
-    let alive_variables = StringSet.union (StringSet.of_list ys') (free_vars f) in
+    let alive_variables = StringSet.union (StringSet.of_list @@ List.filter_map (function | Var v -> Some v | _ -> None) ys') (free_vars f) in
     insert_inc y alive_variables (c_app ys' bs' _f beta_env) beta_env
   | y::ys', Borrowed::bs', FnLet (z, e, f) ->
     let compiled_f = insert_dec y f beta_env in
@@ -190,14 +215,18 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
   | FnLet (_, RCall (c, xs), rest) -> 
     let owned_args = 
       List.combine xs (lookup_params func_ownerships c)
-      |> List.filter_map (fun (x, b) -> if is_owned b then Some x else None)
+      |> List.filter_map (function
+      | Var x, Owned -> Some x
+      | _, _ -> None)
       |> StringSet.of_list
     in 
     StringSet.union (collect func_ownerships rest) owned_args
-  | FnLet (_, RVarApp (x,y), rest) ->
+  | FnLet (_, RVarApp (x,Var y), rest) ->
     StringSet.union (collect func_ownerships rest) (StringSet.of_list [x;y])
+  | FnLet (_, RVarApp (x, Const _), rest) ->
+    StringSet.union (collect func_ownerships rest) (StringSet.singleton x)
   | FnLet (_, RPartialApp (_, xs), rest) -> (*c must be the OWNED VERSION - THAT IS A COPY OF c WHERE ALL PARAMS ARE OWNED*)
-    StringSet.union (collect func_ownerships rest) (StringSet.of_list xs)
+    StringSet.union (collect func_ownerships rest) (StringSet.of_list @@ List.filter_map (function | Var v -> Some v | _ -> None) xs)
   | FnLet (z, RProj (_, x), rest) ->
     let fcol = collect func_ownerships rest in
     match StringSet.mem z fcol with

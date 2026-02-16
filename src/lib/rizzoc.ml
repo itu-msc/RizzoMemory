@@ -81,7 +81,7 @@ module Transformations = struct
       let params_ownership = Refcount.lookup_params beta c_name in
       let var_env = StringMap.of_list @@ List.combine params params_ownership in
       let ref_counted_body = Refcount.insert_rc c_body var_env beta in
-      (c_name, RefCount.Fun (params, Refcount.insert_dec_many params ref_counted_body var_env))
+      (c_name, RefCount.Fun (params, Refcount.insert_dec_many (List.map (fun s -> RefCount.Var s) params) ref_counted_body var_env))
     in
     beta, List.map insert_ref_count constants
 end

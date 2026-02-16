@@ -1,8 +1,8 @@
-fun const x = x :: never
+fun customFunc x = x :: never
 
 fun main x = 
     let mysync = sync 2 4 in 
-    let thing = mysync :: const 3 in
+    let thing = mysync :: customFunc 3 in
     let conditional = (if (thing == 3) then (thing :: mysync) else thing) in
     match thing with
     | 4 -> (thing, wait mysync)

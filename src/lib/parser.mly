@@ -52,8 +52,8 @@ let with_top_loc start_pos end_pos top =
 
 %token LET FUN MATCH WITH IN
 %token EQ CONS COMMA LPAREN RPAREN BAR
-%token IF THEN ELSE EQEQ
-%token PIPE_GT ARROW COLON STAR UNDERSCORE
+%token IF THEN ELSE
+%token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY
 %token <string> ID
 %token <string> TYPE_ID
@@ -88,8 +88,6 @@ nonempty_id_list:
   | x=ID xs=nonempty_id_list { x :: xs }
 
 expr:
-  | left=expr EQEQ right=expr
-    { with_expr_loc $startpos $endpos (EBinary (Eq, left, right)) }
   | LET x=ID EQ e1=expr IN e2=expr
     { with_expr_loc $startpos $endpos (ELet (x, e1, e2)) }
   | IF e1=expr THEN e2=expr ELSE e3=expr
@@ -98,7 +96,7 @@ expr:
     { let _ = leading in with_expr_loc $startpos $endpos (ECase (scrutinee, first :: rest)) }
   | FUN params=nonempty_id_list ARROW body=expr
     { check_unique_params params; with_expr_loc $startpos $endpos (EFun (params, body)) }
-  | e=pipe_expr
+  | e=op_expr
       { e }
 
 opt_leading_bar:
@@ -114,9 +112,11 @@ match_case_tail:
   | BAR c=match_case rest=match_case_tail
       { c :: rest }
 
-pipe_expr:
-  | left=pipe_expr PIPE_GT right=cons_expr
+op_expr:
+  | left=op_expr PIPE_GT right=cons_expr
     { with_expr_loc $startpos $endpos (EApp (right, [left])) }
+  | left=op_expr EQEQ right=cons_expr
+    { with_expr_loc $startpos $endpos (EBinary (Eq, left, right)) }
   | e=cons_expr
       { e }
 

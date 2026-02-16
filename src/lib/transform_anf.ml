@@ -2,6 +2,7 @@ open Ast
 
 let is_name = function
 | EVar _ -> true
+| EConst _ -> true
 | _ -> false
 
 let new_var () = Utilities.new_var ()
