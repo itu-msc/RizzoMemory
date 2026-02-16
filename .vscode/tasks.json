@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "rizz: build server",
+      "label": "rizz: build",
       "type": "shell",
       "command": "opam",
       "args": ["exec", "--", "dune", "build"],
@@ -30,7 +30,7 @@
     },
     {
       "label": "rizz: prepare extension host",
-      "dependsOn": ["rizz: build server", "rizz: compile extension"],
+      "dependsOn": ["rizz: build", "rizz: compile extension"],
       "dependsOrder": "sequence",
       "problemMatcher": []
     }

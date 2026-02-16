@@ -1,7 +1,8 @@
 (executable
  (public_name rizzoc)
  (name main)
- (libraries rizzoc))
+ (libraries rizzoc)
+ (modes byte exe))
 
 (executable
  (public_name rizzolsp)

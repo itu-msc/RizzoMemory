@@ -4,6 +4,8 @@
 
 (generate_opam_files true)
 
+(map_workspace_root false)
+
 (source
  (github itu-msc/RizzoMemory))
 

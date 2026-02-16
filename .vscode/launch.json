@@ -2,6 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "OCaml earlybird (experimental)",
+      "type": "ocaml.earlybird",
+      "request": "launch",
+      "program": "${workspaceFolder}/_build/default/src/bin/main.bc",
+      "preLaunchTask": "rizz: build"
+    },
+    {
       "name": "Run Rizz Extension (repo root)",
       "type": "extensionHost",
       "request": "launch",
