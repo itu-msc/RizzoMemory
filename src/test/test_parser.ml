@@ -28,7 +28,7 @@ let test_parser_program () =
 
 let test_top_level_let_many_locals () =
   let input =
-    "let pipeline = let a = 1 in let b = a in let c = (b, a) in let d = c :: tail in d\n"
+    "let pipeline = let a = 1 in let b = a in let c = (b, a) in let d = c :: xs_tail in d\n"
   in
   let parsed = Rizzoc.Parser.parse_string input in
   let expected: program =
@@ -46,7 +46,7 @@ let test_top_level_let_many_locals () =
                       ETuple (EVar "b", EVar "a"),
                       ELet
                         ( "d",
-                          EBinary (SigCons, EVar "c", EVar "tail"),
+                          EBinary (SigCons, EVar "c", EVar "xs_tail"),
                           EVar "d" ) ) ) ) );
     ]
   in

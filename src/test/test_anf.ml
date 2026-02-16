@@ -59,10 +59,9 @@ let test_anf_case_and_signal () =
      (let var1 = 0 in var1 :: never)
   *)
   Utilities.new_name_reset ();
-  let varName1 = Utilities.new_var () in
   let expected =  ECase(x, [
       (PVar "x", EBinary(SigCons, x, EVar "never"));
-      (PWildcard, ELet(varName1, EConst (CInt 0), EBinary(SigCons, EVar varName1, EVar "never")))
+      (PWildcard, EBinary(SigCons, EConst (CInt 0), EVar "never"))
     ])
   in
   Alcotest.check expr_testable "case and signal cons together" expected transformed
@@ -86,13 +85,11 @@ let test_case_is_lifted_out_of_let () =
         (let y = 0 in y :: x) 
       | (let y = 1 in y :: x) *)
   Utilities.new_name_reset ();
-  let var1 = Utilities.new_var () in
   let expected = [ TLet("my_fun", EFun(["x"], 
-    ELet(var1, EConst (CBool false), 
-    ECase(EVar var1, [
+    ECase(EConst (CBool false), [
       (PConst (CBool false), ELet("y", EConst (CInt 0), EBinary(SigCons, EVar "y", EVar "x")));
       (PWildcard, ELet("y", EConst (CInt 1), EBinary(SigCons, EVar "y", EVar "x")))
-    ]))))] in
+    ])))] in
   Alcotest.check program_testable "case is lifted out of let" expected transformed
 
 

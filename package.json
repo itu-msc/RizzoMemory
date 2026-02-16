@@ -4,6 +4,7 @@
         "watch": "opam exec -- dune build --watch --terminal-persistence=clear-on-rebuild",
         "run": "opam exec -- dune exec rizzoc examples/first.rizz",
         "dev": "opam exec -- dune exec --watch rizzoc examples/first.rizz",
+        "test": "opam exec -- dune test",
         "run:lsp": "opam exec -- dune exec rizzolsp",
         "ext:install:nobuild": "cd vscode-rizz-lsp && npm run install:local",
         "ext:install": "npm run build && npm run ext:install:nobuild"
