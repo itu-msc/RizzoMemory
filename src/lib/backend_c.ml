@@ -6,10 +6,13 @@ let emit_c_code (p:program) (filename:string) =
   let out_file = open_out filename in
   let write = output_string out_file in
   let rec emit_program (p: program) : unit = 
-    write "#include \"core.h\"\n\n";
+    write "#include \"core.h\"\n";
+    write "#include \"heap.h\"\n";
+    write "#include \"later.h\"\n";
+    write "\n";
     List.iter emit_fn p;
     match List.assoc_opt "entry" p with
-    | Some _ -> write "void main() {\n    rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n}\n"
+    | Some _ -> write "void main() {\n    rz_box_t res = rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n    printf(\"result: %d\\n\", res.as.i32);\n}\n"
     | None -> failwith "No entry point found"
   and emit_fn (name, Fun (params, body)) : unit = 
     write (Printf.sprintf "rz_box_t %s(rz_function_t* fun_context) {\n" name);
@@ -20,12 +23,12 @@ let emit_c_code (p:program) (filename:string) =
     emit_fn_body body;
     write "}\n\n"
   and emit_fn_body fn = match fn with
-    | FnRet x -> write (Printf.sprintf "return %s;\n" x)
+    | FnRet x -> write (Printf.sprintf "return %s;\n" (emit_primitive x))
     | FnLet (var, e, body) -> 
       write (Printf.sprintf "rz_box_t %s = " var); emit_rexpr e; write ";\n";
       emit_fn_body body
     | FnCase (scrutinee, branches) ->
-      write (Printf.sprintf "switch (rz_unbox_ptr(%s)->header.tag) {\n" scrutinee);
+      write (Printf.sprintf "switch (rz_object_tag(rz_unbox_ptr(%s))) {\n" scrutinee);
       branches 
       |> List.iteri (fun tag branch_fn -> 
         write (Printf.sprintf "case %d:\n" tag);
@@ -45,22 +48,24 @@ let emit_c_code (p:program) (filename:string) =
   and emit_rexpr e = 
     (* it may be that we are referencing a 'constant'/'global' function, then we have to emit a lift *)
     let mk_args_string args = args 
-      |> List.map (fun arg -> match M.find_opt arg arity_map with
-        | None -> arg
-        | Some arity -> Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){}, 0)" arg arity
-      ) 
+      |> List.map (function | Const _ as e -> emit_primitive e
+        | Var arg -> match M.find_opt arg arity_map with
+          | None -> arg
+          | Some arity -> Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){}, 0)" arg arity) 
       |> String.concat ", "
     in
     let s = match e with
-    | RCall ("eq", args) -> Printf.sprintf "rz_eq(%s, %s)" (List.nth args 0) (List.nth args 1)
+    | RCall ("eq", [p1; p2]) -> Printf.sprintf "rz_eq(%s, %s)" (emit_primitive p1) (emit_primitive p2)
     | RCall (f, args) -> 
       Printf.sprintf "rz_call(%s, (rz_box_t[]){%s}, %d)" f (mk_args_string args) (List.length args)
-    | RCtor (_, [a]) when Option.is_some (int_of_string_opt a) ->
-      Printf.sprintf "rz_make_int(%s)" a (* TODO: what are we gonna doo*)
+    | RCtor (_, [Const Ast.CString _]) -> failwith "todo: emitting string literals"
+    | RCtor (_, [Const _ as a]) -> emit_primitive a 
+    | RCtor (tag, []) -> 
+      Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
     | RCtor (tag, args) -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d, %s))" tag (List.length args) (mk_args_string args)
     | RVarApp (f, x) -> 
-      Printf.sprintf "rz_apply1(rz_unbox_ptr(%s), %s)" f x
+      Printf.sprintf "rz_apply1(rz_unbox_ptr(%s), %s)" f (emit_primitive x)
     | RPartialApp (f, args) -> (match M.find_opt f arity_map with
         | None -> failwith (Printf.sprintf "Function %s not found in arity map" f)
         | Some arity -> 
@@ -69,6 +74,12 @@ let emit_c_code (p:program) (filename:string) =
           Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" f arity args num_args
       )
     | RProj (i, x) -> Printf.sprintf "((rz_object_fields_t*)rz_unbox_ptr(%s))->fields[%d]" x i
-    | RSignal _ -> failwith "Signals not implemented yet"
+    | RSignal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
     in write s
+  and emit_primitive = function
+    | Refcount.Var x -> x
+    | Refcount.Const CInt i   -> Printf.sprintf "rz_make_int(%d)" i
+    | Refcount.Const CBool b  -> Printf.sprintf "rz_make_ptr(rz_bool_ctor(%b))" b
+    | Refcount.Const CNever   -> "RZ_NEVER"
+    | _ -> failwith "emit_primitive: todo"
   in emit_program p

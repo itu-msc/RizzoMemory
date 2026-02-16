@@ -53,8 +53,9 @@ type globals_env = int option M.t
 let rec expr_to_rexpr (globals: globals_env) (e: Ast.expr): Refcount.rexpr = 
   match e with
   (* assumption: f (EVar x1) (EVar x2) (EVar x3) ... *)
-  | EApp (EVar "fst", [EVar x]) -> RProj (0, x) (*TODO: parser doesn't accept these*)
-  | EApp (EVar "snd", [EVar x]) -> RProj (1, x)
+  | EApp (EVar "fst", [EVar x])
+  | EApp (EVar "head", [EVar x]) -> RProj (0, x) 
+  | EApp (EVar "snd", [EVar x]) -> RProj (1, x) (*TODO: parser doesn't accept these*)
   | EApp (EVar f, xs) ->
     (match M.find_opt f globals with
       | None | Some None -> 

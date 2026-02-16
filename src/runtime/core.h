@@ -22,9 +22,14 @@ typedef struct rz_object {
     /* fields follow */
 } rz_object_t;
 
+static inline int16_t rz_object_tag(rz_object_t* obj) {
+    return obj->header.tag;
+}
+
 typedef enum {
     RZ_BOX_INT,
-    RZ_BOX_PTR
+    RZ_BOX_PTR,
+    RZ_BOX_SIGNAL /*TODO: is there a better way to achieve this?*/
 } rz_box_kind_t;
 
 typedef struct rz_box {
@@ -37,7 +42,7 @@ typedef struct rz_box {
 } rz_box_t;
 
 bool rz_is_boxed(rz_box_t box) {
-    return box.kind != RZ_BOX_PTR;
+    return box.kind == RZ_BOX_INT;
 }
 
 static inline rz_box_t rz_make_int(int32_t v) {
@@ -87,24 +92,34 @@ static inline void rz_refcount_inc(rz_object_t* obj) {
     if (obj) obj->header.refcount++;
 }
 
-static inline void rz_refcount_dec(rz_object_t* obj) {
+static void rz_refcount_dec_box(rz_box_t box);
+static inline void rz_refcount_dec(rz_object_t* obj, void (*free_func)(void*)) {
     if (!obj) return;
     rz_refcount_t new_count = --obj->header.refcount;
     if (0 == new_count) {
         rz_object_fields_t *objf = (rz_object_fields_t*)obj;
         for (int i = obj->header.offset; i < obj->header.num_fields; i++) {
             rz_box_t field = objf->fields[i];
-            if (!rz_is_boxed(field) && field.as.obj) { 
-                rz_refcount_dec(field.as.obj); 
-            }
+            rz_refcount_dec_box(field);
+            // if (!rz_is_boxed(field) && field.as.obj) { 
+            //     rz_refcount_dec(field.as.obj); 
+            // }
         }
-        free(obj);
+        // free(obj);
+        free_func(obj);
     }
 }
 
+/* forward declare from heap.h */
+static void rz_signal_free(rz_object_t* obj);
 static inline void rz_refcount_dec_box(rz_box_t box) {
     if (!rz_is_boxed(box) && box.as.obj) {
-        rz_refcount_dec(box.as.obj);
+        if (box.kind == RZ_BOX_SIGNAL) {
+            rz_refcount_dec(box.as.obj, (void (*)(void*))rz_signal_free);
+        }
+        else { 
+            rz_refcount_dec(box.as.obj, free);
+        }
     }
 }
 
@@ -183,12 +198,10 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
     for(int i = 0; i < n; i++) {
         
         rz_box_t arg = copy_free_args->args[i] = fun_free_args->args[i];
-        if (!rz_is_boxed(arg) && arg.as.obj) {
-            rz_refcount_inc(arg.as.obj);
-        }
+        rz_refcount_inc_box(arg);
     }
     
-    rz_refcount_dec(fun_obj);
+    rz_refcount_dec(fun_obj, free);
     /* var-app-full */
     if (copy->_base.header.num_fields == rz_function_get_arity(copy)) {
         rz_fun* tocall = copy->fun.as.fun;
@@ -218,5 +231,29 @@ static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
             }
         }
         return rz_make_ptr( rz_bool_ctor(true) );
+    }
+}
+
+static inline void rz_debug_print_box(rz_box_t box) {
+    switch (box.kind) {
+        case RZ_BOX_INT: {
+            printf("%d", box.as.i32);
+        } break;
+        case RZ_BOX_PTR: {
+            rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
+            printf("ctor(%d, count: %d)", fields->_base.header.tag, fields->_base.header.refcount);
+            if(fields->_base.header.num_fields > 0) {
+                printf("{ ");
+                for (size_t i = fields->_base.header.offset; i < fields->_base.header.num_fields; i++)
+                {
+                    rz_debug_print_box(fields->fields[i]); printf(" ");
+                }
+                printf(" }");
+            }
+        } break;
+        default: {
+            printf("Unknown box tag: '%d'", box.kind);
+            exit(1);
+        }
     }
 }
