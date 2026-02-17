@@ -17,7 +17,7 @@ typedef struct rz_signal_list {
 static rz_signal_list_t* rz_signal_list_create();
 static void rz_signal_list_add(rz_signal_list_t* list, rz_object_t* signal);
 static void rz_print_registered_outputs();
-static void rz_print_registered_output_head(rz_signal_t* sig);
+static void rz_print_registered_output_head(rz_signal_t* sig, bool force);
 
 rz_signal_list_t* rz_global_output_signals = NULL;
 
@@ -69,7 +69,7 @@ static inline rz_box_t rz_register_output_signal(rz_function_t* fun_context) {
         exit(1);
     }
     /* we've just read a signal, which has a head value in the current time tick - output that */
-    rz_print_registered_output_head((rz_signal_t*)rz_unbox_ptr(sig));
+    rz_print_registered_output_head((rz_signal_t*)rz_unbox_ptr(sig), true);
     rz_signal_list_add(rz_global_output_signals, rz_unbox_ptr(sig));
     return rz_make_int(0); /* return unit */
 }
@@ -78,14 +78,14 @@ static inline rz_box_t rz_register_output_signal(rz_function_t* fun_context) {
     |         OUTPUT HELPERS       |
     |------------------------------| */
 
-static inline void rz_print_registered_output_head(rz_signal_t* sig) {
+static inline void rz_print_registered_output_head(rz_signal_t* sig, bool force) {
     /*TODO: this assume strings for now - we will want to make it strings */
-    if (rz_unbox_int(sig->updated)) printf("%d\n", sig->head.as.i32);
+    if (rz_unbox_int(sig->updated) || force) printf("%d\n", sig->head.as.i32);
 }
 
 static inline void rz_print_registered_outputs() {
     for (size_t i = 0; i < rz_global_output_signals->count; i++) {
-        rz_print_registered_output_head(rz_global_output_signals->signals[i]);
+        rz_print_registered_output_head(rz_global_output_signals->signals[i], false);
     }
 }
     
