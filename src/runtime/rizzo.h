@@ -43,15 +43,16 @@ static rz_box_t rz_start_event_loop() {
         if (status == RZ_OK) {
             char* p;
             long converted = strtol(buffer, &p, 10);
-            if (!*p) {
-                rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_int((int32_t)converted));
-#ifdef __RZ_DEBUG_INFO
-                printf("AFTER STEP\n");
-                rz_debug_print_heap();
-#endif
-            } else {
-                printf("TODO: runtime can only read integers, sorry. \n");
+            if(p == buffer) continue; 
+            if (*p != '\0' || converted > INT32_MAX || converted < INT32_MIN) {
+                printf("Invalid input, only 32-bit integers\n");
+                continue;
             }
+            rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_int((int32_t)converted));
+#ifdef __RZ_DEBUG_INFO
+            printf("AFTER STEP\n");
+            rz_debug_print_heap();
+#endif
         }
         else if (status == RZ_INPUT_TOO_LONG) {
             printf("Input too long, try again.\n");
@@ -91,7 +92,7 @@ static inline void rz_print_registered_outputs() {
     
 static rz_signal_list_t* rz_signal_list_create() {
     size_t initial_capacity = 10;
-    rz_signal_list_t* list = malloc(sizeof(rz_signal_list_t) + initial_capacity * sizeof(rz_signal_t*));
+    rz_signal_list_t* list = rz_malloc(sizeof(rz_signal_list_t) + initial_capacity * sizeof(rz_signal_t*));
     list->count = 0;
     list->capacity = initial_capacity;
     return list;

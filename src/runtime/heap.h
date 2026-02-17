@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocation.h"
 #include "core.h"
 #include "later.h"
 #include "channel.h"
@@ -70,7 +71,7 @@ static inline void rz_signal_free(rz_object_t* obj) {
     if (next) next->prev.as.obj = (rz_object_t*) prev;
 
     if(rz_heap_cursor == sig) rz_heap_cursor = next ? next : prev;
-    free(sig);
+    rz_free(sig);
     rz_heap_size--;
 }
 

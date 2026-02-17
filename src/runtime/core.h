@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocation.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -85,7 +86,7 @@ static inline rz_box_t rz_object_get_field(rz_object_t* obj, int16_t idx) {
 }
 
 rz_object_t *rz_ctor(int16_t tag, int16_t num_fields, rz_box_t* args) {
-    rz_object_fields_t* obj = (rz_object_fields_t*) malloc(sizeof(rz_object_fields_t) + (num_fields - 1) * sizeof(rz_box_t));
+    rz_object_fields_t* obj = (rz_object_fields_t*) rz_malloc(sizeof(rz_object_fields_t) + (num_fields - 1) * sizeof(rz_box_t));
     obj->_base.header.tag = tag;
     obj->_base.header.num_fields = num_fields;
     obj->_base.header.refcount = 1;
@@ -125,7 +126,7 @@ static inline void rz_refcount_dec_box(rz_box_t box) {
             rz_refcount_dec(box.as.obj, (void (*)(void*))rz_signal_free);
         }
         else { 
-            rz_refcount_dec(box.as.obj, free);
+            rz_refcount_dec(box.as.obj, rz_free);
         }
     }
 }
@@ -174,7 +175,7 @@ rz_box_t rz_call(rz_fun* f, rz_box_t* args, size_t num_args) {
 }
 
 static inline rz_function_t *rz_malloc_func(rz_fun *f, int32_t arity, size_t num_free_vars) {
-    rz_function_t* fun = (rz_function_t*) malloc(sizeof_function_with(num_free_vars));
+    rz_function_t* fun = (rz_function_t*) rz_malloc(sizeof_function_with(num_free_vars));
     fun->_base.header.num_fields = num_free_vars;
     fun->_base.header.refcount = 1;
     fun->_base.header.offset = 1;
@@ -206,7 +207,7 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
         rz_refcount_inc_box(arg);
     }
     
-    rz_refcount_dec(fun_obj, free);
+    rz_refcount_dec(fun_obj, rz_free);
     /* var-app-full */
     if (copy->_base.header.num_fields == rz_function_get_arity(copy)) {
         rz_fun* tocall = copy->fun.as.fun;
