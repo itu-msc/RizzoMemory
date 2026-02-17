@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <alloca.h>
 
@@ -72,6 +71,16 @@ typedef struct rz_object_fields {
     rz_object_t _base;
     rz_box_t fields[1];
 } rz_object_fields_t;
+
+/* helper function to get field. Instead of casting to [rz_object_fields_t*] */
+static inline rz_box_t rz_object_get_field(rz_object_t* obj, int16_t idx) {
+    if (idx > obj->header.num_fields) {
+        printf("Tried to access field '%d' out of '%d'", idx, obj->header.num_fields);
+        exit(1);
+    }
+    rz_object_fields_t* objf = (rz_object_fields_t*) obj;
+    return objf->fields[idx];
+}
 
 rz_object_t *rz_ctor(int16_t tag, int16_t num_fields, rz_box_t* args) {
     rz_object_fields_t* obj = (rz_object_fields_t*) malloc(sizeof(rz_object_fields_t) + (num_fields - 1) * sizeof(rz_box_t));
@@ -160,7 +169,7 @@ rz_box_t rz_call(rz_fun* f, rz_box_t* args, size_t num_args) {
     fun->_base.header.tag = num_args; /* as opposed to fun->arity = num_args */
     fun->fun = (rz_box_t){ .kind = RZ_BOX_INT, .as.fun = f};
     rz_box_t* dst = ARGS_OF_BOXED(fun);
-    for (int i = 0; i < num_args; i++) {
+    for (size_t i = 0; i < num_args; i++) {
         dst[i] = args[i];
     }
     return f(fun);
@@ -239,6 +248,7 @@ static inline void rz_debug_print_box(rz_box_t box) {
         case RZ_BOX_INT: {
             printf("%d", box.as.i32);
         } break;
+        case RZ_BOX_SIGNAL:
         case RZ_BOX_PTR: {
             rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
             printf("ctor(%d, count: %d)", fields->_base.header.tag, fields->_base.header.refcount);
@@ -248,7 +258,7 @@ static inline void rz_debug_print_box(rz_box_t box) {
                 {
                     rz_debug_print_box(fields->fields[i]); printf(" ");
                 }
-                printf(" }");
+                printf("}");
             }
         } break;
         default: {

@@ -1,21 +1,22 @@
 open Refcount
 
+let make_fun_decl ?ending:(e = " {\n") name  = 
+  Printf.sprintf "rz_box_t %s(rz_function_t* fun_context)%s" name e
+
 let emit_c_code (p:program) (filename:string) =
   let module M = Map.Make(String) in
   let arity_map = M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) p) in
   let out_file = open_out filename in
   let write = output_string out_file in
   let rec emit_program (p: program) : unit = 
-    write "#include \"core.h\"\n";
-    write "#include \"heap.h\"\n";
-    write "#include \"later.h\"\n";
+    write "#include \"rizzo.h\"\n";
     write "\n";
     List.iter emit_fn p;
     match List.assoc_opt "entry" p with
     | Some _ -> write "void main() {\n    rz_box_t res = rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n    printf(\"result: %d\\n\", res.as.i32);\n}\n"
     | None -> failwith "No entry point found"
   and emit_fn (name, Fun (params, body)) : unit = 
-    write (Printf.sprintf "rz_box_t %s(rz_function_t* fun_context) {\n" name);
+    write (make_fun_decl name);
     write ("rz_box_t* args = ARGS_OF_BOXED(fun_context);\n");
     List.iteri (fun i param -> 
       write (Printf.sprintf "rz_box_t %s = args[%d];\n" param i)
