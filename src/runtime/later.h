@@ -29,9 +29,21 @@ static inline void rz_debug_print_later(rz_box_t later) {
         case RZ_TAG_LATER_TAIL: { 
             printf("tail(%p)", rz_unbox_ptr(rz_object_get_field(rz_unbox_ptr(later), 0))); 
         } break;
-        case RZ_TAG_LATER_SYNC: printf("SYNC"); break;
-        case RZ_TAG_LATER_WATCH: printf("WATCH"); break;
-        case RZ_TAG_LATER_APP: printf("APP"); break;
+        case RZ_TAG_LATER_SYNC: { 
+            printf("sync ("); 
+            rz_debug_print_later(rz_object_get_field(rz_unbox_ptr(later), 0));
+            printf(", ");
+            rz_debug_print_later(rz_object_get_field(rz_unbox_ptr(later), 0));
+            printf(")"); 
+        } break;
+        case RZ_TAG_LATER_WATCH: {
+            printf("watch(%p)", rz_unbox_ptr(rz_object_get_field(rz_unbox_ptr(later), 0))); 
+        } break;
+        case RZ_TAG_LATER_APP: {
+            printf("laterapp(%p, ", rz_unbox_ptr(rz_object_get_field(rz_unbox_ptr(later), 0)));
+            rz_debug_print_later(rz_object_get_field(rz_unbox_ptr(later), 1));
+            printf(")");
+        } break;
         default: printf("Unknown later tag: %d", rz_object_tag(rz_unbox_ptr(later))); break;
     }
 }

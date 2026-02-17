@@ -13,7 +13,11 @@ let emit_c_code (p:program) (filename:string) =
     write "\n";
     List.iter emit_fn p;
     match List.assoc_opt "entry" p with
-    | Some _ -> write "void main() {\n    rz_box_t res = rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n    printf(\"result: %d\\n\", res.as.i32);\n}\n"
+    | Some _ -> write ("int main() {\n"
+                ^ "    rz_init_rizzo();\n"
+                ^ "    rz_box_t res = rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n"
+                ^ "    printf(\"result: %d\\n\", res.as.i32);\n"
+                ^ "    return 0;\n}\n")
     | None -> failwith "No entry point found"
   and emit_fn (name, Fun (params, body)) : unit = 
     write (make_fun_decl name);
@@ -45,7 +49,6 @@ let emit_c_code (p:program) (filename:string) =
       if Option.is_none (int_of_string_opt x) then
         write (Printf.sprintf "rz_refcount_inc_box(%s);\n" x);
       emit_fn_body f
-
   and emit_rexpr e = 
     (* it may be that we are referencing a 'constant'/'global' function, then we have to emit a lift *)
     let mk_args_string args = args 
@@ -57,10 +60,11 @@ let emit_c_code (p:program) (filename:string) =
     in
     let s = match e with
     | RCall ("eq", [p1; p2]) -> Printf.sprintf "rz_eq(%s, %s)" (emit_primitive p1) (emit_primitive p2)
+    | RCall ("start_event_loop", _) -> "rz_start_event_loop()"
+    | RCall ("output_int_signal", [signal]) -> 
+      Printf.sprintf "rz_call(rz_register_output_signal, (rz_box_t[]){%s}, 1)" (emit_primitive signal)
     | RCall (f, args) -> 
       Printf.sprintf "rz_call(%s, (rz_box_t[]){%s}, %d)" f (mk_args_string args) (List.length args)
-    | RCtor (_, [Const Ast.CString _]) -> failwith "todo: emitting string literals"
-    | RCtor (_, [Const _ as a]) -> emit_primitive a 
     | RCtor (tag, []) -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
     | RCtor (tag, args) -> 
@@ -74,7 +78,7 @@ let emit_c_code (p:program) (filename:string) =
           let args = mk_args_string args in
           Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" f arity args num_args
       )
-    | RProj (i, x) -> Printf.sprintf "((rz_object_fields_t*)rz_unbox_ptr(%s))->fields[%d]" x i
+    | RProj (i, x) -> Printf.sprintf "rz_object_get_field(rz_unbox_ptr(%s), %d)" x i
     | RSignal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
     in write s
   and emit_primitive = function

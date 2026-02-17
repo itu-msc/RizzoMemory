@@ -100,10 +100,6 @@ static bool rz_ticked(rz_object_t* later, rz_channel_t chan, rz_box_t v);
 static void rz_heap_update(rz_channel_t chan, rz_box_t v);
 static rz_box_t rz_advance(rz_object_t* later, rz_channel_t chan, rz_box_t v);
 
-static inline void rz_step(rz_channel_t chan, rz_box_t v) {
-    rz_heap_update(chan, v);
-}
-
 static void rz_heap_update(rz_channel_t chan, rz_box_t v) {
     if(!rz_heap_base) return;
     rz_signal_t* cur = rz_heap_cursor = rz_heap_base;
@@ -166,16 +162,18 @@ static rz_box_t rz_advance(rz_object_t* later, rz_channel_t chan, rz_box_t v) {
         }
         case RZ_TAG_LATER_APP: {
             /* field 1 is a later ctor - the argument
-               field 2 is a delayed function, so proj0
-               TODO: assuming it is always a rz_function_t */
+               field 2 is a delayed function, so essentially do a proj0 
+                 assuming it is always a rz_function_t */
             rz_box_t arg = rz_advance(rz_unbox_ptr(rz_object_get_field(later, 1)), chan, v);
             rz_box_t delayed_fun = rz_object_get_field(later, 0);
             rz_box_t fun = rz_object_get_field(rz_unbox_ptr(delayed_fun), 0);
             return rz_apply1(rz_unbox_ptr(fun), arg);
         } 
         case RZ_TAG_LATER_TAIL: {
+            /* I believe it is fine to skip inc here, since the original signal is refcounted
+               in accordance with the immutable beans algorithm. 
+               Furthermore, not ref counting here makes it so the dec instruction in advance can free the signal entirely. */
             rz_box_t l = rz_object_get_field(later,0);
-            // rz_refcount_inc_box(l);
             return l;
         }
         case RZ_TAG_LATER_WATCH: {

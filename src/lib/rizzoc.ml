@@ -65,7 +65,8 @@ module Transformations = struct
   let builtins = 
     let module StringMap = Map.Make(String) in
     StringMap.of_list [
-      "equality", [RefCount.Borrowed; RefCount.Borrowed];
+      "start_event_loop", [RefCount.Borrowed];  (* Unit -> Unit *)
+      "output_int_signal", [RefCount.Owned]; (* Signal(Int) -> Unit *)
       "eq", [RefCount.Borrowed; RefCount.Borrowed];
       "lt", [RefCount.Borrowed; RefCount.Borrowed];
       "leq", [RefCount.Borrowed; RefCount.Borrowed];

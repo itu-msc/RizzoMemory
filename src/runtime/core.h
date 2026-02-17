@@ -9,11 +9,12 @@
 
 typedef int32_t rz_refcount_t;
 
+/*TODO: how big should these fields be? */
 typedef struct rz_header {
-    int16_t num_fields;         /* number of fields in constructor, recursively free */
-    int16_t tag;                /* tag of constructor for case matching */
-    int16_t  offset;            /* offset of first field after header - i.e. function should have 1 because of C function pointer */
-    rz_refcount_t refcount;     /* ref count */
+    uint16_t num_fields;         /* number of fields in constructor, recursively free */
+    uint16_t offset;             /* offset of first field after header - i.e. function should have 1 because of C function pointer */
+    uint16_t tag;                /* tag of constructor for case matching */
+    rz_refcount_t refcount;      /* ref count */
 } rz_header_t;
 
 typedef struct rz_object {
@@ -21,14 +22,15 @@ typedef struct rz_object {
     /* fields follow */
 } rz_object_t;
 
-static inline int16_t rz_object_tag(rz_object_t* obj) {
+static inline uint16_t rz_object_tag(rz_object_t* obj) {
     return obj->header.tag;
 }
 
 typedef enum {
     RZ_BOX_INT,
     RZ_BOX_PTR,
-    RZ_BOX_SIGNAL /*TODO: is there a better way to achieve this?*/
+    /*TODO: signal could be in tag of header as 0xFFFF - I doubt any type will have 65535 constructors */
+    RZ_BOX_SIGNAL 
 } rz_box_kind_t;
 
 typedef struct rz_box {
@@ -60,7 +62,7 @@ static inline rz_object_t* rz_unbox_ptr(rz_box_t box) {
     return box.as.obj;
 }
 
-/*TODO: proper handling of refcount for these? negative refcount so they are likely never freed */
+/* TODO: double check that booleans are never reference counted */
 static rz_object_t RZ_BOOL_TRUE = { .header = { .num_fields = 0, .tag = 0, .refcount = -1 } };
 static rz_object_t RZ_BOOL_FALSE = { .header = { .num_fields = 0, .tag = 1, .refcount = -1 } };
 static inline rz_object_t* rz_bool_ctor(bool b) {
@@ -110,11 +112,7 @@ static inline void rz_refcount_dec(rz_object_t* obj, void (*free_func)(void*)) {
         for (int i = obj->header.offset; i < obj->header.num_fields; i++) {
             rz_box_t field = objf->fields[i];
             rz_refcount_dec_box(field);
-            // if (!rz_is_boxed(field) && field.as.obj) { 
-            //     rz_refcount_dec(field.as.obj); 
-            // }
         }
-        // free(obj);
         free_func(obj);
     }
 }
@@ -203,9 +201,7 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
     rz_function_args_t* copy_free_args = ARGS_OF(copy);
     copy_free_args->args[fun->_base.header.num_fields] = arg;
     size_t n = fun->_base.header.num_fields;
-    /* TODO: add to header an field_offset - then we don't have to this funky off by 1 stuff*/
     for(int i = 0; i < n; i++) {
-        
         rz_box_t arg = copy_free_args->args[i] = fun_free_args->args[i];
         rz_refcount_inc_box(arg);
     }
