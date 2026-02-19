@@ -12,11 +12,6 @@ type 'a located = {
 
 let mk start_pos end_pos = { start_pos; end_pos }
 
-let mkloc value start_pos end_pos = {
-  value;
-  loc = mk start_pos end_pos;
-}
-
 (** String representation of a location *)
 let to_string loc =
   let open Lexing in

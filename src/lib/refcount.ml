@@ -32,7 +32,7 @@ let pp_primitive out = function
   | Var x -> Format.pp_print_string out x
   | Const c -> Ast.pp_const out c
 
-let rec pp_rexpr out = 
+let pp_rexpr out = 
   let comma_separated pp out = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp out in
   function
   | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (comma_separated pp_primitive) ys

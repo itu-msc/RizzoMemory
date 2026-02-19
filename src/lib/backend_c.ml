@@ -65,10 +65,10 @@ let emit_c_code (p:program) (filename:string) =
       Printf.sprintf "rz_call(rz_register_output_signal, (rz_box_t[]){%s}, 1)" (emit_primitive signal)
     | RCall (f, args) -> 
       Printf.sprintf "rz_call(%s, (rz_box_t[]){%s}, %d)" f (mk_args_string args) (List.length args)
-    | RCtor (tag, []) -> 
+    | RCtor { tag; fields = [] } -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
-    | RCtor (tag, args) -> 
-      Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d, %s))" tag (List.length args) (mk_args_string args)
+    | RCtor { tag; fields } -> 
+      Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d, %s))" tag (List.length fields) (mk_args_string fields)
     | RVarApp (f, x) -> 
       Printf.sprintf "rz_apply1(rz_unbox_ptr(%s), %s)" f (emit_primitive x)
     | RPartialApp (f, args) -> (match M.find_opt f arity_map with
@@ -80,6 +80,8 @@ let emit_c_code (p:program) (filename:string) =
       )
     | RProj (i, x) -> Printf.sprintf "rz_object_get_field(rz_unbox_ptr(%s), %d)" x i
     | RSignal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
+    | RReset _ -> "rz_reset()"
+    | RReuse _ -> "rz_reuse()"
     in write s
   and emit_primitive = function
     | Refcount.Var x -> x

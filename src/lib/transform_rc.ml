@@ -2,8 +2,8 @@
 open Ast
 let get_name = 
   function
-  | EVar x -> Refcount.Var x
-  | EConst c -> Refcount.Const c
+  | EVar (x, _) -> Refcount.Var x
+  | EConst (c, _) -> Refcount.Const c
   | _ -> failwith "get_name failed: expected variable or constant"
 
 module M = Map.Make(String)
@@ -55,59 +55,59 @@ type globals_env = int option M.t
   that leaves variables as either 'Global of string' or 'Local of string' or w/e *)
 module LocalsEnv = Set.Make(String)
 
-let rec expr_to_rexpr (globals: globals_env) locals (e: Ast.expr): Refcount.rexpr = 
+let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr = 
   match e with
-  | EApp (EVar "fst", [EVar x])
-  | EApp (EVar "head", [EVar x]) -> RProj (0, x) 
-  | EApp (EVar "snd", [EVar x]) -> RProj (1, x) (*TODO: parser doesn't accept these*)
+  | EApp (EVar ("fst", _), [EVar (x, _)], _)
+  | EApp (EVar ("head", _), [EVar (x, _)], _) -> RProj (0, x) 
+  | EApp (EVar ("snd", _), [EVar (x, _)], _) -> RProj (1, x) (*TODO: parser doesn't accept these*)
   (*TODO: move these into some other places*)
-  | EApp (EVar "output_int_signal", [signal]) -> RCall ("output_int_signal", [get_name signal])
-  | EApp (EVar "start_event_loop", [_]) -> RCall ("start_event_loop", [Refcount.Const (CUnit)])
-  | EApp (EVar f, xs) when LocalsEnv.mem f locals ->
+  | EApp (EVar ("output_int_signal", _), [signal], _) -> RCall ("output_int_signal", [get_name signal])
+  | EApp (EVar ("start_event_loop", _), [_], _) -> RCall ("start_event_loop", [Refcount.Const (CUnit)])
+  | EApp (EVar (f, _), xs, _) when LocalsEnv.mem f locals ->
     if List.length xs = 1 then RVarApp(f, get_name (List.hd xs))
     else 
       failwith (Format.asprintf "todo! expr_to_rexpr variable application has more than one argument - not supported in refcount IR. For expression '%a'" Ast.pp_expr e)
-  | EApp (EVar f, xs) -> 
+  | EApp (EVar (f, _), xs, _) -> 
     (match M.find_opt f globals with
     | Some Some arity when arity = List.length xs -> RCall (f, List.map get_name xs)
     | Some Some _ -> RPartialApp (f, List.map get_name xs) 
     | Some None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: trying to apply a non-function global '%s'" f
     | None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: unable to find '%s' in globals" f)
-  | EBinary (SigCons, n1, n2) -> RSignal { head = get_name n1; tail = get_name n2 }
-  | ETuple (n1, n2) -> RCtor (idof "tuple", [get_name n1; get_name n2])
-  | EBinary (BSync, n1, n2) -> RCtor (idof "sync", [get_name n1; get_name n2])
-  | EBinary (BLaterApp, n1, n2) -> RCtor (idof "later_app", [get_name n1; get_name n2])
-  | EBinary (BOStar, n1, n2) -> RCtor (idof "ostar", [get_name n1; get_name n2])
-  | EBinary (op, n1, n2) -> RCall (op_to_application op, [get_name n1; get_name n2])
-  | EUnary (UWait, n) -> RCtor (idof "wait", [get_name n])
-  | EUnary (UTail, n) -> RCtor (idof "tail", [get_name n])
-  | EUnary (UWatch, n) -> RCtor (idof "watch", [get_name n])
-  | EUnary (UDelay, n) -> RCtor (idof "delay", [get_name n])
-  | EUnary (Fst, EVar x)  -> RProj (0, x)
-  | EUnary (Snd, EVar x)  -> RProj (1, x)
-  | EConst (const) -> (
+  | EBinary (SigCons, n1, n2, _)-> RSignal { head = get_name n1; tail = get_name n2 }
+  | ETuple (n1, n2, _) -> RCtor { tag = idof "tuple"; fields = [get_name n1; get_name n2] }
+  | EBinary (BSync, n1, n2, _) -> RCtor { tag = idof "sync"; fields = [get_name n1; get_name n2] }
+  | EBinary (BLaterApp, n1, n2, _) -> RCtor { tag = idof "later_app"; fields = [get_name n1; get_name n2] }
+  | EBinary (BOStar, n1, n2, _) -> RCtor { tag = idof "ostar"; fields = [get_name n1; get_name n2] }
+  | EBinary (op, n1, n2, _) -> RCall (op_to_application op, [get_name n1; get_name n2])
+  | EUnary (UWait, n, _) -> RCtor { tag = idof "wait"; fields = [get_name n] }
+  | EUnary (UTail, n, _) -> RCtor { tag = idof "tail"; fields = [get_name n] }
+  | EUnary (UWatch, n, _) -> RCtor { tag = idof "watch"; fields = [get_name n] }
+  | EUnary (UDelay, n, _) -> RCtor { tag = idof "delay"; fields = [get_name n] }
+  | EUnary (Fst, EVar (x, _), _)  -> RProj (0, x)
+  | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
+  | EConst (const, _) -> (
       match const with
-      | CUnit -> RCtor (idof "unit", [])
-      | CNever -> RCtor (idof "never", [])
-      | CInt _ -> RCtor (idof "int", [Refcount.Const const])
-      | CString _ -> RCtor (idof "string", [Refcount.Const const])
-      | CBool b -> if b then RCtor (idof "true", []) else RCtor (idof "false", [])
+      | CUnit -> RCtor { tag = idof "unit"; fields = [] }
+      | CNever -> RCtor { tag = idof "never"; fields = [] }
+      | CInt _ -> RCtor { tag = idof "int"; fields = [Refcount.Const const] }
+      | CString _ -> RCtor { tag = idof "string"; fields = [Refcount.Const const]}
+      | CBool b -> if b then RCtor { tag = idof "true"; fields = []} else RCtor { tag = idof "false"; fields = []}
     )
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
 
-and expr_to_fn_body globals locals (e: Ast.expr) : Refcount.fn_body = 
+and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
   let expr_to_fn_body = expr_to_fn_body globals in
   let expr_to_rexpr = expr_to_rexpr globals in
   match e with
-  | EVar x -> FnRet (Var x)
-  | EConst c -> FnRet (Const c)
-  | ELet (x, rhs, e') ->
+  | EVar (x, _) -> FnRet (Var x)
+  | EConst (c, _) -> FnRet (Const c)
+  | ELet ((x, _), rhs, e', _) ->
     FnLet(x, expr_to_rexpr locals rhs, expr_to_fn_body (LocalsEnv.add x locals) e')
-  | ECase (EVar x, cases) -> 
-    FnCase(x, List.map (fun (_, branch) -> expr_to_fn_body locals branch) cases)
+  | ECase (EVar (x, _), cases, _) -> 
+    FnCase(x, List.map (fun (_, branch, _) -> expr_to_fn_body locals branch) cases)
   | ECase _ -> 
     failwith "expr_to_fn_body failed: case scrutinee is not a variable"
-  | EIfe (EVar x, e1, e2) ->
+  | EIfe (EVar (x, _), e1, e2, _) ->
     FnCase (x, [expr_to_fn_body locals e1; expr_to_fn_body locals e2])
   | EIfe _ -> failwith "expr_to_fn_body failed: if condition is not a variable"
   | _ -> 
@@ -115,16 +115,18 @@ and expr_to_fn_body globals locals (e: Ast.expr) : Refcount.fn_body =
     let x = Utilities.new_var () in
     FnLet (x, expr_to_rexpr locals e, FnRet (Refcount.Var x))
 
-let to_rc_intermediate_representation (p: Ast.program) : Refcount.program =
+let to_rc_intermediate_representation (p: _ program) : Refcount.program =
   let globals: globals_env = 
     let mapper = function 
-    | TLet(name, EFun (params, _)) -> (name, Some (List.length params))
-    | TLet(name, _) -> (name, None)
+    | TLet(name, EFun (params, _, _), _) -> (name, Some (List.length params))
+    | TLet(name, _, _) -> (name, None)
     in
     List.map mapper p |> M.of_list
   in
   let to_fun = function
-  | EFun (params, body) -> Refcount.Fun (params, expr_to_fn_body globals (LocalsEnv.of_list params) body) 
+  | EFun (names, body, _) -> 
+    let params = List.map fst names in
+    Refcount.Fun (params, expr_to_fn_body globals (LocalsEnv.of_list params) body) 
   | _ -> failwith "TODO: only top level functions"
   in
-  List.map (fun (TLet (name, rhs)) -> name, to_fun rhs) p
+  List.map (fun (TLet (name, rhs, _)) -> name, to_fun rhs) p

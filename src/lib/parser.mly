@@ -13,25 +13,17 @@ let check_unique_params params =
   in
   go [] params
 
-let rec tuple_expr_of_list = function
+let mkloc start_pos end_pos = Ann_parsed (Location.mk start_pos end_pos)
+
+let rec tuple_expr_of_list start_pos end_pos = function
   | [] | [_] -> failwith "Tuple must contain at least 2 elements"
-  | [a; b] -> ETuple (a, b)
-  | a :: rest -> ETuple (a, tuple_expr_of_list rest)
+  | [a; b] -> ETuple (a, b, mkloc start_pos end_pos)
+  | a :: rest -> ETuple (a, tuple_expr_of_list start_pos end_pos rest, mkloc start_pos end_pos)
 
-let rec tuple_pattern_of_list = function
+let rec tuple_pattern_of_list start_pos end_pos = function
   | [] | [_] -> failwith "Tuple pattern must contain at least 2 elements"
-  | [a; b] -> PTuple (a, b)
-  | a :: rest -> PTuple (a, tuple_pattern_of_list rest)
-
-let with_expr_loc start_pos end_pos expr =
-  let loc = Location.mk start_pos end_pos in
-  Ast.register_expr_location expr loc;
-  expr
-
-let with_top_loc start_pos end_pos top =
-  let loc = Location.mk start_pos end_pos in
-  Ast.register_top_expr_location top loc;
-  top
+  | [a; b] -> PTuple (a, b, mkloc start_pos end_pos)
+  | a :: rest -> PTuple (a, tuple_pattern_of_list start_pos end_pos rest, mkloc start_pos end_pos)
 
 (* When you expand the parser, you can use location tracking helpers:
    - $startpos : starting position of the symbol
@@ -40,13 +32,13 @@ let with_top_loc start_pos end_pos top =
    - $endpos(x)   : ending position of symbol x
    
    Example helper function:
-   let mkloc start_pos end_pos value = value
+   let mkloc start_pos end_pos = Ann_parsed (Location.mk start_pos end_pos) 
    
    Example usage in rules:
    expr:
-     | x=ID { mkloc $startpos $endpos (EVar x) }
-     | e1=expr PLUS e2=expr 
-       { mkloc $startpos $endpos (EBinary (Add, e1, e2)) }
+     | x=ID { (EVar (x, mkloc $startpos $endpos)) }
+     | e1=expr PLUS e2=expr
+       { EBinary (Add, e1, e2, mkloc $startpos $endpos) }
 *)
 %}
 
@@ -63,7 +55,7 @@ let with_top_loc start_pos end_pos top =
 %token TRUE FALSE UNIT
 %token EOF
 
-%start <Ast.program> main
+%start <Ast.parsed Ast.program> main
 
 %nonassoc BELOW_BAR
 %nonassoc BAR
@@ -79,23 +71,26 @@ top_exprs:
 
 top_expr:
   | LET name=ID EQ body=expr
-    { with_top_loc $startpos $endpos (TLet (name, body)) }
+    { TLet (name, body, mkloc $startpos $endpos) }
   | FUN name=ID params=nonempty_id_list EQ body=expr
-    { with_top_loc $startpos $endpos (TLet (name, with_expr_loc $startpos(body) $endpos(body) (EFun (params, body)))) }
+    {
+      check_unique_params (List.map fst params);
+      TLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
+    }
 
 nonempty_id_list:
-  | x=ID { [x] }
-  | x=ID xs=nonempty_id_list { x :: xs }
+  | x=ID { [(x, mkloc $startpos $endpos)] }
+  | x=ID xs=nonempty_id_list { (x, mkloc $startpos $endpos) :: xs }
 
 expr:
   | LET x=ID EQ e1=expr IN e2=expr
-    { with_expr_loc $startpos $endpos (ELet (x, e1, e2)) }
+    { ELet ((x, mkloc $startpos(x) $endpos(x)), e1, e2, mkloc $startpos $endpos) }
   | IF e1=expr THEN e2=expr ELSE e3=expr
-    { with_expr_loc $startpos $endpos (EIfe (e1, e2, e3)) }
+    { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
-    { let _ = leading in with_expr_loc $startpos $endpos (ECase (scrutinee, first :: rest)) }
+    { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
   | FUN params=nonempty_id_list ARROW body=expr
-    { check_unique_params params; with_expr_loc $startpos $endpos (EFun (params, body)) }
+    { check_unique_params (List.map fst params); EFun (params, body, mkloc $startpos $endpos) }
   | e=op_expr
       { e }
 
@@ -105,7 +100,7 @@ opt_leading_bar:
 
 match_case:
   | p=pattern ARROW e=expr
-      { (p, e) }
+  { (p, e, mkloc $startpos $endpos) }
 
 match_case_tail:
   | { [] } %prec BELOW_BAR
@@ -114,31 +109,31 @@ match_case_tail:
 
 op_expr:
   | left=op_expr PIPE_GT right=cons_expr
-    { with_expr_loc $startpos $endpos (EApp (right, [left])) }
+    { EApp (right, [left], mkloc $startpos $endpos) }
   | left=op_expr EQEQ right=cons_expr
-    { with_expr_loc $startpos $endpos (EBinary (Eq, left, right)) }
+    { EBinary (Eq, left, right, mkloc $startpos $endpos) }
   | e=cons_expr
       { e }
 
 cons_expr:
   | left=app_expr CONS right=cons_expr
-    { with_expr_loc $startpos $endpos (EBinary (SigCons, left, right)) }
+    { EBinary (SigCons, left, right, mkloc $startpos $endpos) }
   | e=app_expr
       { e }
 
 app_expr:
-  | WAIT e1=atom { with_expr_loc $startpos $endpos (EUnary(UWait, e1)) }
-  | TAIL e1=atom { with_expr_loc $startpos $endpos (EUnary(UTail, e1)) }
-  | SYNC e1=atom e2=atom { with_expr_loc $startpos $endpos (EBinary(BSync, e1, e2)) }
-  | WATCH e1=atom { with_expr_loc $startpos $endpos (EUnary(UWatch, e1)) }
-  | LATERAPP e1=atom e2=atom { with_expr_loc $startpos $endpos (EBinary(BLaterApp, e1, e2)) }
-  | DELAY e1=atom { with_expr_loc $startpos $endpos (EUnary(UDelay, e1)) }
-  | OSTAR e1=atom e2=atom { with_expr_loc $startpos $endpos (EBinary(BOStar, e1, e2)) }
+  | WAIT e1=atom { EUnary(UWait, e1, mkloc $startpos $endpos) }
+  | TAIL e1=atom { EUnary(UTail, e1, mkloc $startpos $endpos) }
+  | SYNC e1=atom e2=atom { EBinary(BSync, e1, e2, mkloc $startpos $endpos) }
+  | WATCH e1=atom { EUnary(UWatch, e1, mkloc $startpos $endpos) }
+  | LATERAPP e1=atom e2=atom { EBinary(BLaterApp, e1, e2, mkloc $startpos $endpos) }
+  | DELAY e1=atom { EUnary(UDelay, e1, mkloc $startpos $endpos) }
+  | OSTAR e1=atom e2=atom { EBinary(BOStar, e1, e2, mkloc $startpos $endpos) }
   | head=atom tail=app_args
       {
         match tail with
         | [] -> head
-        | args -> with_expr_loc $startpos $endpos (EApp (head, args))
+        | args -> EApp (head, args, mkloc $startpos $endpos)
       }
 
 app_args:
@@ -146,14 +141,14 @@ app_args:
   | a=atom rest=app_args { a :: rest }
 
 atom:
-  | x=ID { with_expr_loc $startpos $endpos (EVar x) }
-  | i=INT { with_expr_loc $startpos $endpos (EConst (CInt i)) }
-  | s=STRING { with_expr_loc $startpos $endpos (EConst (CString s)) }
-  | TRUE { with_expr_loc $startpos $endpos (EConst (CBool true)) }
-  | FALSE { with_expr_loc $startpos $endpos (EConst (CBool false)) }
-  | UNIT { with_expr_loc $startpos $endpos (EConst CUnit) }
-  | NEVER { with_expr_loc $startpos $endpos (EConst CNever) }
-  | LPAREN es=tuple_expr_list RPAREN { with_expr_loc $startpos $endpos (tuple_expr_of_list es) }
+  | x=ID { EVar (x, mkloc $startpos $endpos) }
+  | i=INT { EConst (CInt i, mkloc $startpos $endpos) }
+  | s=STRING { EConst (CString s, mkloc $startpos $endpos) }
+  | TRUE { EConst (CBool true, mkloc $startpos $endpos) }
+  | FALSE { EConst (CBool false, mkloc $startpos $endpos) }
+  | UNIT { EConst (CUnit, mkloc $startpos $endpos) }
+  | NEVER { EConst (CNever, mkloc $startpos $endpos) }
+  | LPAREN es=tuple_expr_list RPAREN { tuple_expr_of_list $startpos $endpos es }
   | LPAREN e=expr COLON ann=type_expr RPAREN { let _ = ann in e }
   | LPAREN e=expr RPAREN { e }
 
@@ -168,19 +163,19 @@ tuple_expr_list_tail:
 
 pattern:
   | p=pattern_atom CONS rest=pattern
-      { PSigCons (p, rest) }
+      { PSigCons (p, rest, mkloc $startpos $endpos) }
   | p=pattern_atom
       { p }
 
 pattern_atom:
   | UNDERSCORE { PWildcard }
-  | x=ID { PVar x }
-  | i=INT { PConst (CInt i) }
-  | s=STRING { PConst (CString s) }
-  | TRUE { PConst (CBool true) }
-  | FALSE { PConst (CBool false) }
-  | UNIT { PConst CUnit }
-  | LPAREN ps=tuple_pattern_list RPAREN { tuple_pattern_of_list ps }
+  | x=ID { PVar (x, mkloc $startpos $endpos) }
+  | i=INT { PConst (CInt i, mkloc $startpos $endpos) }
+  | s=STRING { PConst (CString s, mkloc $startpos $endpos) }
+  | TRUE { PConst (CBool true, mkloc $startpos $endpos) }
+  | FALSE { PConst (CBool false, mkloc $startpos $endpos) }
+  | UNIT { PConst (CUnit, mkloc $startpos $endpos) }
+  | LPAREN ps=tuple_pattern_list RPAREN { tuple_pattern_of_list $startpos $endpos ps }
   | LPAREN p=pattern RPAREN { p }
 
 tuple_pattern_list:

@@ -21,100 +21,107 @@ type binary_op =
 (** Source location for an expression node *)
 type location = Location.t
 
-type pattern =
+type typ = 
+  | TVar of string
+  | TFun of typ list * typ
+  | TSignal of typ
+  | TTuple of typ * typ
+  (* could include type variables, type constructors, etc. *)
+
+type parsed (* just parsed *)
+type typed (* typechecking *)
+
+type _ ann =
+  | Ann_parsed : Location.t -> parsed ann
+  | Ann_typed : Location.t * typ -> typed ann
+
+type _ pattern =
   | PWildcard
-  | PVar of string
-  | PConst of const
-  | PTuple of pattern * pattern
-  | PSigCons of pattern * pattern
+  | PVar : string * 's ann -> 's pattern 
+  | PConst : const * 's ann -> 's pattern
+  | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
+  | PSigCons : 's pattern * 's pattern * 's ann -> 's pattern
+  | PLeft : 's pattern * 's ann -> 's pattern
+  | PRight : 's pattern * 's ann -> 's pattern
+  | PBoth : 's pattern * 's pattern * 's ann -> 's pattern
+  (* could include more complex patterns like lists, records, etc. *)
 
-type expr =
-  | EConst of const
-  | EVar of string
-  | ELet of string * expr * expr    (* variable binding *)
-  | EFun of string list * expr      (* Rizzo has functions with 1 parameter *)
-  | EApp of expr * expr list        (* Rizzo has applications with 1 arg *)
-  | EUnary of unary_op * expr
-  | EBinary of binary_op * expr * expr
-  | ETuple of expr * expr
-  | ECase of expr * case_branch list
-  | EIfe of expr * expr * expr      (* if-then-else *) 
+type _ expr =
+  | EConst : const * 's ann -> 's expr
+  | EVar : 's name -> 's expr
+  | ELet : 's name * 's expr * 's expr * 's ann -> 's expr   (* variable binding *)
+  | EFun : 's name list * 's expr * 's ann -> 's expr        (* Rizzo has functions with 1 parameter *)
+  | EApp : 's expr * 's expr list * 's ann -> 's expr        (* Rizzo has applications with 1 arg *)
+  | EUnary : unary_op * 's expr  * 's ann -> 's expr
+  | EBinary : binary_op * 's expr * 's expr  * 's ann -> 's expr
+  | ETuple : 's expr * 's expr  * 's ann -> 's expr
+  | ECase : 's expr * 's case_branch list  * 's ann -> 's expr
+  | EIfe : 's expr * 's expr * 's expr  * 's ann -> 's expr      (* if-then-else *) 
+  (* | EPartialApp : 's expr * 's expr list  * 's ann -> 's expr *)
+and 's case_branch = 's pattern * 's expr  * 's ann
+and 's name = string * 's ann
 
-and case_branch = pattern * expr
-
-(* Note: Helper constructors with location tracking can be added when needed:
-   let mk_const ?(loc=Location.dummy) c = EConst c
-   let mk_var ?(loc=Location.dummy) x = EVar x
-   etc.
-*)
-
-type top_expr =
-  | TLet of string * expr
+type _ top_expr =
+  | TLet : string * 's expr  * 's ann -> 's top_expr
   (* could include types, modules idk *)
 
-type program = top_expr list
+type 'stage program  = 'stage top_expr list
 
 module ExprLocTable = Hashtbl.Make(struct
-  type t = expr
+  type t = parsed expr
   let equal a b = a == b
   let hash v = Hashtbl.hash (Obj.magic v : int)
 end)
 
 module TopExprLocTable = Hashtbl.Make(struct
-  type t = top_expr
+  type t = parsed top_expr
   let equal a b = a == b
   let hash v = Hashtbl.hash (Obj.magic v : int)
 end)
 
-let expr_locations : location ExprLocTable.t = ExprLocTable.create 1024
-let top_expr_locations : location TopExprLocTable.t = TopExprLocTable.create 128
+let get_location : type stage. stage ann -> Location.t = fun a ->
+  match a with
+  | Ann_parsed loc -> loc
+  | Ann_typed (loc, _) -> loc
 
-let clear_locations () =
-  ExprLocTable.clear expr_locations;
-  TopExprLocTable.clear top_expr_locations
-
-let register_expr_location (expr : expr) (loc : location) =
-  ExprLocTable.replace expr_locations expr loc
-
-let register_top_expr_location (top : top_expr) (loc : location) =
-  TopExprLocTable.replace top_expr_locations top loc
-
-let location_of_expr (expr : expr) : location option =
-  ExprLocTable.find_opt expr_locations expr
-
-let location_of_top_expr (top : top_expr) : location option =
-  TopExprLocTable.find_opt top_expr_locations top
+let expr_get_ann (e : _ expr) : _ ann =
+  match e with
+  | EConst (_, ann) | EVar (_, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
+  | EApp (_, _, ann) | EUnary (_, _, ann) | EBinary (_, _, _, ann)
+  | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann) -> ann
 
 let rec pattern_bound_vars = function
   | PWildcard | PConst _ -> []
-  | PVar x -> [x]
-  | PSigCons (p1, p2) | PTuple (p1, p2) -> pattern_bound_vars p1 @ pattern_bound_vars p2
+  | PVar (x, _) -> [x]
+  | PSigCons (p1, p2, _) | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
+  | PLeft (p, _) | PRight (p, _) -> pattern_bound_vars p
+  | PBoth (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
 
 let rec eq_expr a b = 
   match a, b with
-  | EConst c1, EConst c2 -> c1 = c2
-  | EVar x1, EVar x2 -> x1 = x2
-  | ELet (x1, e1_1, e1_2), ELet (x2, e2_1, e2_2) -> x1 = x2 && eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2
-  | EFun (params1, body1), EFun (params2, body2) -> params1 = params2 && eq_expr body1 body2
-  | EApp (f1, args1), EApp (f2, args2) -> eq_expr f1 f2 && List.for_all2 eq_expr args1 args2
-  | EUnary (op1, e1), EUnary (op2, e2) -> op1 = op2 && eq_expr e1 e2
-  | EBinary (op1, e11, e12), EBinary (op2, e21, e22) -> op1 = op2 && eq_expr e11 e21 && eq_expr e12 e22
-  | ETuple (e11, e12), ETuple (e21, e22) -> eq_expr e11 e21 && eq_expr e12 e22
-  | ECase (e1, cases1), ECase (e2, cases2) ->
+  | EConst (c1, _), EConst (c2,_) -> c1 = c2
+  | EVar (x1, _), EVar (x2, _) -> x1 = x2
+  | ELet (x1, e1_1, e1_2, _), ELet (x2, e2_1, e2_2, _) -> x1 = x2 && eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2
+  | EFun (params1, body1, _), EFun (params2, body2, _) -> params1 = params2 && eq_expr body1 body2
+  | EApp (f1, args1, _), EApp (f2, args2, _) -> eq_expr f1 f2 && List.for_all2 eq_expr args1 args2
+  | EUnary (op1, e1, _), EUnary (op2, e2, _) -> op1 = op2 && eq_expr e1 e2
+  | EBinary (op1, e11, e12, _), EBinary (op2, e21, e22, _) -> op1 = op2 && eq_expr e11 e21 && eq_expr e12 e22
+  | ETuple (e11, e12, _), ETuple (e21, e22, _) -> eq_expr e11 e21 && eq_expr e12 e22
+  | ECase (e1, cases1, _), ECase (e2, cases2, _) ->
     eq_expr e1 e2
     && List.length cases1 = List.length cases2
-    && List.for_all2 (fun (p1, b1) (p2, b2) -> eq_pattern p1 p2 && eq_expr b1 b2) cases1 cases2
-  | EIfe (e1_1, e1_2, e1_3), EIfe (e2_1, e2_2, e2_3) ->
+    && List.for_all2 (fun (p1, b1, _) (p2, b2, _) -> eq_pattern p1 p2 && eq_expr b1 b2) cases1 cases2
+  | EIfe (e1_1, e1_2, e1_3, _), EIfe (e2_1, e2_2, e2_3, _) ->
     eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2 && eq_expr e1_3 e2_3
   | _ -> false
 
 and eq_pattern a b =
   match a, b with
   | PWildcard, PWildcard -> true
-  | PVar x1, PVar x2 -> x1 = x2
-  | PConst c1, PConst c2 -> c1 = c2
-  | PTuple (a1, b1), PTuple (a2, b2) -> eq_pattern a1 a2 && eq_pattern b1 b2
-  | PSigCons (a1, b1), PSigCons (a2, b2) -> eq_pattern a1 a2 && eq_pattern b1 b2
+  | PVar (x1, _), PVar (x2, _) -> x1 = x2
+  | PConst (c1, _), PConst (c2, _) -> c1 = c2
+  | PTuple (a1, b1, _), PTuple (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
+  | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
   | _ -> false
 
 let pp_const out = function
@@ -126,29 +133,33 @@ let pp_const out = function
 
 let rec pp_pattern out = function
   | PWildcard -> Format.fprintf out "_"
-  | PVar x -> Format.fprintf out "%s" x
-  | PConst c -> pp_const out c
-  | PTuple (p1, p2) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
-  | PSigCons (p1, p2) -> Format.fprintf out "(%a :: %a)" pp_pattern p1 pp_pattern p2
+  | PVar (x, _) -> Format.fprintf out "%s" x
+  | PConst (c, _) -> pp_const out c
+  | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
+  | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: %a)" pp_pattern p1 pp_pattern p2
+  | PLeft (p, _) -> Format.fprintf out "Left %a" pp_pattern p
+  | PRight (p, _) -> Format.fprintf out "Right %a" pp_pattern p
+  | PBoth (p1, p2, _) -> Format.fprintf out "Both(%a, %a)" pp_pattern p1 pp_pattern p2
 
-let rec pp_case_branch out (p, b) =
+let rec pp_case_branch out (p, b, _ : _ case_branch) =
   let open Format in
   fprintf out "| %a ->@ %a" pp_pattern p pp_expr b
 
 and pp_expr out = 
   let open Format in
   function
-  | EConst c -> pp_const out c
-  | EVar x -> fprintf out "%s" x
-  | ELet (x, e1, e2) ->
+  | EConst (c,_) -> pp_const out c
+  | EVar (x, _) -> fprintf out "%s" x
+  | ELet ((x, _), e1, e2, _) ->
     fprintf out "@[<hov 2>let %s =@ %a@ in@ %a@]" x pp_expr e1 pp_expr e2
-  | EFun (params, body) ->
+  | EFun (names, body, _) ->
+    let params = List.map fst names in
     fprintf out "@[<hov 2>fun (%s) ->@ %a@]" (String.concat ", " params) pp_expr body
-  | EApp (f, args) ->
+  | EApp (f, args, _) ->
     fprintf out "@[<hov 2>%a(@[<hov>%a@])@]"
       pp_expr f
       (pp_print_list ~pp_sep:(fun out () -> fprintf out ",@ ") pp_expr) args
-  | EUnary (op, e) -> 
+  | EUnary (op, e, _) -> 
     let op_str = match op with 
     | Fst -> "fst" 
     | Snd -> "snd"
@@ -158,7 +169,7 @@ and pp_expr out =
     | UDelay -> "delay"
     in
     fprintf out "@[<hov 2>%s@ %a@]" op_str pp_expr e
-  | EBinary (op, e1, e2) ->
+  | EBinary (op, e1, e2, _) ->
     let op_str = match op with 
     | SigCons -> "::" 
     | BSync -> "sync"
@@ -173,26 +184,26 @@ and pp_expr out =
     | Leq -> "<="
     in
     fprintf out "@[<hov 2>(%a@ %s@ %a)@]" pp_expr e1 op_str pp_expr e2
-  | ETuple (e1, e2) -> fprintf out "@[<hov>(%a,@ %a)@]" pp_expr e1 pp_expr e2
-  | EIfe (e1, e2, e3) ->
+  | ETuple (e1, e2, _) -> fprintf out "@[<hov>(%a,@ %a)@]" pp_expr e1 pp_expr e2
+  | EIfe (e1, e2, e3, _) ->
     fprintf out "@[<v 2>(if %a@ then@ %a@ else@ %a)@]" pp_expr e1 pp_expr e2 pp_expr e3
-  | ECase (e, cases) ->
+  | ECase (e, cases, _) ->
     fprintf out "@[<v 0>(match %a with@,%a)@]"
       pp_expr e
       (pp_print_list ~pp_sep:(fun out () -> fprintf out "@,") pp_case_branch)
       cases
 
 let eq_top_expr a b = match a,b with
-  | TLet (x1, e1), TLet (x2, e2) -> x1 = x2 && eq_expr e1 e2 
+  | TLet (x1, e1, _), TLet (x2, e2, _) -> x1 = x2 && eq_expr e1 e2 
 
 let pp_top_expr out =
   function
-  | TLet (x, e) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
+  | TLet (x, e, _) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
 
 let eq_program a b = 
   List.length a = List.length b && List.for_all2 eq_top_expr a b
 
-let pp_program out (p:program) =
+let pp_program out (p: _ program) =
   let open Format in
   fprintf out "@[<v>%a@]"
     (pp_print_list ~pp_sep:(fun out () -> fprintf out "@.@.") pp_top_expr)

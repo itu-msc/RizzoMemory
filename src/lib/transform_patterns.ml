@@ -50,28 +50,28 @@ case b1 of
 
 *)
 open Ast
-let rec compile_pattern p scrutinee good bad  = 
+let rec compile_pattern p scrutinee good bad = 
   match p with
   | PWildcard -> good scrutinee
-  | PVar x -> ELet (x, scrutinee, good (EVar x))
-  | PConst c ->
+  | PVar (s, ann) -> ELet ((s, ann), scrutinee, good (EVar (s, ann)), ann)
+  | PConst (c, ann) ->
     let b = Utilities.new_name "test" in
-    let equality = EApp (EVar "equality", [scrutinee; EConst c]) in
-    ELet (b, equality, EIfe (EVar b, good scrutinee, bad ()))
-  | PTuple (p1, p2) ->
-    let t0 = Utilities.new_name "t" in
-    let t1 = Utilities.new_name "t" in
-    ELet (t0, EUnary (Fst, scrutinee), compile_pattern p1 (EVar t0) 
-      (fun _ -> ELet (t1, EUnary (Snd, scrutinee), compile_pattern p2 (EVar t1) good bad))
-      bad)
+    let equality = EApp (EVar ("equality", ann), [scrutinee; EConst (c, ann)], ann) in
+    ELet ((b, ann), equality, EIfe (EVar (b, ann), good scrutinee, bad (), ann), ann)
+  | PTuple (p1, p2, ann) ->
+    let t0 = Utilities.new_name "t", ann in
+    let t1 = Utilities.new_name "t", ann in
+    ELet (t0, EUnary (Fst, scrutinee, ann), compile_pattern p1 (EVar t0) 
+      (fun _ -> ELet (t1, EUnary (Snd, scrutinee, ann), compile_pattern p2 (EVar t1) good bad, ann))
+      bad, ann)
   | _ -> failwith "todo"
 and compile_match_cases scrutinee cases = 
   match cases with
   | [] -> failwith "Tried created another match branch - but there were no more cases in match expression"
-  | (pat, case) :: rest -> 
+  | (pat, case, _) :: rest -> 
     compile_pattern pat scrutinee
       (fun _ -> case) 
       (fun () -> compile_match_cases scrutinee rest)
 and compile_match e = match e with
-  | ECase (scrutinee, cases) -> compile_match_cases scrutinee cases
+  | ECase (scrutinee, cases, _) -> compile_match_cases scrutinee cases
   | _ -> e
