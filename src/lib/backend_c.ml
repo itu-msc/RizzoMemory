@@ -88,3 +88,4 @@ let emit_c_code (p:program) (filename:string) =
     | Refcount.Const CNever   -> "RZ_NEVER"
     | _ -> failwith "emit_primitive: todo"
   in emit_program p
+  

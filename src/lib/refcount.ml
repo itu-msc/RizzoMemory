@@ -10,9 +10,12 @@ type rexpr = (* expr in their RC IR *)
   | RCall of string * primitive list
   | RPartialApp of string * primitive list
   | RVarApp of string * primitive  (* TODO: do we want n-ary var-app? *)
-  | RCtor of int * primitive list
+  | RCtor of ctor
   | RSignal of { head: primitive; tail: primitive; } (* at runtime this will also include next/prev fields of heap, the tail can only be a var or never *)
   | RProj of int * string
+  | RReset of string
+  | RReuse of string * ctor
+and ctor = { tag: int; fields: primitive list }
 
 type fn_body = 
   | FnRet of primitive
@@ -29,13 +32,17 @@ let pp_primitive out = function
   | Var x -> Format.pp_print_string out x
   | Const c -> Ast.pp_const out c
 
-let pp_rexpr out = function
-  | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_primitive) ys
-  | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_primitive) ys
+let rec pp_rexpr out = 
+  let comma_separated pp out = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp out in
+  function
+  | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (comma_separated pp_primitive) ys
+  | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (comma_separated pp_primitive) ys
   | RVarApp (x, y) -> Format.fprintf out "%s %a" x pp_primitive y
-  | RCtor (i, ys) -> Format.fprintf out "Ctor%d(%a)" i (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_primitive) ys
-  | RSignal { head; tail } -> Format.fprintf out "Signal(%a, %a)" pp_primitive head pp_primitive tail
+  | RCtor {tag; fields} -> Format.fprintf out "Ctor%d(%a)" tag (comma_separated pp_primitive) fields
+  | RSignal {head; tail} -> Format.fprintf out "Signal(%a, %a)" pp_primitive head pp_primitive tail
   | RProj (i, x) -> Format.fprintf out "proj_%d %s" i x
+  | RReset x -> Format.fprintf out "reset %s" x
+  | RReuse (x, {tag; fields}) -> Format.fprintf out "reuse %s in Ctor%d(%a)" x tag (comma_separated pp_primitive) fields
 
 let rec pp_fnbody out = function
   | FnRet x -> Format.fprintf out "ret %a" pp_primitive x
@@ -72,9 +79,9 @@ let rec free_vars_expr (env: StringSet.t) = function
   | RVarApp (x, y) ->
       let acc = if StringSet.mem x env then StringSet.empty else StringSet.singleton x in
       add_if_member y acc
-  | RCtor (_i, ys) ->
-      List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty ys
-  | RProj (_i, x) ->
+  | RCtor { tag = _; fields } ->
+      List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty fields
+  | RProj ( _, x) ->
       if StringSet.mem x env then StringSet.empty else StringSet.singleton x
   | RSignal { head; tail } ->
       let acc =
@@ -83,6 +90,11 @@ let rec free_vars_expr (env: StringSet.t) = function
         | _ -> StringSet.empty 
       in
       add_if_member tail acc
+  | RReset x ->
+      if StringSet.mem x env then StringSet.empty else StringSet.singleton x
+  | RReuse (x, { tag = _; fields }) ->
+      let acc = if StringSet.mem x env then StringSet.empty else StringSet.singleton x in
+      List.fold_left (fun acc y -> add_if_member y acc) acc fields
 and free_vars_fn (env: StringSet.t) = function
   | FnRet x -> 
     (match x with
@@ -181,13 +193,18 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
   | FnLet (z, RVarApp (x,y), f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app [Var x;y] [Owned; Owned] (FnLet (z, RVarApp(x,y), compiled_f)) var_ownerships
-  | FnLet (z, RCtor(i,ys), f) ->
-    let bs = List.map (fun _ -> Owned) ys in
+  | FnLet (z, (RCtor { tag = _; fields} as ctor), f) ->
+    let bs = List.map (fun _ -> Owned) fields in
     let compiled_f = insert_rc f var_ownerships func_ownerships in
-    c_app ys bs (FnLet (z, RCtor(i,ys), compiled_f)) var_ownerships
+    c_app fields bs (FnLet (z, ctor, compiled_f)) var_ownerships
   | FnLet (z, RSignal { head; tail }, f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app [head; tail] [Owned; Owned] (FnLet (z, RSignal { head; tail }, compiled_f)) var_ownerships
+  | FnLet (z, RReset x, f) ->
+    let compiled_f = insert_rc f var_ownerships func_ownerships in FnLet (z, RReset x, compiled_f)
+  | FnLet (z, (RReuse (_, { tag = _; fields }) as reuse), f) ->
+    let compiled_f = insert_rc f var_ownerships func_ownerships in
+    c_app fields (List.map (fun _ -> Owned) fields) (FnLet (z, reuse, compiled_f)) var_ownerships
   | FnInc _ | FnDec _ -> failwith "Increment and Decrement should not exist prior to this step!"
 
 and c_app (vars: primitive list) (bs: ownership list) (_f:fn_body) beta_env : fn_body = 
@@ -227,6 +244,8 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
     StringSet.union (collect func_ownerships rest) (StringSet.singleton x)
   | FnLet (_, RPartialApp (_, xs), rest) -> (*c must be the OWNED VERSION - THAT IS A COPY OF c WHERE ALL PARAMS ARE OWNED*)
     StringSet.union (collect func_ownerships rest) (StringSet.of_list @@ List.filter_map (function | Var v -> Some v | _ -> None) xs)
+  | FnLet (_, RReset x, f) -> StringSet.union (collect func_ownerships f) (StringSet.singleton x)
+  | FnLet (_, RReuse _, rest) -> collect func_ownerships rest
   | FnLet (z, RProj (_, x), rest) ->
     let fcol = collect func_ownerships rest in
     match StringSet.mem z fcol with
@@ -346,3 +365,48 @@ let infer_all ?(builtins:parameter_ownership = StringMap.empty) (p:program) : pa
     )
   done;
   !beta
+
+(** Inserts reset/reuse pairs into all global functions of a program [p] 
+    This transformation should be performed before calling [insert_rc]
+*)
+let rec insert_reset_and_reuse_pairs_program (p: program) : program =
+  p
+
+(** Inserts reset/reuse pairs into [body]. Ullrich & De Moura call it 'R' *)
+and insert_reset_and_reuse_pairs_fn body = match body with
+  | FnRet _ -> body
+  | FnLet (x, e, f) -> FnLet (x, e, insert_reset_and_reuse_pairs_fn f)
+  | FnCase (s, cases) -> 
+    let num_fields: int = failwith "what to do?" in
+    FnCase (s, List.map (fun c -> 
+      (* TODO: We need to get the actual number of fields from the constructors. type inference??*) 
+      insert_reset s num_fields c) cases)
+  | FnInc _ | FnDec _ -> 
+    failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
+
+(** Inserts resets of variable [z] with number of constructor fields [num_fields] into [fn_body]. 
+    Ullrich & De Moura call it 'D' *)
+and insert_reset z num_fields fn_body = 
+  match fn_body with
+  | FnCase (s, cases) -> FnCase (s, List.map (insert_reset z num_fields) cases)
+  | FnRet _ -> fn_body
+  | FnLet (x, e, f) when free_vars_expr StringSet.empty e |> StringSet.mem z -> FnLet (x, e, insert_reset z num_fields f)
+  | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
+  | _ ->
+    let w = Utilities.new_var () in
+    let reuse_fn_body = insert_reuse w num_fields fn_body in
+    if reuse_fn_body <> fn_body then
+      FnLet(w, RReset z, reuse_fn_body)
+    else
+      fn_body
+
+(** Inserts reuse instructions into [fn_body] for variable [w] with number of constructor fields [num_fields] 
+    Ullrich & De Moura call it 'S' *)
+and insert_reuse w num_fields fn_body: fn_body =
+  match fn_body with
+  | FnCase (s, cases) -> FnCase (s, List.map (insert_reuse w num_fields) cases)
+  | FnRet _ -> fn_body
+  | FnLet (x, RCtor{tag; fields}, f) when List.length fields = num_fields ->
+      FnLet (x, RReuse (w, {tag; fields}), f) 
+  | FnLet (x, e, f) -> FnLet (x, e, insert_reuse w num_fields f)
+  | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
