@@ -45,6 +45,32 @@ function updateStatusBar(): void {
     }
 }
 
+async function restartLanguageServer(): Promise<void> {
+    if (!client) {
+        await vscode.window.showWarningMessage("Rizz LSP is not running.");
+        return;
+    }
+
+    const shouldStop = currentState !== State.Stopped;
+    currentState = State.Starting;
+    updateStatusBar();
+
+    try {
+        if (shouldStop) {
+            await client.stop();
+        }
+        await client.start();
+        currentState = State.Running;
+        updateStatusBar();
+        await vscode.window.showInformationMessage("Rizz LSP server restarted.");
+    } catch (error) {
+        currentState = State.Stopped;
+        updateStatusBar();
+        const message = error instanceof Error ? error.message : String(error);
+        await vscode.window.showErrorMessage(`Failed to restart Rizz LSP server: ${message}`);
+    }
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const config = vscode.workspace.getConfiguration("rizzLsp");
     let command = config.get<string>("server.command", "opam");
@@ -119,6 +145,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             } else {
                 await vscode.window.showWarningMessage(`Rizz LSP health warning\n${message}`);
             }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("rizzLsp.restartServer", async () => {
+            await restartLanguageServer();
         })
     );
 

@@ -14,6 +14,11 @@ This VS Code extension starts the local `rizzolsp` language server for `.rizz` f
 - Workspace opened at the RizzoMemory repository root
 - Buildable server command: `opam exec -- dune exec rizzolsp`
 
+## Commands
+
+- `Rizz: Check LSP Health`
+- `Rizz: Restart LSP Server`
+
 ## Settings
 
 - `rizzLsp.server.command`

@@ -23,6 +23,11 @@
                 "command": "rizzLsp.checkHealth",
                 "title": "Rizz: Check LSP Health",
                 "category": "Rizz"
+            },
+            {
+                "command": "rizzLsp.restartServer",
+                "title": "Rizz: Restart LSP Server",
+                "category": "Rizz"
             }
         ],
         "languages": [
