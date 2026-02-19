@@ -8,14 +8,7 @@ let entry = fun x ->
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in
     let t = 2 in
-    //currently console just produces ints, so its okay
     let reactive_signal = 42 :: my_console_sig in
     let y = output_int_signal my_int_sig in 
     let z = output_int_signal reactive_signal in
     start_event_loop ()
-
-// let entry = fun x -> 
-//     let s1 = (1,2) in 
-//     let s2 = (3,4) in
-//     let s3 = (5,6) in
-//     snd ((fst s3, fst s1), fst s2)

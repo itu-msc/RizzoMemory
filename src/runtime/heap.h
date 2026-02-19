@@ -45,6 +45,7 @@ static rz_object_t* rz_signal_ctor(rz_box_t head, rz_box_t tail) {
         exit(1);
     }
 
+    //TODO: swap around, prev should be cursor.prev, next is cursor
     rz_signal_t* prev = (rz_signal_t*)rz_heap_cursor;
     rz_signal_t* next = (rz_signal_t*)rz_heap_cursor->next.as.obj;
 
@@ -115,6 +116,9 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v) {
             rz_heap_cursor->updated.as.i32 = true;
             rz_refcount_inc_box(l->head);
             rz_refcount_inc_box(l->tail);
+            //TODO: make sure we refcount the correct things :)
+            // rz_refcount_dec_box(rz_heap_cursor->head);
+            // rz_refcount_dec_box(rz_heap_cursor->tail);
             rz_heap_cursor->head = l->head;
             rz_heap_cursor->tail = l->tail;
             rz_refcount_dec_box(l_boxed);
