@@ -22,6 +22,11 @@
         {
             "name": "comment.line.double-slash.rizz",
             "match": "//.*$"
+        },
+        {
+            "name": "comment.block.rizz",
+            "begin": "/\\*",
+            "end": "\\*/"
         }
     ],
     "uuid": "f58b8db5-74dc-4d53-a0f7-9ec52e4ea999"
