@@ -1,12 +1,20 @@
 fun customFunc x = x :: never
 
+// This is a commentsdafasdfsd
+/*
+sdfasdfasdf
+asdf
+asdf
+asdf
+*/
+
 fun nestedFunc x = 
     let inner = fun y -> fun z -> x :: delay y :: z in
     inner :: never
 
 fun main x = 
     let mysync = sync 2 4 in 
-    let thing = mysync :: customFunc 3 in
+    let thing = mysync :: customFunc 4 in
     let conditional = (if (thing == 3) then (thing :: mysync) else thing) in
     match thing with
     | 4 -> (thing, wait mysync)

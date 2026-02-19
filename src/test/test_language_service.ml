@@ -200,6 +200,57 @@ let test_semantic_tokens_include_function_parameters () =
        ~kind:Language_service.SemanticVariable
        ~declaration:false)
 
+let test_semantic_tokens_after_line_comment () =
+  let text =
+    "let x = 1 // keep this comment\n"
+    ^ "let y = x\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "second let declaration keeps correct line after line comment"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:4
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false);
+  Alcotest.(check bool)
+    "reference after line comment keeps correct line"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:8
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false)
+
+let test_semantic_tokens_after_block_comment () =
+  let text =
+    "let x = 1 /* first line\n"
+    ^ "second line */\n"
+    ^ "let y = x\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "second let declaration keeps correct line after block comment"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:2
+       ~character:4
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false);
+  Alcotest.(check bool)
+    "reference after block comment keeps correct line"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:2
+       ~character:8
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false)
+
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
@@ -210,6 +261,8 @@ let tests = [
   "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
   "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
   "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
+  "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
+  "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
   "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in

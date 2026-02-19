@@ -13,7 +13,6 @@ include Parser
 exception Error of Location.t * string
 
 let parse_with lexbuf =
-  Ast.clear_locations ();
   try Parser.main Lexer.read lexbuf 
   with
   | Lexer.Error _ as exn ->
@@ -76,7 +75,7 @@ module Transformations = struct
       "div", [RefCount.Borrowed; RefCount.Borrowed];
     ]
 
-  let auto_ref_count (program: Ast.program) = 
+  let auto_ref_count (program: Ast.parsed Ast.program) = 
     let module StringMap = Map.Make(String) in
     let constants = to_rc_ir program in
     let beta = Refcount.infer_all ~builtins:builtins constants in

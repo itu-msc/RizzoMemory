@@ -93,12 +93,13 @@ rule read = parse
     }
 
 and line_comment = parse
-  | '\n' { () }
+  | '\n' { Lexing.new_line lexbuf; () }
   | eof { () }
   | _ { line_comment lexbuf }
 
 and block_comment = parse
   | "*/" { () }
+  | '\n' { Lexing.new_line lexbuf; block_comment lexbuf }
   | eof { error lexbuf "Unterminated block comment" }
   | _ { block_comment lexbuf }
 

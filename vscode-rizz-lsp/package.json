@@ -2,7 +2,7 @@
     "name": "rizz-lsp",
     "displayName": "Rizz Language Support",
     "description": "Language Server Protocol client for .rizz files",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "publisher": "local",
     "license": "MIT",
     "repository": {
@@ -82,7 +82,7 @@
         "watch": "tsc -watch -p ./",
         "vscode:prepublish": "npm run typecheck && npm run bundle",
         "package:vsix": "vsce package",
-        "install:local": "npm run package:vsix && code --install-extension rizz-lsp-0.0.2.vsix --force"
+        "install:local": "npm run package:vsix && code --install-extension rizz-lsp-0.0.3.vsix --force"
     },
     "devDependencies": {
         "@vscode/vsce": "^3.7.1",
