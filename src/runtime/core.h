@@ -29,6 +29,7 @@ static inline uint16_t rz_object_tag(rz_object_t* obj) {
 
 typedef enum {
     RZ_BOX_INT,
+    RZ_BOX_STRING_LITERAL,
     RZ_BOX_PTR,
     RZ_BOX_SIGNAL 
 } rz_box_kind_t;
@@ -39,11 +40,12 @@ typedef struct rz_box {
         int32_t i32;
         void* fun;
         rz_object_t* obj;
+        char* str; /*pointer so its keeps the size of the struct */
     } as; 
 } rz_box_t;
 
 bool rz_is_boxed(rz_box_t box) {
-    return box.kind == RZ_BOX_INT;
+    return box.kind == RZ_BOX_INT || box.kind == RZ_BOX_STRING_LITERAL;
 }
 
 static inline rz_box_t rz_make_int(int32_t v) {
@@ -60,6 +62,14 @@ static inline rz_box_t rz_make_ptr(rz_object_t* obj) {
 
 static inline rz_object_t* rz_unbox_ptr(rz_box_t box) {
     return box.as.obj;
+}
+
+static inline rz_box_t rz_make_str_lit(char* str) {
+    return (rz_box_t){.kind = RZ_BOX_STRING_LITERAL, .as.str = str };
+}
+
+static inline char* rz_unbox_str_lit(rz_box_t box) {
+    return box.as.str;
 }
 
 /* TODO: double check that booleans are never reference counted */
@@ -134,9 +144,9 @@ static rz_object_t* rz_reset_object(rz_object_t* obj) {
 }
 
 /* assuming obj.num_fields = len(args) - that should've been guaranteed by the refcount module */
-static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, rz_box_t* args) {
+static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_fields, rz_box_t* args) {
     /* reuse-shared */
-    if(obj == NULL) return rz_ctor(tag, obj->header.num_fields, args);
+    if(obj == NULL) return rz_ctor(tag, num_fields, args);
     /* reuse-unique */
     obj->header.tag = tag;
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
@@ -272,6 +282,9 @@ static inline void rz_debug_print_box(rz_box_t box) {
     switch (box.kind) {
         case RZ_BOX_INT: {
             printf("%d", box.as.i32);
+        } break;
+        case RZ_BOX_STRING_LITERAL: {
+            printf("%s", rz_unbox_str_lit(box));
         } break;
         case RZ_BOX_SIGNAL:
         case RZ_BOX_PTR: {

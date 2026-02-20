@@ -61,19 +61,7 @@ module Transformations = struct
   let eliminate_patterns = Transform_patterns.transform_patterns
   let ast_to_rc_ir = Transform_rc.to_rc_intermediate_representation
   
-  let builtins = 
-    let module StringMap = Map.Make(String) in
-    StringMap.of_list [
-      "start_event_loop", [RefCount.Borrowed];  (* Unit -> Unit *)
-      "output_int_signal", [RefCount.Owned]; (* Signal(Int) -> Unit *)
-      "eq", [RefCount.Borrowed; RefCount.Borrowed];
-      "lt", [RefCount.Borrowed; RefCount.Borrowed];
-      "leq", [RefCount.Borrowed; RefCount.Borrowed];
-      "add", [RefCount.Borrowed; RefCount.Borrowed];
-      "sub", [RefCount.Borrowed; RefCount.Borrowed];
-      "mul", [RefCount.Borrowed; RefCount.Borrowed];
-      "div", [RefCount.Borrowed; RefCount.Borrowed];
-      ]
+  let builtins = Rizzo_builtins.builtins_ownerships_map
   
   let auto_ref_count (program: Ast.parsed Ast.program) = 
     let program = ast_to_rc_ir builtins program in

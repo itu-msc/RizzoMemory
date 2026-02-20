@@ -62,12 +62,15 @@ module LocalsEnv = Set.Make(String)
 
 let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr = 
   match e with
-  | EApp (EVar ("fst", _), [EVar (x, _)], _)
-  | EApp (EVar ("head", _), [EVar (x, _)], _) -> RProj (0, x) 
-  | EApp (EVar ("snd", _), [EVar (x, _)], _) -> RProj (1, x) (*TODO: parser doesn't accept these*)
-  (*TODO: move these into some other places*)
-  | EApp (EVar ("output_int_signal", _), [signal], _) -> RCall ("output_int_signal", [get_name signal])
-  | EApp (EVar ("start_event_loop", _), [_], _) -> RCall ("start_event_loop", [Refcount.Const (CUnit)])
+  | EApp (EVar (f, _), [EVar (x, _)], _) when Rizzo_builtins.is_builtin_projection f ->
+    let proj_idx = (Rizzo_builtins.get f).projection_index |> Option.get in
+    RProj (proj_idx, x)
+  | EApp (EVar (f, _), args, _) when Rizzo_builtins.is_builtin f -> 
+    (match Rizzo_builtins.get f with
+    | { param_ownership = Some ownerships; _ } when List.length ownerships = List.length args -> 
+      RCall (f, List.map get_name args)
+    | _ -> RPartialApp (f, List.map get_name args)
+    )
   | EApp (EVar (f, _), xs, _) when LocalsEnv.mem f locals ->
     if List.length xs = 1 then RVarApp(f, get_name (List.hd xs))
     else 
