@@ -16,7 +16,9 @@ fun main x =
     let mysync = sync 2 4 in 
     let thing = mysync :: customFunc 4 in
     let conditional = (if (thing == 3) then (thing :: mysync) else thing) in
-    match thing with
-    | 4 -> (thing, wait mysync)
-    | 6 -> (wait mysync, "thing thing \n", "sdafdsaf")
+    let t = match thing with
+            | 4 -> (thing, wait mysync)
+            | 6 -> (wait mysync, "thing thing \n", "sdafdsaf")
+    in
+    conditional :: nestedFunc 5 :: t_but_not_really
 

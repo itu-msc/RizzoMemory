@@ -101,8 +101,8 @@ let rec eq_expr a b =
   match a, b with
   | EConst (c1, _), EConst (c2,_) -> c1 = c2
   | EVar (x1, _), EVar (x2, _) -> x1 = x2
-  | ELet (x1, e1_1, e1_2, _), ELet (x2, e2_1, e2_2, _) -> x1 = x2 && eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2
-  | EFun (params1, body1, _), EFun (params2, body2, _) -> params1 = params2 && eq_expr body1 body2
+  | ELet (x1, e1_1, e1_2, _), ELet (x2, e2_1, e2_2, _) -> eq_name x1 x2 && eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2
+  | EFun (params1, body1, _), EFun (params2, body2, _) -> List.for_all2 eq_name params1 params2 && eq_expr body1 body2
   | EApp (f1, args1, _), EApp (f2, args2, _) -> eq_expr f1 f2 && List.for_all2 eq_expr args1 args2
   | EUnary (op1, e1, _), EUnary (op2, e2, _) -> op1 = op2 && eq_expr e1 e2
   | EBinary (op1, e11, e12, _), EBinary (op2, e21, e22, _) -> op1 = op2 && eq_expr e11 e21 && eq_expr e12 e22
@@ -114,6 +114,7 @@ let rec eq_expr a b =
   | EIfe (e1_1, e1_2, e1_3, _), EIfe (e2_1, e2_2, e2_3, _) ->
     eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2 && eq_expr e1_3 e2_3
   | _ -> false
+and eq_name (a: _ name) (b: _ name) = fst a = fst b
 
 and eq_pattern a b =
   match a, b with

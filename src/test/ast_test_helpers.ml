@@ -1,5 +1,6 @@
 open Rizzoc
-open Rizzoc.Ast
+open! Rizzoc.Ast
+open! Rizzoc.RefCount
 
 let dummy_pos : Lexing.position =
   {
@@ -43,8 +44,16 @@ let case (scrutinee : parsed expr) (branches : (parsed pattern * parsed expr) li
 
 let tlet (n : string) (e : parsed expr) : parsed top_expr = TLet (n, e, ann)
 
-let program_testable : parsed program Alcotest.testable =
+let program_testable : parsed Ast.program Alcotest.testable =
   Alcotest.testable Ast.pp_program Ast.eq_program
 
 let expr_testable : parsed expr Alcotest.testable =
   Alcotest.testable Ast.pp_expr Ast.eq_expr
+
+let fnbody_testable : RefCount.fn_body Alcotest.testable =
+  Alcotest.testable RefCount.pp_fnbody RefCount.eq_fnbody
+
+let fn_testable : RefCount.fn Alcotest.testable =
+  Alcotest.testable
+    (fun fmt fn -> RefCount.pp_fn fmt ("", fn))
+    (fun fn1 fn2 -> RefCount.eq_fn ("", fn1) ("", fn2))

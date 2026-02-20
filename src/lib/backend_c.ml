@@ -34,7 +34,7 @@ let emit_c_code (p:program) (filename:string) =
       emit_fn_body body
     | FnCase (scrutinee, branches) ->
       write (Printf.sprintf "switch (rz_object_tag(rz_unbox_ptr(%s))) {\n" scrutinee);
-      branches 
+      List.map snd branches 
       |> List.iteri (fun tag branch_fn -> 
         write (Printf.sprintf "case %d:\n" tag);
         emit_fn_body branch_fn;

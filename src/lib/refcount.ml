@@ -20,13 +20,15 @@ and ctor = { tag: int; fields: primitive list }
 type fn_body = 
   | FnRet of primitive
   | FnLet of string * rexpr * fn_body
-  | FnCase of string * fn_body list
+  | FnCase of string * (int * fn_body) list
   | FnInc of string * fn_body
   | FnDec of string * fn_body
 
 type fn = Fun of string list * fn_body
 
 type program = (string * fn) list
+
+let get_cases = List.map snd
 
 let pp_primitive out = function
   | Var x -> Format.pp_print_string out x
@@ -53,7 +55,7 @@ let rec pp_fnbody out = function
         Format.fprintf out "@[<hov 2>| %a@]" pp_fnbody f
       in
       Format.fprintf out "match %s with@,  @[%a@]" x
-        (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_branch) fs
+        (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_branch) (get_cases fs)
   | FnInc (x, f) -> Format.fprintf out "inc %s;@ %a" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "dec %s;@ %a" x pp_fnbody f
 
@@ -64,6 +66,38 @@ let pp_ref_counted_program out (p: program) =
       pp_fnbody body
   in
   Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_fn) p
+
+let pp_fn out (name, Fun (params, body)) =
+  Format.fprintf out "fun %s(%a) =@,  @[<v>%a@]" name
+    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) params
+    pp_fnbody body
+  
+let rec eq_program (a:program) (b:program) = List.for_all2 eq_fn a b
+and eq_fn (n1, Fun (p1, b1)) (n2, Fun (p2, b2)) = 
+  n1 = n2 
+  && List.for_all2 String.equal p1 p2 
+  && eq_fnbody b1 b2
+and eq_fnbody f1 f2 =
+  match f1, f2 with
+  | FnRet p1, FnRet p2 -> p1 = p2
+  | FnLet (x1, r1, f1), FnLet (x2, r2, f2) -> x1 = x2 && r1 = r2 && eq_fnbody f1 f2
+  | FnCase (x1, fs1), FnCase (x2, fs2) ->
+      x1 = x2 &&
+      List.length fs1 = List.length fs2 &&
+      List.for_all2 (fun (i1, f1) (i2, f2) -> i1 = i2 && eq_fnbody f1 f2) fs1 fs2
+  | FnInc (x1, f1), FnInc (x2, f2) -> x1 = x2 && eq_fnbody f1 f2
+  | FnDec (x1, f1), FnDec (x2, f2) -> x1 = x2 && eq_fnbody f1 f2
+  | _ -> false
+and eq_rexpr a b = match a, b with
+  | RCall (c1, ps1), RCall (c2, ps2) -> c1 = c2 && ps1 = ps2
+  | RPartialApp (c1, ps1), RPartialApp (c2, ps2) -> c1 = c2 && ps1 = ps2
+  | RVarApp (x1, p1), RVarApp (x2, p2) -> x1 = x2 && p1 = p2
+  | RCtor { tag = t1; fields = f1 }, RCtor { tag = t2; fields = f2 } -> t1 = t2 && f1 = f2
+  | RSignal { head = h1; tail = t1 }, RSignal { head = h2; tail = t2 } -> h1 = h2 && t1 = t2
+  | RProj (i1, x1), RProj (i2, x2) -> i1 = i2 && x1 = x2
+  | RReset x1, RReset x2 -> x1 = x2
+  | RReuse (x1, { tag = t1; fields = f1 }), RReuse (x2, { tag = t2; fields = f2 }) -> x1 = x2 && t1 = t2 && f1 = f2
+  | _ -> false
 
 (* The parameter list *)
 let delta (p:program) (x:string) = List.assoc_opt x p
@@ -103,7 +137,7 @@ and free_vars_fn (env: StringSet.t) = function
   | FnLet (x, rhs, f) -> StringSet.union (free_vars_expr env rhs) (free_vars_fn (StringSet.add x env) f)
   | FnCase (x, fs) ->
       let env' = StringSet.add x env in
-      List.fold_left (fun acc f -> StringSet.union acc (free_vars_fn env' f)) StringSet.empty fs
+      List.fold_left (fun acc f -> StringSet.union acc (free_vars_fn env' f)) StringSet.empty (get_cases fs)
   | FnInc (x, f) | FnDec (x, f) ->
       if StringSet.mem x env then free_vars_fn env f
       else StringSet.add x (free_vars_fn env f)
@@ -171,8 +205,8 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
   | FnRet x -> insert_inc x StringSet.empty _f var_ownerships
   | FnCase (x, fs) as case -> 
     let ys = StringSet.to_list (free_vars case) |> List.map (fun s -> Var s) in
-    let compiled_fs = List.map (fun f -> insert_dec_many ys (insert_rc f var_ownerships func_ownerships) var_ownerships) fs in
-    FnCase (x, compiled_fs)
+    let compiled_fs = List.map (fun (n, f) -> (n, insert_dec_many ys (insert_rc f var_ownerships func_ownerships) var_ownerships)) fs in
+    FnCase (x, compiled_fs) 
   (* The Lets*)
   | FnLet (y, RProj (i, x), f) -> 
     (match lookup var_ownerships x with
@@ -224,7 +258,7 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
   match _f with
   | FnRet _ -> StringSet.empty
   | FnCase (_, cases) ->
-    List.fold_left (fun acc case -> StringSet.union acc (collect func_ownerships case)) StringSet.empty cases
+    List.fold_left (fun acc case -> StringSet.union acc (collect func_ownerships case)) StringSet.empty (get_cases cases)
   | FnInc _ | FnDec _ -> failwith "no inc/dec in collect"
   (* The lets *)
   | FnLet (_, RCtor _, rest)
@@ -290,7 +324,7 @@ let build_callers (p:program) : StringSet.t StringMap.t =
     | FnRet _ -> callers
     | FnInc (_, f) | FnDec (_, f) -> scan_body caller callers f
     | FnCase (_, arms) ->
-        List.fold_left (scan_body caller) callers arms
+        List.fold_left (scan_body caller) callers (get_cases arms)
     | FnLet (_, rhs, rest) ->
         let callers =
           match rhs with
@@ -370,17 +404,14 @@ let infer_all ?(builtins:parameter_ownership = StringMap.empty) (p:program) : pa
     This transformation should be performed before calling [insert_rc]
 *)
 let rec insert_reset_and_reuse_pairs_program (p: program) : program =
-  p
+  List.map (fun (name, Fun(params, body)) -> name, (Fun(params, insert_reset_and_reuse_pairs_fn body))) p
 
 (** Inserts reset/reuse pairs into [body]. Ullrich & De Moura call it 'R' *)
 and insert_reset_and_reuse_pairs_fn body = match body with
   | FnRet _ -> body
   | FnLet (x, e, f) -> FnLet (x, e, insert_reset_and_reuse_pairs_fn f)
-  | FnCase (s, cases) -> 
-    let num_fields: int = failwith "what to do?" in
-    FnCase (s, List.map (fun c -> 
-      (* TODO: We need to get the actual number of fields from the constructors. type inference??*) 
-      insert_reset s num_fields c) cases)
+  | FnCase (x, cases) ->                                  (*______D_____ x   ni             R(c)                        *)
+    FnCase (x, List.map (fun (num_fields,c) -> (num_fields, insert_reset x num_fields (insert_reset_and_reuse_pairs_fn c))) cases)
   | FnInc _ | FnDec _ -> 
     failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
 
@@ -388,14 +419,16 @@ and insert_reset_and_reuse_pairs_fn body = match body with
     Ullrich & De Moura call it 'D' *)
 and insert_reset z num_fields fn_body = 
   match fn_body with
-  | FnCase (s, cases) -> FnCase (s, List.map (insert_reset z num_fields) cases)
+  | FnCase (s, cases) -> FnCase (s, List.map (fun (i, arm) -> (i, insert_reset z num_fields arm)) cases)
   | FnRet _ -> fn_body
-  | FnLet (x, e, f) when free_vars_expr StringSet.empty e |> StringSet.mem z -> FnLet (x, e, insert_reset z num_fields f)
+  | FnLet (x, e, f) when StringSet.mem z (free_vars_expr StringSet.empty e) || StringSet.mem z (free_vars f) -> 
+    (* (z in e) or (z in F) *)
+    FnLet (x, e, insert_reset z num_fields f)
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
   | _ ->
     let w = Utilities.new_var () in
     let reuse_fn_body = insert_reuse w num_fields fn_body in
-    if reuse_fn_body <> fn_body then
+    if not (eq_fnbody reuse_fn_body fn_body) then
       FnLet(w, RReset z, reuse_fn_body)
     else
       fn_body
@@ -404,7 +437,7 @@ and insert_reset z num_fields fn_body =
     Ullrich & De Moura call it 'S' *)
 and insert_reuse w num_fields fn_body: fn_body =
   match fn_body with
-  | FnCase (s, cases) -> FnCase (s, List.map (insert_reuse w num_fields) cases)
+  | FnCase (s, cases) -> FnCase (s, List.map (fun (i,c) -> i, insert_reuse w num_fields c) cases)
   | FnRet _ -> fn_body
   | FnLet (x, RCtor{tag; fields}, f) when List.length fields = num_fields ->
       FnLet (x, RReuse (w, {tag; fields}), f) 

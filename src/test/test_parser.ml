@@ -16,6 +16,7 @@ let test_parser_program () =
     [ tlet "x" (int 1);
       tlet "id" (fun_ ["y"] (var "y"));
       tlet "pair" (tuple (var "x") (int 2));
+      (* x :: (y :: z) *)
       tlet "xs" (binary SigCons (var "x") (binary SigCons (var "y") (var "z")));
       tlet "m" (case (var "xs") [ (psigcons (pvar "h") (pvar "t"), var "h"); (pwild, var "y") ]);
       tlet "app" (app (var "f") [var "x"; var "y"]);

@@ -20,6 +20,11 @@ let ctorMappings =
     ("watch", 5);
     ("later_app", 6); 
 
+    (*sync*)
+    ("left", 0);
+    ("right", 1);
+    ("both", 2);
+
     (*delay*)
     ("delay", 0);
     ("ostar", 1);
@@ -103,12 +108,50 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
   | EConst (c, _) -> FnRet (Const c)
   | ELet ((x, _), rhs, e', _) ->
     FnLet(x, expr_to_rexpr locals rhs, expr_to_fn_body (LocalsEnv.add x locals) e')
-  | ECase (EVar (x, _), cases, _) -> 
-    FnCase(x, List.map (fun (_, branch, _) -> expr_to_fn_body locals branch) cases)
+  | ECase (EVar (x,_), cases, _) -> 
+    let get_fields_of_pattern = function (* Causion: are we counting the nested part correctly? *)
+    | PVar _ | PWildcard | PConst _ -> 0
+    | PTuple _ | PBoth _ -> 2 
+    | PSigCons _ -> 5 (* should it be 2, 3, 4, 5? *)
+    | PRight _ | PLeft _ -> 1
+    in
+    (*match mysync with
+      | Left a ->
+        Some (a+1)
+      | Right b -> Some (b+10)
+      | Both (a,b) -> Some (a + b)
+        
+      case mysync <2> of [
+      1(let a = proj0 mysync in ctor1(a+1))
+      2(let b = proj0 mysync in ctor2(b+10))
+      3(let a = proj0 mysync in let b = proj1 mysync in ctor3(a+b))
+      ]
+
+      match mysig with
+      | 5 :: tl_5 -> ...
+      | 7 :: tl_7 -> ...
+      | hd :: tl -> ...
+      
+      let hd = proj0 mysig in 
+      case hd == 5 of [
+      True<1>(let tl_5 = proj1 mysig in ...)
+      False<2>(
+        case hd == 7 of [
+        True<1>(let tl_7 = proj1 mysig in ...)
+        False<2>(let tl = proj1 mysig in ...)
+        ]
+      ]
+
+      (hd == 5) -> True<1>
+
+      header: <tag, refcount, fields...>
+    *)
+    FnCase(x, List.map (fun (c, branch, _) -> (get_fields_of_pattern c, expr_to_fn_body locals branch)) cases)
   | ECase _ -> 
     failwith "expr_to_fn_body failed: case scrutinee is not a variable"
   | EIfe (EVar (x, _), e1, e2, _) ->
-    FnCase (x, [expr_to_fn_body locals e1; expr_to_fn_body locals e2])
+    (* We decided booleans are objects with 0 fields but with tag 0 or 1*)
+    FnCase (x, [(0,expr_to_fn_body locals e1); (0,expr_to_fn_body locals e2)]) 
   | EIfe _ -> failwith "expr_to_fn_body failed: if condition is not a variable"
   | _ -> 
     (* TODO: should ANF not handle this? *)
