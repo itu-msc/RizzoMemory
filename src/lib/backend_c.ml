@@ -3,20 +3,51 @@ open Refcount
 let make_fun_decl ?ending:(e = " {\n") name  = 
   Printf.sprintf "rz_box_t %s(rz_function_t* fun_context)%s" name e
 
+
+let rec collect_string_consts (p: Refcount.program) = 
+  List.concat_map (fun (_, (Fun (_, b))) -> collect_string_consts_fn b) p
+and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
+  | FnRet x -> collect_primitive_string_const x 
+    |> Option.map (fun a -> [a])
+    |> Option.value ~default:[]
+  | FnLet (_, e, f) -> (collect_string_consts_fn f) @ (collect_string_consts_expr e)
+  | FnCase (_, cases) -> List.concat_map (Fun.compose collect_string_consts_fn snd) cases
+  | FnDec _ | FnInc _  -> []
+and collect_string_consts_expr rexpr = match rexpr with
+  | RCall (_, args) -> List.filter_map collect_primitive_string_const args
+  | RCtor {tag = _; fields } -> List.filter_map collect_primitive_string_const fields
+  | RPartialApp (_, args) -> List.filter_map collect_primitive_string_const args
+  | RVarApp (_, arg) -> collect_primitive_string_const arg
+    |> Option.map (fun a -> [a])
+    |> Option.value ~default:[]
+  | RSignal {head; tail} -> List.filter_map collect_primitive_string_const [head; tail]
+  | RProj _ | RReset _ | RReuse _  -> []
+and collect_primitive_string_const p = match p with
+  | Const (CString x as c) -> Some (c, (x, Utilities.new_name "rz_string_lit"))
+  | _ -> None
+
+
 let emit_c_code (p:program) (filename:string) =
   let module M = Map.Make(String) in
   let arity_map = M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) p) in
   let out_file = open_out filename in
   let write = output_string out_file in
+
+  let string_consts = Utilities.new_name_reset (); collect_string_consts p in
+
   let rec emit_program (p: program) : unit = 
     write "#include \"rizzo.h\"\n";
     write "\n";
+    string_consts 
+    |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
+    write "\n";
+
     List.iter emit_fn p;
     match List.assoc_opt "entry" p with
     | Some _ -> write ("int main() {\n"
                 ^ "    rz_init_rizzo();\n"
                 ^ "    rz_box_t res = rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n"
-                ^ "    printf(\"result: %d\\n\", res.as.i32);\n"
+                ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
                 ^ "    return 0;\n}\n")
     | None -> failwith "No entry point found"
   and emit_fn (name, Fun (params, body)) : unit = 
@@ -65,7 +96,6 @@ let emit_c_code (p:program) (filename:string) =
       Printf.sprintf "rz_call(rz_register_output_signal, (rz_box_t[]){%s}, 1)" (emit_primitive signal)
     | RCall (f, args) -> 
       Printf.sprintf "rz_call(%s, (rz_box_t[]){%s}, %d)" f (mk_args_string args) (List.length args)
-    (* | RCtor { tag = _ ; fields = [RCtor ]} *)
     | RCtor { tag; fields = [] } -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
     | RCtor { tag; fields } -> 
@@ -83,13 +113,16 @@ let emit_c_code (p:program) (filename:string) =
     | RSignal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
     | RReset (n) -> Printf.sprintf "rz_make_ptr(rz_reset_object(rz_unbox_ptr(%s)))" n
     | RReuse (n, {tag; fields}) -> 
-      Printf.sprintf "rz_make_ptr(rz_reuse_object(rz_unbox_ptr(%s), %d, (rz_box_t[]){%s}))" n tag (mk_args_string fields)
+      Printf.sprintf "rz_make_ptr(rz_reuse_object(rz_unbox_ptr(%s), %d, %d, (rz_box_t[]){%s}))" n tag (List.length fields) (mk_args_string fields)
     in write s
   and emit_primitive = function
-    | Refcount.Var x -> x
-    | Refcount.Const CInt i   -> Printf.sprintf "rz_make_int(%d)" i
-    | Refcount.Const CBool b  -> Printf.sprintf "rz_make_ptr(rz_bool_ctor(%b))" b
-    | Refcount.Const CNever   -> "RZ_NEVER"
-    | _ -> failwith "emit_primitive: todo"
+    | Var x -> x
+    | Const CInt i   -> Printf.sprintf "rz_make_int(%d)" i
+    | Const CBool b  -> Printf.sprintf "rz_make_ptr(rz_bool_ctor(%b))" b
+    | Const CNever   -> "RZ_NEVER"
+    | Const (CString _ as c) -> 
+      let (_, var_name) = List.assoc c string_consts in
+      Printf.sprintf "rz_make_str_lit(%s)" var_name
+    | Const Ast.CUnit -> Printf.sprintf "rz_make_int(0)"
   in emit_program p
   

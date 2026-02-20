@@ -92,7 +92,7 @@ static inline void rz_print_registered_outputs() {
     
 static rz_signal_list_t* rz_signal_list_create() {
     size_t initial_capacity = 10;
-    rz_signal_list_t* list = rz_malloc(sizeof(rz_signal_list_t) + initial_capacity * sizeof(rz_signal_t*));
+    rz_signal_list_t* list = malloc(sizeof(rz_signal_list_t) + initial_capacity * sizeof(rz_signal_t*));
     list->count = 0;
     list->capacity = initial_capacity;
     return list;

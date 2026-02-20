@@ -105,8 +105,35 @@ let test_paper_goforward () =
   in
 
   Alcotest.(check ref_counted_program_testable) "go forward case is preserved" go_forward_expected go_forward'
+
+let test_tuple_swap () = 
+  Rizzoc.Utilities.new_name_reset ();
   
+  let Fun(_, swap_tuple) = Fun(["t"],
+    FnCase ("t", [(2,
+      FnLet ("a", RProj (1, "t"),
+      FnLet ("b", RProj (2, "t"),
+      FnLet ("r", RCtor { tag = 2; fields = [Var "b"; Var "a"]},
+      FnRet (Var "r"))))
+    )])
+  ) in 
+
+  let sut = Rizzoc.RefCount.insert_reset_and_reuse_pairs_fn swap_tuple in
+
+  let Fun(_, expected) = Fun(["t"],
+    FnCase ("t", [(2,
+      FnLet ("a", RProj (1, "t"),
+      FnLet ("b", RProj (2, "t"),
+      FnLet ("var1", RReset "t",
+      FnLet ("r", RReuse("var1", { tag = 2; fields = [Var "b"; Var "a"]}),
+      FnRet (Var "r"))))
+    ))])
+  ) in
+
+  Alcotest.(check fnbody_testable) "tuple swap case is preserved" expected sut
+
 let reset_reuse_tests = [
 	"Ullrich & De Moura - Swap function with case", `Quick, test_swap_case;
   "Ullrich & De Moura - go forward example", `Quick, test_paper_goforward;
+  "Tuple swap example", `Quick, test_tuple_swap;
 ]

@@ -51,6 +51,12 @@ case b1 of
 *)
 open Ast
 
+(* todo: move these constants to some builtins *)
+let left_elim = (Rizzo_builtins.get "left_elim").name
+let right_elim = (Rizzo_builtins.get "right_elim").name
+let both_elim_fst = (Rizzo_builtins.get "both_elim_fst").name
+let both_elim_snd = (Rizzo_builtins.get "both_elim_snd").name
+
 let rec transform_patterns (p: 's Ast.program) = 
   List.map (fun (TLet (name, expr, ann)) -> TLet (name, compile_match expr, ann)) p
 
@@ -62,24 +68,52 @@ and compile_pattern p scrutinee good bad =
     let b = Utilities.new_name "test" in
     let equality = EApp (EVar ("eq", ann), [scrutinee; EConst (c, ann)], ann) in
     ELet ((b, ann), equality, EIfe (EVar (b, ann), good scrutinee, bad (), ann), ann)
-  | PTuple (p1, p2, ann) ->
+  (* TODO: should we special case wildcards? or should this just be left to dead code analysis? *)
+  | PTuple (PWildcard, PWildcard, _) -> good scrutinee
+  | PTuple (p1, PWildcard, ann) -> 
+    let t = Utilities.new_name "t", ann in
+    ELet (t, EUnary (Snd, scrutinee, ann), compile_pattern p1 (EVar t) good bad, ann)
+  | PTuple (PWildcard, p2, ann) -> 
+    let t = Utilities.new_name "t", ann in
+    ELet (t, EUnary (Snd, scrutinee, ann), compile_pattern p2 (EVar t) good bad, ann)
+  | PTuple (p1, p2, ann) as pat ->
     let t0 = Utilities.new_name "t", ann in
     let t1 = Utilities.new_name "t", ann in
-    ELet (t0, EUnary (Fst, scrutinee, ann), compile_pattern p1 (EVar t0) 
+    (* TODO: we leave a match so later transformation stages can still
+      emit how many fields a constructor has. Keep match/case or type info *)
+    ECase(scrutinee, [(pat,
+      ELet (t0, EUnary (Fst, scrutinee, ann), compile_pattern p1 (EVar t0) 
       (fun _ -> ELet (t1, EUnary (Snd, scrutinee, ann), compile_pattern p2 (EVar t1) good bad, ann))
-      bad, ann)
+      bad, ann), ann)], expr_get_ann scrutinee)
   | PSigCons (hd, (_tl_name, tl_ann as tl), ann) -> 
     let hd_name = Utilities.new_name "hd",ann in
     let hd_proj = EApp (EVar hd_name, [scrutinee], ann) in
-    ELet (hd_name, hd_proj, compile_pattern hd (EVar hd_name) 
+    ECase (scrutinee, [( (* p -> let hd = head scrutinee in let tl = tail scrutinee ... *)
+      p, ELet (hd_name, hd_proj, compile_pattern hd (EVar hd_name) 
       (fun _ -> ELet (tl, EUnary (UTail, scrutinee, tl_ann), good (EVar tl), ann))
-      bad, ann)
-  | PLeft (p1, _) -> 
-    compile_pattern p1 scrutinee
-      (fun _ -> good scrutinee)
-      (fun () -> bad ())
-  | PRight _ -> failwith ""
-  | PBoth _ -> failwith ""
+      bad, ann), ann)], ann)
+  | PLeft (p, ann) -> 
+    let t = Utilities.new_name "t", ann in
+    let t_proj = EApp (EVar (left_elim,ann), [scrutinee], ann) in
+    (* (Left p) as x -> let t = rz_left_elim x in (compile p ...) *)
+    ECase (scrutinee, [(p, ELet(t, t_proj, compile_pattern p scrutinee good bad, ann), ann)], ann)
+  | PRight (p, ann) -> 
+    let t = Utilities.new_name "t", ann in
+    let t_proj = EApp (EVar (right_elim, ann), [scrutinee], ann) in
+    (* (Right p) as x -> let t = rz_right_elim x in (compile p ...) *)
+    ECase (scrutinee, [(p, ELet(t, t_proj, compile_pattern p scrutinee good bad, ann), ann)], ann)
+  | PBoth (p1, p2, ann) -> 
+    (* Both (p1,p2) -> let a = both_left scrutinee in let b = both_right scrutinee in ...*)
+    let a_name = Utilities.new_name "p", ann in
+    let b_name = Utilities.new_name "p", ann in
+    let a_proj = EApp (EVar (both_elim_fst, ann), [scrutinee], ann) in
+    let b_proj = EApp (EVar (both_elim_snd, ann), [scrutinee], ann) in
+    let compiled_nested_patterns = 
+      compile_pattern p1 (EVar a_name) 
+        (fun _ -> ELet(b_name, b_proj, compile_pattern p2 (EVar b_name) good bad, ann))
+        bad 
+    in
+    ECase(scrutinee, [(p, ELet(a_name, a_proj, compiled_nested_patterns, ann), ann)], ann)
 and compile_match_cases scrutinee cases = 
   match cases with
   | [] -> failwith "Tried created another match branch - but there were no more cases in match expression"
