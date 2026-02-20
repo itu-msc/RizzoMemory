@@ -19,7 +19,7 @@ let name (s : string) : parsed name = (s, ann)
 let pvar (s : string) : parsed pattern = PVar (s, ann)
 let pwild : parsed pattern = PWildcard
 let pconst (c : const) : parsed pattern = PConst (c, ann)
-let psigcons (p1 : parsed pattern) (p2 : parsed pattern) : parsed pattern = PSigCons (p1, p2, ann)
+let psigcons (p1 : parsed pattern) (p2 : parsed name) : parsed pattern = PSigCons (p1, p2, ann)
 
 let var (s : string) : parsed expr = EVar (name s)
 let int (i : int) : parsed expr = EConst (CInt i, ann)

@@ -30,7 +30,6 @@ static inline uint16_t rz_object_tag(rz_object_t* obj) {
 typedef enum {
     RZ_BOX_INT,
     RZ_BOX_PTR,
-    /*TODO: signal could be in tag of header as 0xFFFF - I doubt any type will have 65535 constructors */
     RZ_BOX_SIGNAL 
 } rz_box_kind_t;
 
@@ -116,6 +115,35 @@ static inline void rz_refcount_dec(rz_object_t* obj, void (*free_func)(void*)) {
         }
         free_func(obj);
     }
+}
+
+static rz_object_t* rz_reset_object(rz_object_t* obj) {
+    /* reset-shared */
+    if(obj->header.refcount != 1) {
+        rz_refcount_dec(obj, rz_free);
+        return NULL;
+    }
+    /* reset-unique - assuming refcount == 1*/
+    rz_object_fields_t* objf = (rz_object_fields_t*)obj;
+    size_t n = obj->header.num_fields;
+    for (size_t i = objf->_base.header.offset; i < n; i++)
+    {
+        rz_refcount_dec_box(objf->fields[i]);
+    }
+    return obj;
+}
+
+/* assuming obj.num_fields = len(args) - that should've been guaranteed by the refcount module */
+static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, rz_box_t* args) {
+    /* reuse-shared */
+    if(obj == NULL) return rz_ctor(tag, obj->header.num_fields, args);
+    /* reuse-unique */
+    obj->header.tag = tag;
+    rz_object_fields_t* objf = (rz_object_fields_t*)obj;
+    for (int i = objf->_base.header.offset; i < obj->header.num_fields; i++) {
+        objf->fields[i] = args[i - objf->_base.header.offset];
+    }
+    return obj;
 }
 
 /* forward declare from heap.h */

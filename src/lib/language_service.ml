@@ -408,7 +408,9 @@ let rec pattern_bound_decls (pat : Ast.parsed Ast.pattern) : (string * range) li
   match pat with
   | Ast.PWildcard | Ast.PConst _ -> []
   | Ast.PVar ((name, ann)) -> [ (name, range_of_ann ann) ]
-  | Ast.PTuple (p1, p2, _) | Ast.PSigCons (p1, p2, _) | Ast.PBoth (p1, p2, _) ->
+  | Ast.PSigCons (p1, p2, _) ->
+      pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
+  | Ast.PTuple (p1, p2, _) | Ast.PBoth (p1, p2, _) ->
       pattern_bound_decls p1 @ pattern_bound_decls p2
   | Ast.PLeft (p, _) | Ast.PRight (p, _) -> pattern_bound_decls p
 

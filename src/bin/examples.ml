@@ -77,7 +77,7 @@ let example_anf_then_rc () =
       id my_sig
     let _ = fun x -> garbage_sig x
   *)
-  let program: Ast.program = [
+  let program: _ Ast.program = [
     TLet("id", EFun(["x"], EVar "x"));
     TLet("garbage_sig", EFun(["x"], 
       ELet("my_sig", EBinary(SigCons,
@@ -100,7 +100,7 @@ let example_anf_then_rc () =
   )
 
 let example_anf () = 
-  let program: Ast.program = [
+  let program: _ Ast.program = [
     TLet("id", EFun(["x"], EVar "x"));
     TLet("some", EFun(["g"], EVar "g"));
     TLet("_", EFun(["x"; "g"], 

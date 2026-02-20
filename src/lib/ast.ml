@@ -40,13 +40,13 @@ type _ pattern =
   | PVar : string * 's ann -> 's pattern 
   | PConst : const * 's ann -> 's pattern
   | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
-  | PSigCons : 's pattern * 's pattern * 's ann -> 's pattern
+  | PSigCons : 's pattern * 's name * 's ann -> 's pattern
   | PLeft : 's pattern * 's ann -> 's pattern
   | PRight : 's pattern * 's ann -> 's pattern
   | PBoth : 's pattern * 's pattern * 's ann -> 's pattern
   (* could include more complex patterns like lists, records, etc. *)
 
-type _ expr =
+and _ expr =
   | EConst : const * 's ann -> 's expr
   | EVar : 's name -> 's expr
   | ELet : 's name * 's expr * 's expr * 's ann -> 's expr   (* variable binding *)
@@ -93,7 +93,8 @@ let expr_get_ann (e : _ expr) : _ ann =
 let rec pattern_bound_vars = function
   | PWildcard | PConst _ -> []
   | PVar (x, _) -> [x]
-  | PSigCons (p1, p2, _) | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
+  | PSigCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
+  | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
   | PLeft (p, _) | PRight (p, _) -> pattern_bound_vars p
   | PBoth (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
 
@@ -122,7 +123,10 @@ and eq_pattern a b =
   | PVar (x1, _), PVar (x2, _) -> x1 = x2
   | PConst (c1, _), PConst (c2, _) -> c1 = c2
   | PTuple (a1, b1, _), PTuple (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
-  | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
+  | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2
+  | PLeft (p1, _), PLeft (p2, _) -> eq_pattern p1 p2
+  | PRight (p1, _), PRight (p2, _) -> eq_pattern p1 p2
+  | PBoth (a1, b1, _), PBoth (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
   | _ -> false
 
 let pp_const out = function
@@ -137,7 +141,7 @@ let rec pp_pattern out = function
   | PVar (x, _) -> Format.fprintf out "%s" x
   | PConst (c, _) -> pp_const out c
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
-  | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: %a)" pp_pattern p1 pp_pattern p2
+  | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: %s)" pp_pattern p1 (fst p2)
   | PLeft (p, _) -> Format.fprintf out "Left %a" pp_pattern p
   | PRight (p, _) -> Format.fprintf out "Right %a" pp_pattern p
   | PBoth (p1, p2, _) -> Format.fprintf out "Both(%a, %a)" pp_pattern p1 pp_pattern p2

@@ -58,7 +58,7 @@ module Transformations = struct
   let lift = Transform_lift.lift
   let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transform_copr.copy_propagate
-
+  let eliminate_patterns = Transform_patterns.transform_patterns
   let ast_to_rc_ir = Transform_rc.to_rc_intermediate_representation
   
   let builtins = 
@@ -73,10 +73,10 @@ module Transformations = struct
       "sub", [RefCount.Borrowed; RefCount.Borrowed];
       "mul", [RefCount.Borrowed; RefCount.Borrowed];
       "div", [RefCount.Borrowed; RefCount.Borrowed];
-    ]
-
+      ]
+  
   let auto_ref_count (program: Ast.parsed Ast.program) = 
-    let program = ast_to_rc_ir program in
+    let program = ast_to_rc_ir builtins program in
     RefCount.reference_count_program builtins program 
 end
 
@@ -91,6 +91,7 @@ let apply_transforms p =
   |> Transformations.eliminate_consecutive_lambdas_program
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
+  |> Transformations.eliminate_patterns
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
 

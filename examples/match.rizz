@@ -1,0 +1,12 @@
+fun swap_tuple p = 
+    match p with
+    | (x, y) -> (y, x)
+    // | (x, y, z) -> (z, y, x)
+
+fun entry i =
+    let five = 5 in
+    let n = match five with
+    | 5 -> 10
+    | _ -> 0 in
+    let x = output_int_signal (n :: never) in
+    start_event_loop()

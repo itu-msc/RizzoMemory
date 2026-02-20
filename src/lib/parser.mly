@@ -162,8 +162,8 @@ tuple_expr_list_tail:
       { e :: rest }
 
 pattern:
-  | p=pattern_atom CONS rest=pattern
-      { PSigCons (p, rest, mkloc $startpos $endpos) }
+  | p=pattern_atom CONS rest=ID
+      { PSigCons (p, (rest, mkloc $startpos(rest) $endpos(rest)), mkloc $startpos $endpos) }
   | p=pattern_atom
       { p }
 

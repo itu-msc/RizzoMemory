@@ -92,7 +92,7 @@ let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr 
   | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
   | EConst (const, _) -> (
       match const with
-      | CUnit -> RCtor { tag = idof "unit"; fields = [] }
+      | CUnit -> RCtor { tag = idof "unit"; fields = [] } (* -> RCtor(int, [])*)
       | CNever -> RCtor { tag = idof "never"; fields = [] }
       | CInt _ -> RCtor { tag = idof "int"; fields = [Refcount.Const const] }
       | CString _ -> RCtor { tag = idof "string"; fields = [Refcount.Const const]}
@@ -158,13 +158,16 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
     let x = Utilities.new_var () in
     FnLet (x, expr_to_rexpr locals e, FnRet (Refcount.Var x))
 
-let to_rc_intermediate_representation (p: _ program) : Refcount.program =
+let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p: _ program) : Refcount.program =
+  (* maps  top-level-names to its parameter number *)
   let globals: globals_env = 
     let mapper = function 
     | TLet(name, EFun (params, _, _), _) -> (name, Some (List.length params))
     | TLet(name, _, _) -> (name, None)
     in
-    List.map mapper p |> M.of_list
+    let builtins_arity = M.map (fun b -> Some (List.length b)) builtins in
+    List.map mapper p |> M.of_list 
+    |> M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate global name %s" key)) builtins_arity
   in
   let to_fun = function
   | EFun (names, body, _) -> 
