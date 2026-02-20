@@ -3,6 +3,30 @@
     "name": "Rizz",
     "patterns": [
         {
+            "name": "meta.function.definition.rizz",
+            "match": "\\b(fun)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.rizz"
+                },
+                "2": {
+                    "name": "entity.name.function.rizz"
+                }
+            }
+        },
+        {
+            "name": "meta.variable.definition.rizz",
+            "match": "\\b(let)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.rizz"
+                },
+                "2": {
+                    "name": "variable.other.readwrite.rizz"
+                }
+            }
+        },
+        {
             "name": "keyword.control.rizz",
             "match": "\\b(let|fun|match|with|if|then|else|in)\\b"
         },
@@ -18,6 +42,10 @@
         {
             "name": "constant.numeric.rizz",
             "match": "\\b[0-9]+\\b"
+        },
+        {
+            "name": "variable.other.readwrite.rizz",
+            "match": "\\b(?!let\\b|fun\\b|match\\b|with\\b|if\\b|then\\b|else\\b|in\\b|true\\b|false\\b|never\\b|unit\\b)[a-z_][a-zA-Z0-9_']*\\b"
         },
         {
             "name": "comment.line.double-slash.rizz",

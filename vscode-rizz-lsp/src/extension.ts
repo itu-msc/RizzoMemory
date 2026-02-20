@@ -107,7 +107,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", language: "rizz" }],
+        documentSelector: [{ language: "rizz" }],
         synchronize: {
             fileEvents: vscode.workspace.createFileSystemWatcher("**/*.rizz")
         }

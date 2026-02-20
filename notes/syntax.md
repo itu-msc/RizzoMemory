@@ -212,7 +212,7 @@ Highest to lowest:
 
 ## 9) Examples
 
-```rizzo
+```rizz
 let id = fun x -> x
 
 fun const x y = x
