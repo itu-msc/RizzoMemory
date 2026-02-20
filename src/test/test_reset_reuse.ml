@@ -50,6 +50,63 @@ let test_swap_case () =
   (* should not crash and should not change the function *)
   Alcotest.(check fnbody_testable) "swap case is preserved" expeceted_reset_reuse_swap e'
 
+let test_paper_goforward () = 
+  Rizzoc.Utilities.new_name_reset ();
+  
+  let go_forward = Fun(["p"], 
+    FnCase ("p", [(2, 
+      FnLet ("xs", RProj (1, "p"),
+      (* FnInc("xs",  *)
+      FnCase("xs", [
+        (0, FnRet (Var "p"));
+        (2, FnLet ("bs", RProj (2, "p"),
+            (* FnInc("bs",  *)
+            FnLet("x", RProj (1, "xs"), 
+            (* FnInc("x",  *)
+            FnLet("xs'", RProj (2, "xs"), 
+            (* FnInc("xs'", *)
+            FnLet("bs'", RCtor{tag = 2; fields = [Var "x"; Var "bs"]},
+            FnLet("r", RCtor{tag = 1; fields = [Var "xs'"; Var "bs'"]},
+            FnRet (Var "r"))))))
+        )]
+      )))
+    ])
+  )
+  in
+
+  let p_own = StringMap.empty in
+  let newOwned, go_forward' = Rizzoc.RefCount.reference_count_program p_own ["go_forward", go_forward] in
+
+  (* ensure p is owned *)
+  let p_ownership = StringMap.find "go_forward" newOwned |> List.hd in
+  Alcotest.(check ownership_testable) "p is owned" Owned p_ownership;
+
+  let go_forward_expected = [("go_forward", Fun(["p"],
+    FnCase ("p", [(2,
+      FnLet ("xs", RProj (1, "p"),
+      FnInc("xs",
+      FnCase("xs", [
+        (0, FnDec ("xs", FnRet (Var "p"))); (* We deviate from the paper here and added a dec *)
+        (2, FnLet ("bs", RProj (2, "p"),
+            FnInc("bs",
+              FnLet("var2", RReset "p",
+            FnLet("x", RProj (1, "xs"),
+            FnInc("x",
+            FnLet("xs'", RProj (2, "xs"),
+            FnInc("xs'",
+              FnLet("var1", RReset "xs",
+            FnLet("bs'", RReuse("var1", {tag = 2; fields = [Var "x"; Var "bs"]}),
+            FnLet("r", RReuse("var2", {tag = 1; fields = [Var "xs'"; Var "bs'"]}),
+            FnRet (Var "r")))))))))))
+        )]
+      )))
+    )])
+  ))]
+  in
+
+  Alcotest.(check ref_counted_program_testable) "go forward case is preserved" go_forward_expected go_forward'
+  
 let reset_reuse_tests = [
-	"Swap function with case", `Quick, test_swap_case;
+	"Ullrich & De Moura - Swap function with case", `Quick, test_swap_case;
+  "Ullrich & De Moura - go forward example", `Quick, test_paper_goforward;
 ]

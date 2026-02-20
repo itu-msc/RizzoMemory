@@ -15,6 +15,7 @@
   - [ ] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...
   - [x] A-Normalization (ANF, Flanagan et al.). May have to be more aggressive, since we need all arguments to be variables.
   - [x] Add consecutive lambda elimination (lowers nested lambdas to a single function with multiple parameters, e.g. `fun x -> fun y -> e` becomes `fun (x, y) -> e`)
+  - [ ] Implement the suggestion in section "Preserving tail calls" on page 8 of Ullrich & de Moura.
 - [x] Allow constant types and ensure they are not reference counted (e.g. `int`, `string`, `bool`)
 
 ## Adapting immutable beans for Rizzo expressions(?)

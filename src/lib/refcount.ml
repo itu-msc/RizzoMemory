@@ -107,41 +107,37 @@ let add_if_member (p:primitive) (env: StringSet.t) : StringSet.t =
   | Var x -> if StringSet.mem x env then env else StringSet.add x env
   | Const _ -> env
 
-let rec free_vars_expr (env: StringSet.t) = function
-  | RCall (_c, ys) | RPartialApp (_c, ys) ->
-      List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty ys
-  | RVarApp (x, y) ->
-      let acc = if StringSet.mem x env then StringSet.empty else StringSet.singleton x in
-      add_if_member y acc
+let check_var env x = if StringSet.mem x env then StringSet.empty else StringSet.singleton x
+
+let name_of_primitive_opt = function
+  | Var x -> Some x
+  | Const _ -> None
+
+let rec free_vars_expr rexpr : StringSet.t = 
+  match rexpr with
+  | RCall (c, args) | RPartialApp (c, args) ->
+    StringSet.of_list (c :: List.filter_map name_of_primitive_opt args)
+  | RVarApp (f, arg) -> 
+    StringSet.add f (match name_of_primitive_opt arg with Some x -> StringSet.singleton x | None -> StringSet.empty)
   | RCtor { tag = _; fields } ->
       List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty fields
-  | RProj ( _, x) ->
-      if StringSet.mem x env then StringSet.empty else StringSet.singleton x
+  | RProj (_, name) -> StringSet.singleton name
   | RSignal { head; tail } ->
-      let acc =
-        match head with
-        | Var h -> if StringSet.mem h env then StringSet.empty else StringSet.singleton h
-        | _ -> StringSet.empty 
-      in
-      add_if_member tail acc
-  | RReset x ->
-      if StringSet.mem x env then StringSet.empty else StringSet.singleton x
-  | RReuse (x, { tag = _; fields }) ->
-      let acc = if StringSet.mem x env then StringSet.empty else StringSet.singleton x in
-      List.fold_left (fun acc y -> add_if_member y acc) acc fields
-and free_vars_fn (env: StringSet.t) = function
+    StringSet.of_list @@ List.filter_map name_of_primitive_opt [head; tail]
+  | RReset name -> StringSet.singleton name
+  | RReuse (name, { tag = _; fields }) ->
+    StringSet.of_list (name :: List.filter_map name_of_primitive_opt fields)
+and free_vars = function
   | FnRet x -> 
-    (match x with
-    | Var r -> if StringSet.mem r env then StringSet.empty else StringSet.singleton r
-    | _ -> StringSet.empty)
-  | FnLet (x, rhs, f) -> StringSet.union (free_vars_expr env rhs) (free_vars_fn (StringSet.add x env) f)
-  | FnCase (x, fs) ->
-      let env' = StringSet.add x env in
-      List.fold_left (fun acc f -> StringSet.union acc (free_vars_fn env' f)) StringSet.empty (get_cases fs)
-  | FnInc (x, f) | FnDec (x, f) ->
-      if StringSet.mem x env then free_vars_fn env f
-      else StringSet.add x (free_vars_fn env f)
-and free_vars fn = free_vars_fn StringSet.empty fn
+    name_of_primitive_opt x
+    |> Option.fold ~none:StringSet.empty ~some:StringSet.singleton
+  | FnLet (x, rhs, f) -> 
+    StringSet.union (free_vars_expr rhs) (StringSet.remove x @@ free_vars f)
+  | FnCase (scrutinee, branches) ->
+    StringSet.singleton scrutinee
+    |> StringSet.union (List.fold_left (fun acc (_, branch) -> StringSet.union acc (free_vars branch)) StringSet.empty branches)
+  | FnInc (v, f) | FnDec (v, f) ->
+    StringSet.union (StringSet.singleton v) (free_vars f)
 
 type ownership =
   | Owned
@@ -421,7 +417,7 @@ and insert_reset z num_fields fn_body =
   match fn_body with
   | FnCase (s, cases) -> FnCase (s, List.map (fun (i, arm) -> (i, insert_reset z num_fields arm)) cases)
   | FnRet _ -> fn_body
-  | FnLet (x, e, f) when StringSet.mem z (free_vars_expr StringSet.empty e) || StringSet.mem z (free_vars f) -> 
+  | FnLet (x, e, f) when StringSet.mem z (free_vars_expr e) || StringSet.mem z (free_vars f) -> 
     (* (z in e) or (z in F) *)
     FnLet (x, e, insert_reset z num_fields f)
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
@@ -443,3 +439,15 @@ and insert_reuse w num_fields fn_body: fn_body =
       FnLet (x, RReuse (w, {tag; fields}), f) 
   | FnLet (x, e, f) -> FnLet (x, e, insert_reuse w num_fields f)
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
+
+let reference_count_program builtins (p: program) =
+  let reset_reuse_program = insert_reset_and_reuse_pairs_program p in
+  let func_ownerships = infer_all ~builtins:builtins reset_reuse_program in
+
+  reset_reuse_program 
+  |> List.map (fun (c_name, Fun (params, c_body)) -> 
+      let params_ownership = lookup_params func_ownerships c_name in
+      let var_env = StringMap.of_list @@ List.combine params params_ownership in
+      let ref_counted_body = insert_rc c_body var_env func_ownerships in
+      (c_name, Fun (params, insert_dec_many (List.map (fun s -> Var s) params) ref_counted_body var_env)))
+  |> fun p -> (func_ownerships, p)

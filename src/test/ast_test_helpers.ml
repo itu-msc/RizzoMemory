@@ -57,3 +57,14 @@ let fn_testable : RefCount.fn Alcotest.testable =
   Alcotest.testable
     (fun fmt fn -> RefCount.pp_fn fmt ("", fn))
     (fun fn1 fn2 -> RefCount.eq_fn ("", fn1) ("", fn2))
+
+let ref_counted_program_testable : RefCount.program Alcotest.testable =
+  Alcotest.testable RefCount.pp_ref_counted_program RefCount.eq_program
+
+let ownership_testable : RefCount.ownership Alcotest.testable =
+  Alcotest.testable
+    (fun fmt o -> Format.fprintf fmt "%s" (match o with Owned -> "Owned" | Borrowed -> "Borrowed"))
+    (fun o1 o2 -> match o1, o2 with
+       | Owned, Owned -> true
+       | Borrowed, Borrowed -> true
+       | _, _ -> false)

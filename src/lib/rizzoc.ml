@@ -59,7 +59,7 @@ module Transformations = struct
   let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transform_copr.copy_propagate
 
-  let to_rc_ir = Transform_rc.to_rc_intermediate_representation
+  let ast_to_rc_ir = Transform_rc.to_rc_intermediate_representation
   
   let builtins = 
     let module StringMap = Map.Make(String) in
@@ -76,16 +76,8 @@ module Transformations = struct
     ]
 
   let auto_ref_count (program: Ast.parsed Ast.program) = 
-    let module StringMap = Map.Make(String) in
-    let constants = to_rc_ir program in
-    let beta = Refcount.infer_all ~builtins:builtins constants in
-    let insert_ref_count (c_name, RefCount.Fun (params, c_body)) = 
-      let params_ownership = Refcount.lookup_params beta c_name in
-      let var_env = StringMap.of_list @@ List.combine params params_ownership in
-      let ref_counted_body = Refcount.insert_rc c_body var_env beta in
-      (c_name, RefCount.Fun (params, Refcount.insert_dec_many (List.map (fun s -> RefCount.Var s) params) ref_counted_body var_env))
-    in
-    beta, List.map insert_ref_count constants
+    let program = ast_to_rc_ir program in
+    RefCount.reference_count_program builtins program 
 end
 
 module Utilities = struct include Utilities end
