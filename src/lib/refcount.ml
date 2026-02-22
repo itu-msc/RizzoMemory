@@ -212,7 +212,7 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
     | Borrowed -> 
       let beta_env' = StringMap.add y Borrowed var_ownerships in
       let compiled_f = insert_rc f beta_env' func_ownerships in
-      FnLet (y, RProj (i, x), FnInc(y, compiled_f))
+      FnLet (y, RProj (i, x), compiled_f)
     )
   | FnLet (z, RCall(c, ys), f) -> 
     let compiled_f = insert_rc f var_ownerships func_ownerships in

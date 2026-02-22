@@ -7,8 +7,10 @@ fun mk_sig later =
 let entry = fun x -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in
-    let t = 2 in
     let reactive_signal = 42 :: my_console_sig in
+    /* identical to reactive_signal, but uses the tail constructor */
+    let reactive_signal2 = 1337 :: (tail reactive_signal) in
     let y = output_int_signal my_int_sig in 
     let z = output_int_signal reactive_signal in
+    let zz = output_int_signal reactive_signal2 in
     start_event_loop ()

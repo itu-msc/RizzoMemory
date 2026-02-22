@@ -46,8 +46,8 @@ static rz_object_t* rz_signal_ctor(rz_box_t head, rz_box_t tail) {
     }
 
     //TODO: swap around, prev should be cursor.prev, next is cursor
-    rz_signal_t* prev = (rz_signal_t*)rz_heap_cursor;
-    rz_signal_t* next = (rz_signal_t*)rz_heap_cursor->next.as.obj;
+    rz_signal_t* prev = (rz_signal_t*) rz_unbox_ptr(rz_heap_cursor->prev);
+    rz_signal_t* next = rz_heap_cursor;
 
     rz_box_t args[5] = {head, tail, rz_make_int(0), rz_make_ptr((rz_object_t*)prev), rz_make_ptr((rz_object_t*)next)};
     rz_signal_t* new_sig = (rz_signal_t*) rz_ctor(0, 5, args);
@@ -55,6 +55,7 @@ static rz_object_t* rz_signal_ctor(rz_box_t head, rz_box_t tail) {
     
     if (next) next->prev.as.obj = (rz_object_t*) new_sig;
     if (prev) prev->next.as.obj = (rz_object_t*) new_sig;
+    if (rz_heap_cursor == rz_heap_base) rz_heap_base = new_sig;
     return (rz_object_t*) new_sig;
 }
 
@@ -88,7 +89,8 @@ static void rz_debug_print_heap() {
         rz_debug_print_box(cursor->head);
         printf(", ");
         rz_debug_print_later(cursor->tail);
-        printf(", U: %d, prev: %p, next: %p);\n", rz_unbox_int(cursor->updated), rz_unbox_ptr(cursor->prev), rz_unbox_ptr(cursor->next));
+        char* const updated_str = rz_unbox_int(cursor->updated) ? "true" : "false";
+        printf(", U: %s, prev: %p, next: %p);\n", updated_str, rz_unbox_ptr(cursor->prev), rz_unbox_ptr(cursor->next));
     }
 }
 
@@ -116,9 +118,8 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v) {
             rz_heap_cursor->updated.as.i32 = true;
             rz_refcount_inc_box(l->head);
             rz_refcount_inc_box(l->tail);
-            //TODO: make sure we refcount the correct things :)
-            // rz_refcount_dec_box(rz_heap_cursor->head);
-            // rz_refcount_dec_box(rz_heap_cursor->tail);
+            rz_refcount_dec_box(rz_heap_cursor->head);
+            rz_refcount_dec_box(rz_heap_cursor->tail);
             rz_heap_cursor->head = l->head;
             rz_heap_cursor->tail = l->tail;
             rz_refcount_dec_box(l_boxed);
@@ -158,6 +159,8 @@ static bool rz_ticked(rz_object_t* later, rz_channel_t chan, rz_box_t v) {
     }
 }
 
+/** No inc/dec are performed on the argument [later since it doesn't do reuse (yet)
+ *  Values returned by [rz_advanced] have been incremented */
 static rz_box_t rz_advance(rz_object_t* later, rz_channel_t chan, rz_box_t v) {
     switch (rz_object_tag(later)) {
         case RZ_TAG_LATER_WAIT: {
@@ -166,19 +169,28 @@ static rz_box_t rz_advance(rz_object_t* later, rz_channel_t chan, rz_box_t v) {
             return v;
         }
         case RZ_TAG_LATER_APP: {
-            /* field 1 is a later ctor - the argument
-               field 2 is a delayed function, so essentially do a proj0 
-                 assuming it is always a rz_function_t */
-            rz_box_t arg = rz_advance(rz_unbox_ptr(rz_object_get_field(later, 1)), chan, v);
+            /* let arg_later = proj1 later in
+               inc(arg_later)                       <- if later is owned, then so must its projections
+               let advanced_arg = rz_advance(arg_later, chan, v) in
+               let delayed_fun = proj0 later in
+               inc(delayed_fun)                     <- if later is owned, then so must its projections
+               dec(later)                           <- don't need the later value beyond this point
+               let fun = proj0 delayed_fun in 
+               inc(fun)                             <- again, a projection of an owned variable (delayed_fun)
+               dec(delayed_fun) <- don't need delayed_fun anymore
+               let res = varapp(fun, advanced_arg)
+               ret res */
+            rz_box_t arg_later = rz_object_get_field(later, 1);
+            rz_box_t arg = rz_advance(rz_unbox_ptr(arg_later), chan, v);
+            rz_refcount_inc_box(arg);
             rz_box_t delayed_fun = rz_object_get_field(later, 0);
             rz_box_t fun = rz_object_get_field(rz_unbox_ptr(delayed_fun), 0);
+            rz_refcount_inc_box(fun);
             return rz_apply1(rz_unbox_ptr(fun), arg);
         } 
         case RZ_TAG_LATER_TAIL: {
-            /* I believe it is fine to skip inc here, since the original signal is refcounted
-               in accordance with the immutable beans algorithm. 
-               Furthermore, not ref counting here makes it so the dec instruction in advance can free the signal entirely. */
             rz_box_t l = rz_object_get_field(later,0);
+            rz_refcount_inc_box(l);
             return l;
         }
         case RZ_TAG_LATER_WATCH: {

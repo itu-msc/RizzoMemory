@@ -1,7 +1,7 @@
 open Refcount
 
 let make_fun_decl ?ending:(e = " {\n") name  = 
-  Printf.sprintf "rz_box_t %s(rz_function_t* fun_context)%s" name e
+  Printf.sprintf "rz_box_t %s(size_t num_args, rz_box_t* args)%s" name e
 
 
 let rec collect_string_consts (p: Refcount.program) = 
@@ -46,13 +46,13 @@ let emit_c_code (p:program) (filename:string) =
     match List.assoc_opt "entry" p with
     | Some _ -> write ("int main() {\n"
                 ^ "    rz_init_rizzo();\n"
-                ^ "    rz_box_t res = rz_call(entry, (rz_box_t[]){rz_make_int(42)}, 1);\n"
+                ^ "    rz_box_t res = rz_call(entry, 1, (rz_box_t[]){rz_make_int(42)});\n"
                 ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
                 ^ "    return 0;\n}\n")
     | None -> failwith "No entry point found"
   and emit_fn (name, Fun (params, body)) : unit = 
     write (make_fun_decl name);
-    write ("rz_box_t* args = ARGS_OF_BOXED(fun_context);\n");
+    write ("(void)num_args;\n");
     List.iteri (fun i param -> 
       write (Printf.sprintf "rz_box_t %s = args[%d];\n" param i)
     ) params;
@@ -93,9 +93,9 @@ let emit_c_code (p:program) (filename:string) =
     | RCall ("eq", [p1; p2]) -> Printf.sprintf "rz_eq(%s, %s)" (emit_primitive p1) (emit_primitive p2)
     | RCall ("start_event_loop", _) -> "rz_start_event_loop()"
     | RCall ("output_int_signal", [signal]) -> 
-      Printf.sprintf "rz_call(rz_register_output_signal, (rz_box_t[]){%s}, 1)" (emit_primitive signal)
+      Printf.sprintf "rz_call(rz_register_output_signal, 1, (rz_box_t[]){%s})" (emit_primitive signal)
     | RCall (f, args) -> 
-      Printf.sprintf "rz_call(%s, (rz_box_t[]){%s}, %d)" f (mk_args_string args) (List.length args)
+      Printf.sprintf "rz_call(%s, %d, (rz_box_t[]){%s})" f (List.length args) (mk_args_string args)
     | RCtor { tag; fields = [] } -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
     | RCtor { tag; fields } -> 

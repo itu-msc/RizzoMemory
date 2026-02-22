@@ -61,9 +61,9 @@ static rz_box_t rz_start_event_loop() {
     return rz_make_int(0);
 }
 
-/* registers a boxed signal for output - TODO: currently assumes integers */
-static inline rz_box_t rz_register_output_signal(rz_function_t* fun_context) {
-    rz_box_t* args = ARGS_OF_BOXED(fun_context);
+/* registers a boxed signal for output */
+static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t* args) {
+    (void) num_args;
     rz_box_t sig = args[0];
     if(sig.kind != RZ_BOX_SIGNAL) {
         fprintf(stderr, "Runtime error: rz_register_output_signal got a non-signal value\n");

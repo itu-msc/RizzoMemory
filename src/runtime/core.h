@@ -27,10 +27,19 @@ static inline uint16_t rz_object_tag(rz_object_t* obj) {
     return obj->header.tag;
 }
 
+typedef struct rz_box rz_box_t;
+typedef struct rz_function rz_function_t;
+
+/* TODO: consider a fast C-version for no stack allocations
+         and a closure one:
+         typedef rz_box_t(rz_fun)(rz_function_t *fun, rz_box_t arg); */
+typedef rz_box_t(rz_fun)(size_t num_args, rz_box_t* args);
+
 typedef enum {
     RZ_BOX_INT,
     RZ_BOX_STRING_LITERAL,
     RZ_BOX_PTR,
+    RZ_BOX_PAP,
     RZ_BOX_SIGNAL 
 } rz_box_kind_t;
 
@@ -38,7 +47,7 @@ typedef struct rz_box {
     rz_box_kind_t kind;
     union {
         int32_t i32;
-        void* fun;
+        rz_fun* c_fun_ptr;
         rz_object_t* obj;
         char* str; /*pointer so its keeps the size of the struct */
     } as; 
@@ -119,7 +128,9 @@ static inline void rz_refcount_dec(rz_object_t* obj, void (*free_func)(void*)) {
     rz_refcount_t new_count = --obj->header.refcount;
     if (0 == new_count) {
         rz_object_fields_t *objf = (rz_object_fields_t*)obj;
-        for (int i = obj->header.offset; i < obj->header.num_fields; i++) {
+        uint16_t start = obj->header.offset;
+        uint16_t end = obj->header.num_fields + start;
+        for (int i = start; i < end; i++) {
             rz_box_t field = objf->fields[i];
             rz_refcount_dec_box(field);
         }
@@ -135,9 +146,9 @@ static rz_object_t* rz_reset_object(rz_object_t* obj) {
     }
     /* reset-unique - assuming refcount == 1*/
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
-    size_t n = obj->header.num_fields;
-    for (size_t i = objf->_base.header.offset; i < n; i++)
-    {
+    size_t start = objf->_base.header.offset;
+    size_t end = obj->header.num_fields + start;
+    for (size_t i = start; i < end; i++) {
         rz_refcount_dec_box(objf->fields[i]);
     }
     return obj;
@@ -150,8 +161,10 @@ static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_f
     /* reuse-unique */
     obj->header.tag = tag;
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
-    for (int i = objf->_base.header.offset; i < obj->header.num_fields; i++) {
-        objf->fields[i] = args[i - objf->_base.header.offset];
+    size_t start = objf->_base.header.offset;
+    size_t end = obj->header.num_fields + start;
+    for (size_t i = start; i < end; i++) {
+        objf->fields[i] = args[i - start];
     }
     return obj;
 }
@@ -175,9 +188,6 @@ static inline void rz_refcount_inc_box(rz_box_t box) {
     }
 }
 
-typedef struct rz_function rz_function_t;
-typedef rz_box_t(rz_fun)(rz_function_t *fun);
-
 typedef struct rz_function {
     rz_object_t _base;
     rz_box_t fun;       /* boxed ptr to a C-function - count this a num_fields */
@@ -198,18 +208,8 @@ static inline size_t rz_function_get_arity(rz_function_t* fun) {
 }
 
 /* const-app-full */
-rz_box_t rz_call(rz_fun* f, rz_box_t* args, size_t num_args) {
-    /* stack allocate a function + arguments (which should all be boxed values) */
-    rz_function_t* fun = (rz_function_t*)alloca(sizeof_function_with(num_args));
-    fun->_base.header.num_fields = num_args;
-    fun->_base.header.offset = 1;
-    fun->_base.header.tag = num_args; /* as opposed to fun->arity = num_args */
-    fun->fun = (rz_box_t){ .kind = RZ_BOX_INT, .as.fun = f};
-    rz_box_t* dst = ARGS_OF_BOXED(fun);
-    for (size_t i = 0; i < num_args; i++) {
-        dst[i] = args[i];
-    }
-    return f(fun);
+rz_box_t rz_call(rz_fun* f, size_t num_args, rz_box_t* args) {
+    return f(num_args, args);
 }
 
 static inline rz_function_t *rz_malloc_func(rz_fun *f, int32_t arity, size_t num_free_vars) {
@@ -217,9 +217,17 @@ static inline rz_function_t *rz_malloc_func(rz_fun *f, int32_t arity, size_t num
     fun->_base.header.num_fields = num_free_vars;
     fun->_base.header.refcount = 1;
     fun->_base.header.offset = 1;
-    fun->fun = (rz_box_t){ .kind = RZ_BOX_INT, .as.fun = f };
+    fun->fun = (rz_box_t){ .kind = RZ_BOX_INT, .as.c_fun_ptr = f };
     fun->_base.header.tag = arity; // fun->arity = arity;
     return fun;
+}
+
+static inline rz_box_t rz_make_ptr_fun(rz_function_t* fun) {
+    return (rz_box_t){ .kind = RZ_BOX_PAP, .as.obj = (rz_object_t*) fun };
+}
+
+static inline rz_function_t* rz_unbox_fun(rz_box_t box) {
+    return (rz_function_t*) box.as.obj;
 }
 
 /* const-app-part - partial app of C function */
@@ -229,30 +237,40 @@ rz_box_t rz_lift_c_fun(rz_fun* f, int32_t arity, rz_box_t* free_vars, size_t num
     for (int i = 0; i < num_free_vars; i++) {
         fun_args->args[i] = free_vars[i];
     }
-    return rz_make_ptr((rz_object_t*)fun);
+    return rz_make_ptr_fun(fun);
 }
 
 static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
     rz_function_t* fun = (rz_function_t*)fun_obj;
-    /* TODO: reuse fun if unique - or can we entirely skip copying step? */
-    rz_function_t* copy = rz_malloc_func((rz_fun*) fun->fun.as.fun, rz_function_get_arity(fun), fun->_base.header.num_fields + 1);
-    rz_function_args_t* fun_free_args = ARGS_OF(fun);
-    rz_function_args_t* copy_free_args = ARGS_OF(copy);
-    copy_free_args->args[fun->_base.header.num_fields] = arg;
-    size_t n = fun->_base.header.num_fields;
-    for(int i = 0; i < n; i++) {
-        rz_box_t arg = copy_free_args->args[i] = fun_free_args->args[i];
-        rz_refcount_inc_box(arg);
+    size_t fun_arity = rz_function_get_arity(fun);
+    rz_fun* function_ptr = fun->fun.as.c_fun_ptr;
+    if(fun_arity == fun->_base.header.num_fields + 1) {
+        /* var-app-full */
+        size_t n = fun->_base.header.num_fields;
+        /* Alternatively 'rz_box_t args[n + 1]' but that doesn work for all C-compilers */
+        rz_box_t* args = (rz_box_t*) alloca((n + 1) * sizeof(rz_box_t));
+        rz_function_args_t* fun_free_args = ARGS_OF(fun);
+        for(int i = 0; i < n; i++) {
+            rz_refcount_inc_box(args[i] = fun_free_args->args[i]);
+        }
+        args[n] = arg;
+        rz_refcount_dec(fun_obj, rz_free);
+        return function_ptr(n + 1, args);
+    } else { 
+        /* var-app-part */
+        /* TODO: reuse fun if unique - or can we entirely skip copying step? */
+        rz_function_t* copy = rz_malloc_func(function_ptr, fun_arity, fun->_base.header.num_fields + 1);
+        rz_function_args_t* fun_free_args = ARGS_OF(fun);
+        rz_function_args_t* copy_free_args = ARGS_OF(copy);
+        size_t n = fun->_base.header.num_fields;
+        copy_free_args->args[n] = arg;
+        for(int i = 0; i < n; i++) {
+            rz_box_t arg = copy_free_args->args[i] = fun_free_args->args[i];
+            rz_refcount_inc_box(arg);
+        }
+        rz_refcount_dec(fun_obj, rz_free);
+        return rz_make_ptr_fun(copy);
     }
-    
-    rz_refcount_dec(fun_obj, rz_free);
-    /* var-app-full */
-    if (copy->_base.header.num_fields == rz_function_get_arity(copy)) {
-        rz_fun* tocall = copy->fun.as.fun;
-        return tocall(copy);
-    }
-    /* var-app-part */
-    return rz_make_ptr((rz_object_t*)copy);
 }
 
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
@@ -289,7 +307,7 @@ static inline void rz_debug_print_box(rz_box_t box) {
         case RZ_BOX_SIGNAL:
         case RZ_BOX_PTR: {
             rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
-            printf("ctor(%d, count: %d)", fields->_base.header.tag, fields->_base.header.refcount);
+            printf("ctor(%d, ref: %d)", fields->_base.header.tag, fields->_base.header.refcount);
             if(fields->_base.header.num_fields > 0) {
                 printf("{ ");
                 for (size_t i = fields->_base.header.offset; i < fields->_base.header.num_fields; i++)
@@ -298,6 +316,10 @@ static inline void rz_debug_print_box(rz_box_t box) {
                 }
                 printf("}");
             }
+        } break;
+        case RZ_BOX_PAP: {
+            rz_function_t* fun = (rz_function_t*)box.as.obj;
+            printf("pap(ref: %d, arity: %d, applied_vars: %d)", fun->_base.header.refcount, fun->_base.header.tag, fun->_base.header.num_fields);
         } break;
         default: {
             printf("Unknown box tag: '%d'", box.kind);
