@@ -94,6 +94,7 @@ let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr 
   | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = idof "delay"; fields = [get_name n] })
   | EUnary (Fst, EVar (x, _), _)  -> RProj (0, x)
   | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
+  | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
   | EConst (const, _) -> (
       match const with
       | CUnit -> RCtor (Ctor { tag = idof "unit"; fields = [] }) (* -> RCtor(int, [])*)
@@ -115,9 +116,9 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
   | ECase (EVar (x,_), cases, _) -> 
     let get_fields_of_pattern = function (* Causion: are we counting the nested part correctly? *)
     | PVar _ | PWildcard | PConst _ -> 0
-    | PTuple _ | PBoth _ -> 2 
+    | PTuple _ -> 2 
     | PSigCons _ -> 5 (* should it be 2, 3, 4, 5? *)
-    | PRight _ | PLeft _ -> 1
+    | PCtor (_, args, _) -> List.length args 
     in
     (*match mysync with
       | Left a ->

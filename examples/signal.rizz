@@ -4,6 +4,19 @@ fun _const x = x :: never
 fun mk_sig later = 
     laterapp (delay (fun a -> a :: (mk_sig later))) later
 
+fun map f s = match s with
+    | x :: xs -> f x :: (map f |> xs)
+
+fun sample xs ys = map (fun x -> (x, head ys)) xs
+
+fun switch s d = match s with
+    | x :: xs -> 
+        let cont = fun mysync -> match mysync with
+            | Left (xs_)   -> let partial_switch = switch xs_ in partial_switch d
+            | Right (d_)   -> d_
+            | Both (_, d_) -> d_
+        in x :: (cont |> sync xs d)
+
 let entry = fun x -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in

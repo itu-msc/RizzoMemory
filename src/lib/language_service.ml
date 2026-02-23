@@ -410,9 +410,10 @@ let rec pattern_bound_decls (pat : Ast.parsed Ast.pattern) : (string * range) li
   | Ast.PVar ((name, ann)) -> [ (name, range_of_ann ann) ]
   | Ast.PSigCons (p1, p2, _) ->
       pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
-  | Ast.PTuple (p1, p2, _) | Ast.PBoth (p1, p2, _) ->
+  | Ast.PTuple (p1, p2, _) ->
       pattern_bound_decls p1 @ pattern_bound_decls p2
-  | Ast.PLeft (p, _) | Ast.PRight (p, _) -> pattern_bound_decls p
+  | Ast.PCtor (_, args, _) ->
+      List.flatten (List.map (fun p -> pattern_bound_decls p) args)
 
 let keyword_range_from_expr ~(name : string) (expr : Ast.parsed Ast.expr) : range option =
   let expr_range = range_of_ann (Ast.expr_get_ann expr) in

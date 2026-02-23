@@ -5,6 +5,7 @@ module StringSet = Set.Make(String)
 let rec free_vars_expr e : StringSet.t = 
   match e with
   | EConst _ -> StringSet.empty
+  | EVar (x, _) when Rizzo_builtins.is_builtin x -> StringSet.empty
   | EVar (x, _) -> StringSet.singleton x
   | EApp (f, args, _) -> 
     StringSet.union (free_vars_expr f) (List.fold_left StringSet.union StringSet.empty (List.map free_vars_expr args))

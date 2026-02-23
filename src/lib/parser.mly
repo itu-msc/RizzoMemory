@@ -109,7 +109,8 @@ match_case_tail:
 
 op_expr:
   | left=op_expr PIPE_GT right=cons_expr
-    { EApp (right, [left], mkloc $startpos $endpos) }
+    { (* creates laterapp (delay left) right*)
+      EBinary (BLaterApp, EUnary (UDelay, left, mkloc $startpos(left) $endpos(left)), right, mkloc $startpos $endpos) }
   | left=op_expr EQEQ right=cons_expr
     { EBinary (Eq, left, right, mkloc $startpos $endpos) }
   | e=cons_expr
@@ -162,10 +163,19 @@ tuple_expr_list_tail:
       { e :: rest }
 
 pattern:
+  | name=TYPE_ID LPAREN ps=ctor_pattern_args RPAREN
+    { PCtor ((name, mkloc $startpos(name) $endpos(name)), ps, mkloc $startpos $endpos) }
+  | name=TYPE_ID
+    { PCtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }
   | p=pattern_atom CONS rest=ID
       { PSigCons (p, (rest, mkloc $startpos(rest) $endpos(rest)), mkloc $startpos $endpos) }
   | p=pattern_atom
       { p }
+
+ctor_pattern_args:
+  | p=pattern rest=comma_separated_patterns
+    { p :: rest }
+
 
 pattern_atom:
   | UNDERSCORE { PWildcard }
@@ -179,12 +189,12 @@ pattern_atom:
   | LPAREN p=pattern RPAREN { p }
 
 tuple_pattern_list:
-  | p1=pattern COMMA p2=pattern rest=tuple_pattern_list_tail
+  | p1=pattern COMMA p2=pattern rest=comma_separated_patterns
       { p1 :: p2 :: rest }
 
-tuple_pattern_list_tail:
+comma_separated_patterns:
   | { [] }
-  | COMMA p=pattern rest=tuple_pattern_list_tail
+  | COMMA p=pattern rest=comma_separated_patterns
       { p :: rest }
 
 type_expr:

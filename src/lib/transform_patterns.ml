@@ -52,10 +52,6 @@ case b1 of
 open Ast
 
 (* todo: move these constants to some builtins *)
-let left_elim = (Rizzo_builtins.get "left_elim").name
-let right_elim = (Rizzo_builtins.get "right_elim").name
-let both_elim_fst = (Rizzo_builtins.get "both_elim_fst").name
-let both_elim_snd = (Rizzo_builtins.get "both_elim_snd").name
 let head_elim = (Rizzo_builtins.get "head").name
 
 let rec transform_patterns (p: 's Ast.program) = 
@@ -93,28 +89,21 @@ and compile_pattern p scrutinee good bad =
       p, ELet (hd_name, hd_proj, compile_pattern hd (EVar hd_name) 
       (fun _ -> ELet (tl, EUnary (UTail, scrutinee, tl_ann), good (EVar tl), ann))
       bad, ann), ann)], ann)
-  | PLeft (p, ann) -> 
-    let t = Utilities.new_name "t", ann in
-    let t_proj = EApp (EVar (left_elim,ann), [scrutinee], ann) in
-    (* (Left p) as x -> let t = rz_left_elim x in (compile p ...) *)
-    ECase (scrutinee, [(p, ELet(t, t_proj, compile_pattern p scrutinee good bad, ann), ann)], ann)
-  | PRight (p, ann) -> 
-    let t = Utilities.new_name "t", ann in
-    let t_proj = EApp (EVar (right_elim, ann), [scrutinee], ann) in
-    (* (Right p) as x -> let t = rz_right_elim x in (compile p ...) *)
-    ECase (scrutinee, [(p, ELet(t, t_proj, compile_pattern p scrutinee good bad, ann), ann)], ann)
-  | PBoth (p1, p2, ann) -> 
-    (* Both (p1,p2) -> let a = both_left scrutinee in let b = both_right scrutinee in ...*)
-    let a_name = Utilities.new_name "p", ann in
-    let b_name = Utilities.new_name "p", ann in
-    let a_proj = EApp (EVar (both_elim_fst, ann), [scrutinee], ann) in
-    let b_proj = EApp (EVar (both_elim_snd, ann), [scrutinee], ann) in
-    let compiled_nested_patterns = 
-      compile_pattern p1 (EVar a_name) 
-        (fun _ -> ELet(b_name, b_proj, compile_pattern p2 (EVar b_name) good bad, ann))
-        bad 
+  | PCtor (_ctor_name, ps, ann) as pat ->
+    let proj_of_i i = EUnary (UProj i, scrutinee, ann) in
+    let names_and_projs = List.mapi (fun i _ -> (Utilities.new_name "p", ann), proj_of_i i) ps in
+    let bindings = List.combine ps names_and_projs in
+    let rec compile_fields bs =
+      match bs with
+      | [] -> good scrutinee
+      | (subpat, (pname, pproj)) :: rest ->
+        ELet (pname, pproj, compile_pattern subpat (EVar pname)
+            (fun _ -> compile_fields rest) 
+            bad,
+          ann)
     in
-    ECase(scrutinee, [(p, ELet(a_name, a_proj, compiled_nested_patterns, ann), ann)], ann)
+    ECase (scrutinee, [ (pat, compile_fields bindings, ann) ], ann)
+
 and compile_match_cases scrutinee cases = 
   match cases with
   | [] -> failwith "Tried created another match branch - but there were no more cases in match expression"
@@ -133,16 +122,3 @@ and compile_match e =
   | EFun (args, body, ann) -> EFun (args, compile_match body, ann)
   | EBinary (op, e1, e2, ann) -> EBinary (op, compile_match e1, compile_match e2, ann)
   | EIfe (cond, e1, e2, ann) -> EIfe (compile_match cond, compile_match e1, compile_match e2, ann)
-
-(* let rec expr_apply f e =
-  let self = expr_apply f in
-  match e with
-  | EVar _ | EConst _ -> e 
-  | ECase (scrutinee, cases, ann) -> ECase (self scrutinee, List.map (fun (p, c, a) -> (p, self c, a)) cases, ann)
-  | ELet (name, e1, e2, ann) -> ELet (name, self e1, self e2, ann) 
-  | EApp (e, args, ann) -> EApp (self e, List.map self args, ann)
-  | EUnary (u, e, ann) -> EUnary (u, self e, ann)
-  | ETuple (e1, e2, ann) -> ETuple (self e1, self e2, ann)
-  | EFun (args, body, ann) -> EFun (args, self body, ann)
-  | EBinary (op, e1, e2, ann) -> EBinary (op, self e1, self e2, ann)
-  | EIfe (cond, e1, e2, ann) -> EIfe (self cond, self e1, self e2, ann)  *)

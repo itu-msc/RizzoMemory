@@ -81,7 +81,11 @@ static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t* args
 
 static inline void rz_print_registered_output_head(rz_signal_t* sig, bool force) {
     /*TODO: this assume strings for now - we will want to make it strings */
-    if (rz_unbox_int(sig->updated) || force) printf("%d\n", sig->head.as.i32);
+    if (rz_unbox_int(sig->updated) || force) { 
+        // printf("%d\n", sig->head.as.i32);
+        rz_debug_print_box(sig->head); 
+        printf("\n");
+    }
 }
 
 static inline void rz_print_registered_outputs() {

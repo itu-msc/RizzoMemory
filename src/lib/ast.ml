@@ -11,6 +11,7 @@ type const =
 type unary_op =
   | Fst | Snd (* tuple elimination *)
   | UWait | UWatch | UTail | UDelay
+  | UProj of int (* proj_i for internal use *)
   (* | Inl | Inr *) (* constructors for sum type *)
 
 type binary_op =
@@ -41,9 +42,7 @@ type _ pattern =
   | PConst : const * 's ann -> 's pattern
   | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
   | PSigCons : 's pattern * 's name * 's ann -> 's pattern
-  | PLeft : 's pattern * 's ann -> 's pattern
-  | PRight : 's pattern * 's ann -> 's pattern
-  | PBoth : 's pattern * 's pattern * 's ann -> 's pattern
+  | PCtor : 's name * 's pattern list * 's ann-> 's pattern
   (* could include more complex patterns like lists, records, etc. *)
 
 and _ expr =
@@ -95,8 +94,7 @@ let rec pattern_bound_vars = function
   | PVar (x, _) -> [x]
   | PSigCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
   | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
-  | PLeft (p, _) | PRight (p, _) -> pattern_bound_vars p
-  | PBoth (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
+  | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars ps
 
 let rec eq_expr a b = 
   match a, b with
@@ -124,9 +122,8 @@ and eq_pattern a b =
   | PConst (c1, _), PConst (c2, _) -> c1 = c2
   | PTuple (a1, b1, _), PTuple (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
   | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2
-  | PLeft (p1, _), PLeft (p2, _) -> eq_pattern p1 p2
-  | PRight (p1, _), PRight (p2, _) -> eq_pattern p1 p2
-  | PBoth (a1, b1, _), PBoth (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
+  | PCtor (name1, args1, _), PCtor (name2, args2, _) ->
+    eq_name name1 name2 && List.length args1 = List.length args2 && List.for_all2 eq_pattern args1 args2
   | _ -> false
 
 let pp_const out = function
@@ -142,9 +139,9 @@ let rec pp_pattern out = function
   | PConst (c, _) -> pp_const out c
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
   | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: %s)" pp_pattern p1 (fst p2)
-  | PLeft (p, _) -> Format.fprintf out "Left %a" pp_pattern p
-  | PRight (p, _) -> Format.fprintf out "Right %a" pp_pattern p
-  | PBoth (p1, p2, _) -> Format.fprintf out "Both(%a, %a)" pp_pattern p1 pp_pattern p2
+  | PCtor (name, args, _) -> 
+    if List.length args = 0 then Format.fprintf out "%s (notice args are empty!!)" (fst name)
+    else Format.fprintf out "%s(%a)" (fst name) (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_pattern) args
 
 let rec pp_case_branch out (p, b, _ : _ case_branch) =
   let open Format in
@@ -172,6 +169,7 @@ and pp_expr out =
     | UWatch -> "watch"
     | UTail -> "tail"
     | UDelay -> "delay"
+    | UProj i -> Printf.sprintf "proj_%d" i
     in
     fprintf out "@[<hov 2>%s@ %a@]" op_str pp_expr e
   | EBinary (op, e1, e2, _) ->
