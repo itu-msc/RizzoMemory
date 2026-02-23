@@ -71,6 +71,114 @@ async function restartLanguageServer(): Promise<void> {
     }
 }
 
+/**
+ * Resolves the path to the C runtime headers bundled with the extension.
+ * When running from source (dev mode) falls back to ../../src/runtime.
+ */
+function getRuntimePath(context: vscode.ExtensionContext): string {
+    const bundled = path.join(context.extensionPath, "runtime");
+    if (fs.existsSync(bundled)) {
+        return bundled;
+    }
+    return path.join(context.extensionPath, "..", "src", "runtime");
+}
+
+/**
+ * Resolves the rizzoc compiler command and arguments.
+ * Priority:
+ *   1. User setting rizzLsp.compiler.command (if non-empty)
+ *   2. Local dune build: <workspace>/_build/default/src/bin/main.exe
+ *   3. Fallback: opam exec -- dune exec rizzoc --
+ */
+function getRizzocCommand(
+    workspaceFolder: string | undefined
+): { command: string; args: string[] } {
+    const config = vscode.workspace.getConfiguration("rizzLsp");
+    const userCommand = config.get<string>("compiler.command", "").trim();
+    if (userCommand.length > 0) {
+        return { command: userCommand, args: [] };
+    }
+
+    if (workspaceFolder) {
+        const localBuild = path.join(
+            workspaceFolder,
+            "_build",
+            "default",
+            "src",
+            "bin",
+            "main.exe"
+        );
+        if (fs.existsSync(localBuild)) {
+            return { command: localBuild, args: [] };
+        }
+    }
+
+    return { command: "opam", args: ["exec", "--", "dune", "exec", "rizzoc", "--"] };
+}
+
+/**
+ * Compiles the current .rizz file and runs the result in an integrated terminal.
+ * Steps:
+ *   1. rizzoc <file>          → output.c  (in the workspace directory)
+ *   2. <cc> -I<runtime> output.c -o output
+ *   3. ./output  (or .\output.exe on Windows)
+ */
+async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        await vscode.window.showErrorMessage("Rizz: No active editor.");
+        return;
+    }
+
+    const doc = editor.document;
+    if (doc.languageId !== "rizz") {
+        await vscode.window.showErrorMessage("Rizz: Active file is not a .rizz file.");
+        return;
+    }
+
+    // Save before compiling.
+    await doc.save();
+
+    const filePath = doc.uri.fsPath;
+    const workspaceFolder =
+        vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath ??
+        path.dirname(filePath);
+
+    const rizzoc = getRizzocCommand(workspaceFolder);
+    const runtimePath = getRuntimePath(context);
+    const config = vscode.workspace.getConfiguration("rizzLsp");
+
+    // Build the rizzoc invocation.
+    const quotedCommand = `"${rizzoc.command}"`;
+    const quotedArgs = rizzoc.args.join(" ");
+    const quotedFile = `"${filePath}"`;
+    const rizzocCmd =
+        quotedArgs.length > 0
+            ? `${quotedCommand} ${quotedArgs} ${quotedFile}`
+            : `${quotedCommand} ${quotedFile}`;
+
+    // Validate the C compiler setting to prevent shell injection.
+    const rawCc = config.get<string>("compiler.cc", "gcc").trim() || "gcc";
+    if (!/^[a-zA-Z0-9\-_./ \\:]+$/.test(rawCc)) {
+        await vscode.window.showErrorMessage(
+            `Rizz: Invalid rizzLsp.compiler.cc value: "${rawCc}". ` +
+            `Only alphanumeric characters, spaces, and path separators are allowed.`
+        );
+        return;
+    }
+    const cc = rawCc;
+
+    const ccCmd = `${cc} -I"${runtimePath}" output.c -o output`;
+    const runCmd = process.platform === "win32" ? `.\\output.exe` : `./output`;
+
+    const terminal = vscode.window.createTerminal({
+        name: "Rizz Run",
+        cwd: workspaceFolder
+    });
+    terminal.show(true);
+    terminal.sendText(`${rizzocCmd} && ${ccCmd} && ${runCmd}`);
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const config = vscode.workspace.getConfiguration("rizzLsp");
     let command = config.get<string>("server.command", "opam");
@@ -151,6 +259,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand("rizzLsp.restartServer", async () => {
             await restartLanguageServer();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("rizzLsp.runFile", async () => {
+            await runCurrentFile(context);
         })
     );
 

@@ -40,6 +40,17 @@
       "command": "npm",
       "args": ["run", "transpile"],
       "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "rizz: run file",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "rizz"],
+      "problemMatcher": ["$gcc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ]
 }

@@ -2,7 +2,7 @@
     "name": "rizz-lsp",
     "displayName": "Rizz Language Support",
     "description": "Language Server Protocol client for .rizz files",
-    "version": "0.0.4",
+    "version": "0.1.0",
     "publisher": "local",
     "license": "MIT",
     "repository": {
@@ -28,8 +28,23 @@
                 "command": "rizzLsp.restartServer",
                 "title": "Rizz: Restart LSP Server",
                 "category": "Rizz"
+            },
+            {
+                "command": "rizzLsp.runFile",
+                "title": "Rizz: Run Current File",
+                "category": "Rizz",
+                "icon": "$(play)"
             }
         ],
+        "menus": {
+            "editor/title/run": [
+                {
+                    "command": "rizzLsp.runFile",
+                    "when": "resourceLangId == rizz",
+                    "group": "navigation"
+                }
+            ]
+        },
         "languages": [
             {
                 "id": "rizz",
@@ -81,6 +96,16 @@
                         "type": "string"
                     },
                     "description": "Arguments used to launch the Rizz language server"
+                },
+                "rizzLsp.compiler.command": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to the rizzoc compiler binary. Leave empty to auto-detect from local build or opam."
+                },
+                "rizzLsp.compiler.cc": {
+                    "type": "string",
+                    "default": "gcc",
+                    "description": "C compiler command used to compile generated C output (e.g. gcc or clang)."
                 }
             }
         }
@@ -90,9 +115,10 @@
         "bundle": "esbuild ./src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=./out/extension.js",
         "typecheck": "tsc -p ./ --noEmit",
         "watch": "tsc -watch -p ./",
-        "vscode:prepublish": "npm run typecheck && npm run bundle",
+        "copy:runtime": "node scripts/copy-runtime.js",
+        "vscode:prepublish": "npm run copy:runtime && npm run typecheck && npm run bundle",
         "package:vsix": "vsce package --out ./out",
-        "install:local": "npm run package:vsix && code --install-extension ./out/rizz-lsp-0.0.4.vsix --force"
+        "install:local": "npm run package:vsix && code --install-extension ./out/rizz-lsp-0.1.0.vsix --force"
     },
     "devDependencies": {
         "@vscode/vsce": "^3.7.1",
