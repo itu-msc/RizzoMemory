@@ -95,14 +95,7 @@ let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr 
   | EUnary (Fst, EVar (x, _), _)  -> RProj (0, x)
   | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
   | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
-  | EConst (const, _) -> (
-      match const with
-      | CUnit -> RCtor (Ctor { tag = idof "unit"; fields = [] }) (* -> RCtor(int, [])*)
-      | CNever -> RCtor (Ctor { tag = idof "never"; fields = [] })
-      | CInt _ -> RCtor (Ctor { tag = idof "int"; fields = [Refcount.Const const] })
-      | CString _ -> RCtor (Ctor { tag = idof "string"; fields = [Refcount.Const const]})
-      | CBool b -> if b then RCtor (Ctor { tag = idof "true"; fields = []}) else RCtor (Ctor { tag = idof "false"; fields = []})
-    )
+  | EConst (const, _) -> RConst const
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
 
 and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 

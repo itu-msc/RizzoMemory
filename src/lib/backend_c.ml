@@ -14,6 +14,7 @@ and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
   | FnCase (_, cases) -> List.concat_map (Fun.compose collect_string_consts_fn snd) cases
   | FnDec _ | FnInc _  -> []
 and collect_string_consts_expr rexpr = match rexpr with
+  | RConst _ -> []
   | RCall (_, args) -> List.filter_map collect_primitive_string_const args
   | RCtor Ctor {tag = _; fields } -> List.filter_map collect_primitive_string_const fields
   | RPartialApp (_, args) -> List.filter_map collect_primitive_string_const args
@@ -90,6 +91,7 @@ let emit_c_code (p:program) (filename:string) =
       |> String.concat ", "
     in
     let s = match e with
+    | RConst c -> emit_primitive (Const c)
     | RCall ("eq", [p1; p2]) -> Printf.sprintf "rz_eq(%s, %s)" (emit_primitive p1) (emit_primitive p2)
     | RCall ("start_event_loop", _) -> "rz_start_event_loop()"
     | RCall ("output_int_signal", [signal]) -> 

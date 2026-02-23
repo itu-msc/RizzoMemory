@@ -7,11 +7,11 @@ type primitive =
   | Var of string
 
 type rexpr = (* expr in their RC IR *)
+  | RConst of Ast.const
   | RCall of string * primitive list
   | RPartialApp of string * primitive list
   | RVarApp of string * primitive  (* TODO: do we want n-ary var-app? *)
   | RCtor of ctor
-  (* | RSignal of { head: primitive; tail: primitive; } at runtime this will also include next/prev fields of heap, the tail can only be a var or never *)
   | RProj of int * string
   | RReset of string
   | RReuse of string * ctor
@@ -39,6 +39,7 @@ let pp_primitive out = function
 let pp_rexpr out = 
   let comma_separated pp out = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp out in
   function
+  | RConst c -> pp_primitive out (Const c)
   | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (comma_separated pp_primitive) ys
   | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (comma_separated pp_primitive) ys
   | RVarApp (x, y) -> Format.fprintf out "%s %a" x pp_primitive y
@@ -122,6 +123,7 @@ let name_of_primitive_opt = function
 
 let rec free_vars_expr rexpr : StringSet.t = 
   match rexpr with
+  | RConst _ -> StringSet.empty
   | RCall (c, args) | RPartialApp (c, args) ->
     StringSet.of_list (c :: List.filter_map name_of_primitive_opt args)
   | RVarApp (f, arg) -> 
@@ -213,6 +215,7 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
     let compiled_fs = List.map (fun (n, f) -> (n, insert_dec_many ys (insert_rc f var_ownerships func_ownerships) var_ownerships)) fs in
     FnCase (x, compiled_fs) 
   (* The Lets*)
+  | FnLet (y, RConst c, f) -> FnLet (y, RConst c, insert_rc f var_ownerships func_ownerships)
   | FnLet (y, RProj (i, x), f) -> 
     (match lookup var_ownerships x with
     | Owned ->
@@ -270,6 +273,7 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
     List.fold_left (fun acc case -> StringSet.union acc (collect func_ownerships case)) StringSet.empty (get_cases cases)
   | FnInc _ | FnDec _ -> failwith "no inc/dec in collect"
   (* The lets *)
+  | FnLet (_, RConst _, rest) -> collect func_ownerships rest
   | FnLet (_, RCtor _, rest) -> collect func_ownerships rest
   | FnLet (_, RCall (c, xs), rest) -> 
     let owned_args = 

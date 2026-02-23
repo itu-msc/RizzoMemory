@@ -14,7 +14,7 @@ fun switch s d = match s with
         let cont = fun mysync -> match mysync with
             | Left (xs_)   -> let partial_switch = switch xs_ in partial_switch d
             | Right (d_)   -> d_
-            | Both (_, d_) -> d_
+            | Both (l, r) -> l == r
         in x :: (cont |> sync xs d)
 
 let entry = fun x -> 
