@@ -11,8 +11,8 @@ let swap : fn =
       FnLet ("h1", RProj (1, "xs"),
       FnLet("h2", RProj (1, "t1"),
       FnLet("t2", RProj (2, "t1"),
-      FnLet("r1", RCtor{ tag = 2; fields = [Var "h1"; Var "t2"]},
-      FnLet("r2", RCtor{ tag = 2; fields = [Var "h2"; Var "r1"]},
+      FnLet("r1", RCtor (Ctor { tag = 2; fields = [Var "h1"; Var "t2"]}),
+      FnLet("r2", RCtor (Ctor { tag = 2; fields = [Var "h2"; Var "r1"]}),
       FnRet (Var "r2")))
       ))))
     ])))
@@ -36,8 +36,8 @@ let test_swap_case () =
         FnLet("h2", RProj (1, "t1"),
         FnLet("t2", RProj (2, "t1"),
           FnLet("var1", RReset "t1",
-        FnLet("r1", RReuse("var1", { tag = 2; fields = [Var "h1"; Var "t2"]}),
-        FnLet("r2", RReuse("var2", { tag = 2; fields = [Var "h2"; Var "r1"]}),
+        FnLet("r1", RReuse("var1", Ctor { tag = 2; fields = [Var "h1"; Var "t2"]}),
+        FnLet("r2", RReuse("var2", Ctor { tag = 2; fields = [Var "h2"; Var "r1"]}),
         FnRet (Var "r2")))
         ))))))
       ])))
@@ -65,8 +65,8 @@ let test_paper_goforward () =
             (* FnInc("x",  *)
             FnLet("xs'", RProj (2, "xs"), 
             (* FnInc("xs'", *)
-            FnLet("bs'", RCtor{tag = 2; fields = [Var "x"; Var "bs"]},
-            FnLet("r", RCtor{tag = 1; fields = [Var "xs'"; Var "bs'"]},
+            FnLet("bs'", RCtor (Ctor {tag = 2; fields = [Var "x"; Var "bs"]}),
+            FnLet("r", RCtor (Ctor {tag = 1; fields = [Var "xs'"; Var "bs'"]}),
             FnRet (Var "r"))))))
         )]
       )))
@@ -95,8 +95,8 @@ let test_paper_goforward () =
             FnLet("xs'", RProj (2, "xs"),
             FnInc("xs'",
               FnLet("var1", RReset "xs",
-            FnLet("bs'", RReuse("var1", {tag = 2; fields = [Var "x"; Var "bs"]}),
-            FnLet("r", RReuse("var2", {tag = 1; fields = [Var "xs'"; Var "bs'"]}),
+            FnLet("bs'", RReuse("var1",  (Ctor {tag = 2; fields = [Var "x"; Var "bs"]})),
+            FnLet("r", RReuse("var2", (Ctor {tag = 1; fields = [Var "xs'"; Var "bs'"]})),
             FnRet (Var "r")))))))))))
         )]
       )))
@@ -113,7 +113,7 @@ let test_tuple_swap () =
     FnCase ("t", [(2,
       FnLet ("a", RProj (1, "t"),
       FnLet ("b", RProj (2, "t"),
-      FnLet ("r", RCtor { tag = 2; fields = [Var "b"; Var "a"]},
+      FnLet ("r", RCtor (Ctor { tag = 2; fields = [Var "b"; Var "a"]}),
       FnRet (Var "r"))))
     )])
   ) in 
@@ -125,7 +125,7 @@ let test_tuple_swap () =
       FnLet ("a", RProj (1, "t"),
       FnLet ("b", RProj (2, "t"),
       FnLet ("var1", RReset "t",
-      FnLet ("r", RReuse("var1", { tag = 2; fields = [Var "b"; Var "a"]}),
+      FnLet ("r", RReuse("var1", (Ctor { tag = 2; fields = [Var "b"; Var "a"]})),
       FnRet (Var "r"))))
     ))])
   ) in

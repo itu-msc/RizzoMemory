@@ -38,6 +38,7 @@ let ctorMappings =
     ("string", 0);
     ("false", 0);
     ("true", 1);
+    ("sigcons", -1);
   ]
 let idof name = match M.find_opt name ctorMappings with
   | Some id -> id
@@ -81,25 +82,25 @@ let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr 
     | Some Some _ -> RPartialApp (f, List.map get_name xs) 
     | Some None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: trying to apply a non-function global '%s'" f
     | None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: unable to find '%s' in globals" f)
-  | EBinary (SigCons, n1, n2, _)-> RSignal { head = get_name n1; tail = get_name n2 }
-  | ETuple (n1, n2, _) -> RCtor { tag = idof "tuple"; fields = [get_name n1; get_name n2] }
-  | EBinary (BSync, n1, n2, _) -> RCtor { tag = idof "sync"; fields = [get_name n1; get_name n2] }
-  | EBinary (BLaterApp, n1, n2, _) -> RCtor { tag = idof "later_app"; fields = [get_name n1; get_name n2] }
-  | EBinary (BOStar, n1, n2, _) -> RCtor { tag = idof "ostar"; fields = [get_name n1; get_name n2] }
+  | EBinary (SigCons, n1, n2, _)-> RCtor (Signal { head = get_name n1; tail = get_name n2 })
+  | ETuple (n1, n2, _) -> RCtor (Ctor { tag = idof "tuple"; fields = [get_name n1; get_name n2] })
+  | EBinary (BSync, n1, n2, _) -> RCtor (Ctor { tag = idof "sync"; fields = [get_name n1; get_name n2] })
+  | EBinary (BLaterApp, n1, n2, _) -> RCtor (Ctor { tag = idof "later_app"; fields = [get_name n1; get_name n2] })
+  | EBinary (BOStar, n1, n2, _) -> RCtor (Ctor { tag = idof "ostar"; fields = [get_name n1; get_name n2] })
   | EBinary (op, n1, n2, _) -> RCall (op_to_application op, [get_name n1; get_name n2])
-  | EUnary (UWait, n, _) -> RCtor { tag = idof "wait"; fields = [get_name n] }
-  | EUnary (UTail, n, _) -> RCtor { tag = idof "tail"; fields = [get_name n] }
-  | EUnary (UWatch, n, _) -> RCtor { tag = idof "watch"; fields = [get_name n] }
-  | EUnary (UDelay, n, _) -> RCtor { tag = idof "delay"; fields = [get_name n] }
+  | EUnary (UWait, n, _) -> RCtor (Ctor { tag = idof "wait"; fields = [get_name n] })
+  | EUnary (UTail, n, _) -> RCtor (Ctor { tag = idof "tail"; fields = [get_name n] })
+  | EUnary (UWatch, n, _) -> RCtor (Ctor { tag = idof "watch"; fields = [get_name n] })
+  | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = idof "delay"; fields = [get_name n] })
   | EUnary (Fst, EVar (x, _), _)  -> RProj (0, x)
   | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
   | EConst (const, _) -> (
       match const with
-      | CUnit -> RCtor { tag = idof "unit"; fields = [] } (* -> RCtor(int, [])*)
-      | CNever -> RCtor { tag = idof "never"; fields = [] }
-      | CInt _ -> RCtor { tag = idof "int"; fields = [Refcount.Const const] }
-      | CString _ -> RCtor { tag = idof "string"; fields = [Refcount.Const const]}
-      | CBool b -> if b then RCtor { tag = idof "true"; fields = []} else RCtor { tag = idof "false"; fields = []}
+      | CUnit -> RCtor (Ctor { tag = idof "unit"; fields = [] }) (* -> RCtor(int, [])*)
+      | CNever -> RCtor (Ctor { tag = idof "never"; fields = [] })
+      | CInt _ -> RCtor (Ctor { tag = idof "int"; fields = [Refcount.Const const] })
+      | CString _ -> RCtor (Ctor { tag = idof "string"; fields = [Refcount.Const const]})
+      | CBool b -> if b then RCtor (Ctor { tag = idof "true"; fields = []}) else RCtor (Ctor { tag = idof "false"; fields = []})
     )
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
 

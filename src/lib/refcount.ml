@@ -11,11 +11,13 @@ type rexpr = (* expr in their RC IR *)
   | RPartialApp of string * primitive list
   | RVarApp of string * primitive  (* TODO: do we want n-ary var-app? *)
   | RCtor of ctor
-  | RSignal of { head: primitive; tail: primitive; } (* at runtime this will also include next/prev fields of heap, the tail can only be a var or never *)
+  (* | RSignal of { head: primitive; tail: primitive; } at runtime this will also include next/prev fields of heap, the tail can only be a var or never *)
   | RProj of int * string
   | RReset of string
   | RReuse of string * ctor
-and ctor = { tag: int; fields: primitive list }
+and ctor = 
+  | Ctor of { tag: int; fields: primitive list }
+  | Signal of { head: primitive; tail: primitive }
 
 type fn_body = 
   | FnRet of primitive
@@ -40,11 +42,12 @@ let pp_rexpr out =
   | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (comma_separated pp_primitive) ys
   | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (comma_separated pp_primitive) ys
   | RVarApp (x, y) -> Format.fprintf out "%s %a" x pp_primitive y
-  | RCtor {tag; fields} -> Format.fprintf out "Ctor%d(%a)" tag (comma_separated pp_primitive) fields
-  | RSignal {head; tail} -> Format.fprintf out "Signal(%a, %a)" pp_primitive head pp_primitive tail
+  | RCtor Ctor {tag; fields} -> Format.fprintf out "Ctor%d(%a)" tag (comma_separated pp_primitive) fields
+  | RCtor Signal {head; tail} -> Format.fprintf out "Signal(%a, %a)" pp_primitive head pp_primitive tail
   | RProj (i, x) -> Format.fprintf out "proj_%d %s" i x
   | RReset x -> Format.fprintf out "reset %s" x
-  | RReuse (x, {tag; fields}) -> Format.fprintf out "reuse %s in Ctor%d(%a)" x tag (comma_separated pp_primitive) fields
+  | RReuse (x, Ctor {tag; fields}) -> Format.fprintf out "reuse %s in Ctor%d(%a)" x tag (comma_separated pp_primitive) fields
+  | RReuse (x, Signal {head; tail}) -> Format.fprintf out "reuse %s in Signal(%a, %a)" x pp_primitive head pp_primitive tail
 
 let rec pp_fnbody out = function
   | FnRet x -> Format.fprintf out "ret %a" pp_primitive x
@@ -92,11 +95,15 @@ and eq_rexpr a b = match a, b with
   | RCall (c1, ps1), RCall (c2, ps2) -> c1 = c2 && ps1 = ps2
   | RPartialApp (c1, ps1), RPartialApp (c2, ps2) -> c1 = c2 && ps1 = ps2
   | RVarApp (x1, p1), RVarApp (x2, p2) -> x1 = x2 && p1 = p2
-  | RCtor { tag = t1; fields = f1 }, RCtor { tag = t2; fields = f2 } -> t1 = t2 && f1 = f2
-  | RSignal { head = h1; tail = t1 }, RSignal { head = h2; tail = t2 } -> h1 = h2 && t1 = t2
+  | RCtor Ctor { tag = t1; fields = f1 }, RCtor Ctor { tag = t2; fields = f2 } -> t1 = t2 && f1 = f2
+  | RCtor Signal { head = h1; tail = t1 }, RCtor Signal { head = h2; tail = t2 } -> h1 = h2 && t1 = t2
   | RProj (i1, x1), RProj (i2, x2) -> i1 = i2 && x1 = x2
   | RReset x1, RReset x2 -> x1 = x2
-  | RReuse (x1, { tag = t1; fields = f1 }), RReuse (x2, { tag = t2; fields = f2 }) -> x1 = x2 && t1 = t2 && f1 = f2
+  | RReuse (x1, c1), RReuse (x2, c2) -> x1 = x2 && eq_rexpr_ctor c1 c2
+  | _ -> false
+and eq_rexpr_ctor a b = match a, b with
+  | Ctor { tag = t1; fields = f1 }, Ctor { tag = t2; fields = f2 } -> t1 = t2 && f1 = f2
+  | Signal { head = h1; tail = t1 }, Signal { head = h2; tail = t2 } -> h1 = h2 && t1 = t2
   | _ -> false
 
 (* The parameter list *)
@@ -119,14 +126,16 @@ let rec free_vars_expr rexpr : StringSet.t =
     StringSet.of_list (c :: List.filter_map name_of_primitive_opt args)
   | RVarApp (f, arg) -> 
     StringSet.add f (match name_of_primitive_opt arg with Some x -> StringSet.singleton x | None -> StringSet.empty)
-  | RCtor { tag = _; fields } ->
+  | RCtor Ctor { tag = _; fields } ->
       List.fold_left (fun acc y -> add_if_member y acc) StringSet.empty fields
   | RProj (_, name) -> StringSet.singleton name
-  | RSignal { head; tail } ->
+  | RCtor Signal { head; tail } ->
     StringSet.of_list @@ List.filter_map name_of_primitive_opt [head; tail]
   | RReset name -> StringSet.singleton name
-  | RReuse (name, { tag = _; fields }) ->
+  | RReuse (name, Ctor { fields; _ }) ->
     StringSet.of_list (name :: List.filter_map name_of_primitive_opt fields)
+  | RReuse (name, Signal {head; tail}) ->
+    StringSet.of_list (name :: List.filter_map name_of_primitive_opt [head; tail])
 and free_vars = function
   | FnRet x -> 
     name_of_primitive_opt x
@@ -223,18 +232,22 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
   | FnLet (z, RVarApp (x,y), f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app [Var x;y] [Owned; Owned] (FnLet (z, RVarApp(x,y), compiled_f)) var_ownerships
-  | FnLet (z, (RCtor { tag = _; fields} as ctor), f) ->
+  | FnLet (z, (RCtor Ctor { tag = _; fields} as ctor), f) ->
     let bs = List.map (fun _ -> Owned) fields in
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app fields bs (FnLet (z, ctor, compiled_f)) var_ownerships
-  | FnLet (z, RSignal { head; tail }, f) ->
+  | FnLet (z, RCtor Signal { head; tail }, f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
-    c_app [head; tail] [Owned; Owned] (FnLet (z, RSignal { head; tail }, compiled_f)) var_ownerships
+    c_app [head; tail] [Owned; Owned] (FnLet (z, RCtor (Signal { head; tail }), compiled_f)) var_ownerships
   | FnLet (z, RReset x, f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in FnLet (z, RReset x, compiled_f)
-  | FnLet (z, (RReuse (_, { tag = _; fields }) as reuse), f) ->
+  | FnLet (z, (RReuse (_, Signal { head; tail }) as reuse), f) -> 
+    let compiled_f = insert_rc f var_ownerships func_ownerships in
+    c_app [head; tail] [Owned; Owned] (FnLet (z, reuse, compiled_f)) var_ownerships
+  | FnLet (z, (RReuse (_, Ctor { fields; _ }) as reuse), f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app fields (List.map (fun _ -> Owned) fields) (FnLet (z, reuse, compiled_f)) var_ownerships
+  
   | FnInc _ | FnDec _ -> failwith "Increment and Decrement should not exist prior to this step!"
 
 and c_app (vars: primitive list) (bs: ownership list) (_f:fn_body) beta_env : fn_body = 
@@ -257,8 +270,7 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
     List.fold_left (fun acc case -> StringSet.union acc (collect func_ownerships case)) StringSet.empty (get_cases cases)
   | FnInc _ | FnDec _ -> failwith "no inc/dec in collect"
   (* The lets *)
-  | FnLet (_, RCtor _, rest)
-  | FnLet (_, RSignal _, rest) -> collect func_ownerships rest
+  | FnLet (_, RCtor _, rest) -> collect func_ownerships rest
   | FnLet (_, RCall (c, xs), rest) -> 
     let owned_args = 
       List.combine xs (lookup_params func_ownerships c)
@@ -435,8 +447,11 @@ and insert_reuse w num_fields fn_body: fn_body =
   match fn_body with
   | FnCase (s, cases) -> FnCase (s, List.map (fun (i,c) -> i, insert_reuse w num_fields c) cases)
   | FnRet _ -> fn_body
-  | FnLet (x, RCtor{tag; fields}, f) when List.length fields = num_fields ->
-      FnLet (x, RReuse (w, {tag; fields}), f) 
+  | FnLet (x, RCtor Ctor {tag; fields}, f) when List.length fields = num_fields ->
+      FnLet (x, RReuse (w, Ctor {tag; fields}), f) 
+  | FnLet (x, RCtor Signal { head; tail }, f) when num_fields = 5 ->
+      FnLet (x, RReuse (w, Signal { head = head; tail = tail }), f)
+   (* if w is free in e or F, we need to insert reuse in F *)
   | FnLet (x, e, f) -> FnLet (x, e, insert_reuse w num_fields f)
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
 

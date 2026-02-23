@@ -15,12 +15,12 @@ and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
   | FnDec _ | FnInc _  -> []
 and collect_string_consts_expr rexpr = match rexpr with
   | RCall (_, args) -> List.filter_map collect_primitive_string_const args
-  | RCtor {tag = _; fields } -> List.filter_map collect_primitive_string_const fields
+  | RCtor Ctor {tag = _; fields } -> List.filter_map collect_primitive_string_const fields
   | RPartialApp (_, args) -> List.filter_map collect_primitive_string_const args
   | RVarApp (_, arg) -> collect_primitive_string_const arg
     |> Option.map (fun a -> [a])
     |> Option.value ~default:[]
-  | RSignal {head; tail} -> List.filter_map collect_primitive_string_const [head; tail]
+  | RCtor Signal {head; tail} -> List.filter_map collect_primitive_string_const [head; tail]
   | RProj _ | RReset _ | RReuse _  -> []
 and collect_primitive_string_const p = match p with
   | Const (CString x as c) -> Some (c, (x, Utilities.new_name "rz_string_lit"))
@@ -96,9 +96,9 @@ let emit_c_code (p:program) (filename:string) =
       Printf.sprintf "rz_call(rz_register_output_signal, 1, (rz_box_t[]){%s})" (emit_primitive signal)
     | RCall (f, args) -> 
       Printf.sprintf "rz_call(%s, %d, (rz_box_t[]){%s})" f (List.length args) (mk_args_string args)
-    | RCtor { tag; fields = [] } -> 
+    | RCtor Ctor { tag; fields = [] } -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
-    | RCtor { tag; fields } -> 
+    | RCtor Ctor { tag; fields } -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d, %s))" tag (List.length fields) (mk_args_string fields)
     | RVarApp (f, x) -> 
       Printf.sprintf "rz_apply1(rz_unbox_ptr(%s), %s)" f (emit_primitive x)
@@ -110,10 +110,12 @@ let emit_c_code (p:program) (filename:string) =
           Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" f arity args num_args
       )
     | RProj (i, x) -> Printf.sprintf "rz_object_get_field(rz_unbox_ptr(%s), %d)" x i
-    | RSignal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
+    | RCtor Signal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
     | RReset (n) -> Printf.sprintf "rz_make_ptr(rz_reset_object(rz_unbox_ptr(%s)))" n
-    | RReuse (n, {tag; fields}) -> 
+    | RReuse (n, Ctor {tag; fields}) -> 
       Printf.sprintf "rz_make_ptr(rz_reuse_object(rz_unbox_ptr(%s), %d, %d, (rz_box_t[]){%s}))" n tag (List.length fields) (mk_args_string fields)
+    | RReuse (n, Signal {head; tail}) -> 
+      Printf.sprintf "rz_make_ptr(rz_reuse_signal(rz_unbox_ptr(%s), %s, %s))" n (emit_primitive head) (emit_primitive tail)
     in write s
   and emit_primitive = function
     | Var x -> x
