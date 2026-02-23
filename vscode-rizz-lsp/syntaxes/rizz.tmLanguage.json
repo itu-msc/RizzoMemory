@@ -44,6 +44,10 @@
             "match": "\\b[0-9]+\\b"
         },
         {
+            "name": "entity.name.type.constructor.rizz",
+            "match": "\\b[A-Z][a-zA-Z0-9_']*\\b"
+        },
+        {
             "name": "variable.other.readwrite.rizz",
             "match": "\\b(?!let\\b|fun\\b|match\\b|with\\b|if\\b|then\\b|else\\b|in\\b|true\\b|false\\b|never\\b|unit\\b)[a-z_][a-zA-Z0-9_']*\\b"
         },

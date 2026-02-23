@@ -131,6 +131,7 @@ let json_of_hover (hover : LS.hover_info) : Yojson.Safe.t =
 let semantic_token_type_index = function
   | LS.SemanticFunction -> 0
   | LS.SemanticVariable -> 1
+  | LS.SemanticType -> 2
 
 let semantic_token_modifier_mask (token : LS.semantic_token) : int =
   if LS.semantic_token_is_declaration token then 1 else 0
@@ -268,7 +269,7 @@ let process_request ~method_name ~id ~params =
             ("hoverProvider", `Bool true);
             ("semanticTokensProvider", `Assoc [
               ("legend", `Assoc [
-                ("tokenTypes", `List [`String "function"; `String "variable"]);
+                ("tokenTypes", `List [`String "function"; `String "variable"; `String "type"]);
                 ("tokenModifiers", `List [`String "declaration"])
               ]);
               ("full", `Bool true)

@@ -44,6 +44,7 @@ type hover_info = {
 type semantic_token_kind =
   | SemanticFunction
   | SemanticVariable
+  | SemanticType
 
 type semantic_token = {
   range: range;
@@ -415,6 +416,17 @@ let rec pattern_bound_decls (pat : Ast.parsed Ast.pattern) : (string * range) li
   | Ast.PCtor (_, args, _) ->
       List.flatten (List.map (fun p -> pattern_bound_decls p) args)
 
+let rec pattern_constructor_ranges (pat : Ast.parsed Ast.pattern) : range list =
+  match pat with
+  | Ast.PWildcard | Ast.PConst _ | Ast.PVar _ -> []
+  | Ast.PSigCons (p1, _, _) ->
+      pattern_constructor_ranges p1
+  | Ast.PTuple (p1, p2, _) ->
+      pattern_constructor_ranges p1 @ pattern_constructor_ranges p2
+  | Ast.PCtor (ctor_name, args, _) ->
+      range_of_name ctor_name
+      :: List.flatten (List.map (fun p -> pattern_constructor_ranges p) args)
+
 let keyword_range_from_expr ~(name : string) (expr : Ast.parsed Ast.expr) : range option =
   let expr_range = range_of_ann (Ast.expr_get_ann expr) in
   if expr_range.start_pos.line <> expr_range.end_pos.line then
@@ -674,6 +686,8 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
              walk_expr env scrutinee;
              List.iter
                (fun (pat, branch_expr, _) ->
+                 List.iter (fun ctor_range -> push_token ~kind:SemanticType ~range:ctor_range)
+                   (pattern_constructor_ranges pat);
                  let bound = pattern_bound_decls pat in
                  let env' =
                    List.fold_left
