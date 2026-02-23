@@ -351,6 +351,8 @@ let rec iter_expr (f : Ast.parsed Ast.expr -> unit) (expr : Ast.parsed Ast.expr)
   f expr;
   match expr with
   | Ast.EConst _ | Ast.EVar _ -> ()
+  | Ast.ECtor (_, args, _) ->
+      List.iter (iter_expr f) args
   | Ast.ELet (_, e1, e2, _) ->
       iter_expr f e1;
       iter_expr f e2
@@ -396,6 +398,7 @@ let hover_text_for_expr (expr : Ast.parsed Ast.expr) : string =
     | Ast.CString s -> s
   )
   | Ast.EVar (name, _) -> "variable " ^ name
+  | Ast.ECtor ((name, _), _, _) -> "constructor " ^ name
   | Ast.ELet ((name, _), _, _, _) -> "let-binding " ^ name
   | Ast.EFun (params, _, _) -> "function(" ^ String.concat ", " (List.map fst params) ^ ")"
   | Ast.EApp _ -> "function application"
@@ -499,6 +502,12 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                | None -> Some { name; range = var_range })
             else
               None
+        | Ast.ECtor (ctor_name, args, _) ->
+            let ctor_range = range_of_name ctor_name in
+            if range_contains_position ctor_range position then
+              Some { name = name_text ctor_name; range = ctor_range }
+            else
+              List.find_map (find_in_expr env) args
         | Ast.ELet (bound_name, e1, e2, _) ->
             let binding_range = range_of_name bound_name in
             if range_contains_position binding_range position then
@@ -634,6 +643,9 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
                | None -> SemanticVariable
              in
              push_token ~kind ~range:(range_of_name var_name)
+         | Ast.ECtor (ctor_name, args, _) ->
+             push_token ~kind:SemanticType ~range:(range_of_name ctor_name);
+             List.iter (walk_expr env) args
          | Ast.ELet (bound_name, e1, e2, _) ->
              walk_expr env e1;
              let binding_range = range_of_name bound_name in

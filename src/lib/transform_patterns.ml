@@ -1,54 +1,3 @@
-(*
- let mycons = Ctor3 (...) in
- case mycons of
- (do something ctor1)
- (do something ctor2)
- (do something ctor3) <-- 
-
- So for code:
- match myint with
- | 4 -> (do something if 4)
- | 5 -> (do something if 5)
- | _ -> (do something default)
-
- it becomes:
- let myint = Ctor1 5 in
- let boolRCtor = equality myint 4 in
- case boolRCtor of
- (if boolRCtor = RCtor0 do thing)
- (if boolRCtor = RCtor1
-  do let boolRCtor2 = equality myint 5 in
-  case boolRCtor2 of
-  (if boolRCtor2 = RCtor0 do thing)
-  (do default ...)) 
-
-
-let mytuple = ETuple (RCtor 3, RCtor 4) in
-match mytuple with
-| ((3,4), c) -> (do something with a, b, c)
-| (a,b) -> (do something with a, b)
-
-
-Source:
-match mytuple with
-| ((3,4), c) -> e1
-| (a,b) -> e2
-
-Lowered shape (using your equality + bool case):
-let t0 = proj_0 mytuple in
-let t1 = proj_1 mytuple in
-let t00 = proj_0 t0 in
-let t01 = proj_1 t0 in
-let b0 = equality t00 3 in
-case b0 of
-| True  ->
-let b1 = equality t01 4 in
-case b1 of
-| True  -> let c = t1 in e1
-| False -> let a = t0 in let b = t1 in e2
-| False -> let a = t0 in let b = t1 in e2
-
-*)
 open Ast
 
 (* todo: move these constants to some builtins *)
@@ -114,6 +63,7 @@ and compile_match_cases scrutinee cases =
 and compile_match e = 
   match e with
   | EVar _ | EConst _ -> e 
+  | ECtor (name, args, ann) -> ECtor (name, List.map compile_match args, ann)
   | ECase (scrutinee, cases, _) -> compile_match_cases scrutinee cases
   | ELet (name, e1, e2, ann) -> ELet (name, compile_match e1, compile_match e2, ann) 
   | EApp (e, args, ann) -> EApp (e, List.map compile_match args, ann)

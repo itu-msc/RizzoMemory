@@ -11,6 +11,8 @@ let new_var () = Utilities.new_var ()
 let rec normalize_expr m = normalize m Fun.id
 and normalize (m: _ expr) k = match m with
 | EConst _ | EVar _ -> k m
+| ECtor (name, args, loc) ->
+  normalize_name_mult args (fun args' -> k (ECtor (name, args', loc)))
 | EFun (params, body, loc) -> k (EFun (params, normalize_expr body, loc))
 | ELet (x, m1, m2, loc) -> normalize m1 (
   fun n1 ->
@@ -47,25 +49,6 @@ and normalize_name m k = (* TODO: can case cause problems here? *)
 and normalize_name_mult ms k = match ms with
 | [] -> k []
 | m :: ms -> normalize_name m (fun t -> normalize_name_mult ms (fun t' -> k (t :: t')))
-(* and normalize_pattern p name acc = 
-  match p with
-  | PWildcard | PConst _ -> acc
-  | PVar x -> failwith ""
-  | PTuple (p1, p2) as p -> 
-    let p1 = fst p in let p2 = snd p in failwith ""
-    (* match mytuple with 
-      | (x,y) -> x + y
-      becomes
-      case mytuple of 
-      ( let x = proj1 mytuple in let y = proj2 mytuple i x + y )
-    *)
-
-    (* match x with (p1, p2) => let p1 = fst x in let p2 = snd p2 in body ? *)
-    (* match x with (p1, (p2, p3) => let p1 = fst x in let p2 = )*)
-    (* let acc = normalize_pattern p1 acc in
-
-    normalize_pattern p2 acc *)
-  | _ -> acc *)
 
 let normalize_program (p: parsed program) : parsed program =
   List.map (fun (TLet (x,e, loc)) -> TLet (x, normalize_expr e, loc)) p

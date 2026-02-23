@@ -6,8 +6,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <alloca.h>
 
+#ifdef _WIN32
+#include <malloc.h>
+#define alloca _alloca
+#else
+#include <alloca.h>
+#endif
 typedef int32_t rz_refcount_t;
 
 /*TODO: how big should these fields be? */
@@ -160,6 +165,7 @@ static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_f
     if(obj == NULL) return rz_ctor(tag, num_fields, args);
     /* reuse-unique */
     obj->header.tag = tag;
+    obj->header.num_fields = num_fields;
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
     size_t start = objf->_base.header.offset;
     size_t end = obj->header.num_fields + start;

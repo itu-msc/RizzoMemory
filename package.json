@@ -8,6 +8,7 @@
         "run:lsp": "opam exec -- dune exec rizzolsp",
         "ext:install:nobuild": "cd vscode-rizz-lsp && npm run install:local",
         "ext:install": "npm run build && npm run ext:install:nobuild",
-        "transpile": "gcc -I./src/runtime output.c" 
+        "transpile": "gcc -I./src/runtime output.c || clang -I./src/runtime output.c",
+        "rizz": "npm run transpile && (./a.out || ./a.exe)"
     }
 }

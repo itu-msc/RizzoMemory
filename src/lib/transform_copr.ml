@@ -23,6 +23,7 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
     match e with
     | EConst _ -> e
     | EVar (x, _) -> Option.value (List.assoc_opt x env) ~default:e
+    | ECtor (name, args, ann) -> ECtor (name, List.map (aux env) args, ann)
     | EApp (f, args, ann) -> EApp (aux env f, List.map (aux env) args, ann)
     | EBinary (op, e1, e2, ann) -> EBinary (op, aux env e1, aux env e2, ann)
     | EUnary (op, e, ann) -> EUnary (op, aux env e, ann)

@@ -48,6 +48,7 @@ type _ pattern =
 and _ expr =
   | EConst : const * 's ann -> 's expr
   | EVar : 's name -> 's expr
+  | ECtor : 's name * 's expr list * 's ann -> 's expr
   | ELet : 's name * 's expr * 's expr * 's ann -> 's expr   (* variable binding *)
   | EFun : 's name list * 's expr * 's ann -> 's expr        (* Rizzo has functions with 1 parameter *)
   | EApp : 's expr * 's expr list * 's ann -> 's expr        (* Rizzo has applications with 1 arg *)
@@ -85,7 +86,7 @@ let get_location : type stage. stage ann -> Location.t = fun a ->
 
 let expr_get_ann (e : _ expr) : _ ann =
   match e with
-  | EConst (_, ann) | EVar (_, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
+  | EConst (_, ann) | EVar (_, ann) | ECtor (_, _, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
   | EApp (_, _, ann) | EUnary (_, _, ann) | EBinary (_, _, _, ann)
   | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann) -> ann
 
@@ -100,6 +101,8 @@ let rec eq_expr a b =
   match a, b with
   | EConst (c1, _), EConst (c2,_) -> c1 = c2
   | EVar (x1, _), EVar (x2, _) -> x1 = x2
+  | ECtor (name1, args1, _), ECtor (name2, args2, _) ->
+    eq_name name1 name2 && List.length args1 = List.length args2 && List.for_all2 eq_expr args1 args2
   | ELet (x1, e1_1, e1_2, _), ELet (x2, e2_1, e2_2, _) -> eq_name x1 x2 && eq_expr e1_1 e2_1 && eq_expr e1_2 e2_2
   | EFun (params1, body1, _), EFun (params2, body2, _) -> List.for_all2 eq_name params1 params2 && eq_expr body1 body2
   | EApp (f1, args1, _), EApp (f2, args2, _) -> eq_expr f1 f2 && List.for_all2 eq_expr args1 args2
@@ -152,6 +155,11 @@ and pp_expr out =
   function
   | EConst (c,_) -> pp_const out c
   | EVar (x, _) -> fprintf out "%s" x
+  | ECtor (name, args, _) ->
+    if List.length args = 0 then fprintf out "%s" (fst name)
+    else
+      fprintf out "%s(%a)" (fst name)
+        (pp_print_list ~pp_sep:(fun out () -> fprintf out ",@ ") pp_expr) args
   | ELet ((x, _), e1, e2, _) ->
     fprintf out "@[<hov 2>let %s =@ %a@ in@ %a@]" x pp_expr e1 pp_expr e2
   | EFun (names, body, _) ->

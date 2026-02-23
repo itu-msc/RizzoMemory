@@ -20,8 +20,10 @@ let pvar (s : string) : parsed pattern = PVar (s, ann)
 let pwild : parsed pattern = PWildcard
 let pconst (c : const) : parsed pattern = PConst (c, ann)
 let psigcons (p1 : parsed pattern) (p2 : parsed name) : parsed pattern = PSigCons (p1, p2, ann)
+let pctor (ctor_name : parsed name) (args : parsed pattern list) : parsed pattern = PCtor (ctor_name, args, ann)
 
 let var (s : string) : parsed expr = EVar (name s)
+let ctor (name' : string) (args : parsed expr list) : parsed expr = ECtor (name name', args, ann)
 let int (i : int) : parsed expr = EConst (CInt i, ann)
 let bool (b : bool) : parsed expr = EConst (CBool b, ann)
 let const (c : const) : parsed expr = EConst (c, ann)

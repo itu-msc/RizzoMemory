@@ -39,6 +39,7 @@
 
 - [ ] Design syntax for Rizzo
 - [ ] Make code examples
+- [ ] Add pattern matching in function parameters (if time permits)
 
 ## Rizzo type checking
 

@@ -142,6 +142,10 @@ app_args:
   | a=atom rest=app_args { a :: rest }
 
 atom:
+  | name=TYPE_ID LPAREN args=ctor_expr_args RPAREN
+    { ECtor ((name, mkloc $startpos(name) $endpos(name)), args, mkloc $startpos $endpos) }
+  | name=TYPE_ID
+    { ECtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }
   | x=ID { EVar (x, mkloc $startpos $endpos) }
   | i=INT { EConst (CInt i, mkloc $startpos $endpos) }
   | s=STRING { EConst (CString s, mkloc $startpos $endpos) }
@@ -160,6 +164,15 @@ tuple_expr_list:
 tuple_expr_list_tail:
   | { [] }
   | COMMA e=expr rest=tuple_expr_list_tail
+      { e :: rest }
+
+ctor_expr_args:
+  | e=expr rest=ctor_expr_args_tail
+      { e :: rest }
+
+ctor_expr_args_tail:
+  | { [] }
+  | COMMA e=expr rest=ctor_expr_args_tail
       { e :: rest }
 
 pattern:

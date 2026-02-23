@@ -53,9 +53,31 @@ let test_arbitrary_length_tuple () =
   in
   Alcotest.check program_testable "arbitrary length tuple parses" expected parsed
 
+let test_ctor_expr_and_let_star () =
+  let input =
+    "let just = Just(1)\n"
+    ^ "let nothing = Nothing\n"
+    ^ "let bound = let* x = just in x\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [
+      tlet "just" (ctor "Just" [int 1]);
+      tlet "nothing" (ctor "Nothing" []);
+      tlet "bound"
+        (case (var "just")
+           [
+             (pctor (name "Just") [pvar "x"], var "x");
+             (pctor (name "Nothing") [], ctor "Nothing" []);
+           ]);
+    ]
+  in
+  Alcotest.check program_testable "constructors and let* parse" expected parsed
+
 let parser_tests =
   [
     "parser accepts syntax", `Quick, test_parser_program;
     "top-level let with many locals", `Quick, test_top_level_let_many_locals;
     "arbitrary length tuple", `Quick, test_arbitrary_length_tuple;
+    "constructors and let*", `Quick, test_ctor_expr_and_let_star;
   ]

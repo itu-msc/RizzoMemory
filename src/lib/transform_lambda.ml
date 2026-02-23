@@ -13,6 +13,8 @@ let rec collect_consecutive_params (params : _ name list) (body : _ expr) : _ na
 let rec eliminate_consecutive_lambdas_expr (e : _ expr) : _ expr =
   match e with
   | EConst _ | EVar _ -> e
+  | ECtor (name, args, loc) ->
+      ECtor (name, List.map eliminate_consecutive_lambdas_expr args, loc)
   | ELet (x, e1, e2, loc) ->
       ELet (x, eliminate_consecutive_lambdas_expr e1, eliminate_consecutive_lambdas_expr e2, loc)
   | EFun (params, body, loc) ->

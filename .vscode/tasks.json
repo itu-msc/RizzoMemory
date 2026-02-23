@@ -33,6 +33,13 @@
       "dependsOn": ["rizz: build", "rizz: compile extension"],
       "dependsOrder": "sequence",
       "problemMatcher": []
+    },
+    {
+      "label": "rizz: transpile output.c",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "transpile"],
+      "problemMatcher": ["$gcc"]
     }
   ]
 }

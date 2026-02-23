@@ -72,6 +72,10 @@ let emit_c_code (p:program) (filename:string) =
         emit_fn_body branch_fn;
         write "break;\n}\n";
       );
+      write "default: {\n";
+      write "fprintf(stderr, \"Rizzo Runtime error at (%s, %d): unexpected tag %d\", __FILE__, __LINE__,";
+      write (Printf.sprintf "rz_object_tag(rz_unbox_ptr(%s)));\n" scrutinee);
+      write "exit(1);\n}\n";
       write "}\n"
     | FnDec (x, f) -> 
       if Option.is_none (int_of_string_opt x) then
@@ -117,7 +121,7 @@ let emit_c_code (p:program) (filename:string) =
     | RReuse (n, Ctor {tag; fields}) -> 
       Printf.sprintf "rz_make_ptr(rz_reuse_object(rz_unbox_ptr(%s), %d, %d, (rz_box_t[]){%s}))" n tag (List.length fields) (mk_args_string fields)
     | RReuse (n, Signal {head; tail}) -> 
-      Printf.sprintf "rz_make_ptr(rz_reuse_signal(rz_unbox_ptr(%s), %s, %s))" n (emit_primitive head) (emit_primitive tail)
+      Printf.sprintf "rz_make_ptr_sig(rz_reuse_signal(rz_unbox_ptr(%s), %s, %s))" n (emit_primitive head) (emit_primitive tail)
     in write s
   and emit_primitive = function
     | Var x -> x

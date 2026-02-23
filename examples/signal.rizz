@@ -9,21 +9,33 @@ fun map f s = match s with
 
 fun sample xs ys = map (fun x -> (x, head ys)) xs
 
-fun switch s d = match s with
+fun _switch s d = match s with
     | x :: xs -> 
         let cont = fun mysync -> match mysync with
-            | Left (xs_)   -> let partial_switch = switch xs_ in partial_switch d
+            | Left (xs_)   -> let partial_switch = _switch xs_ in partial_switch d
             | Right (d_)   -> d_
             | Both (l, r) -> l == r
         in x :: (cont |> sync xs d)
+
+fun filter_map p s = match s with
+    | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
+
+fun filter p s = match s with 
+    | x :: xs -> filter_map (fun x -> if p x then Just (x) else Nothing) s
 
 let entry = fun x -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in
     let reactive_signal = 42 :: my_console_sig in
     /* identical to reactive_signal, but uses the tail constructor */
-    let reactive_signal2 = 1337 :: (tail reactive_signal) in
+    // let reactive_signal2 = 1337 :: (tail reactive_signal) in
+
+    let fourty42_sig = filter (fun x -> x == 42) reactive_signal in
+
     let y = output_int_signal my_int_sig in 
     let z = output_int_signal reactive_signal in
-    let zz = output_int_signal reactive_signal2 in
+    // let zz = output_int_signal reactive_signal2 in
+
+    let zzz = output_int_signal (999 :: fourty42_sig) in
+
     start_event_loop ()

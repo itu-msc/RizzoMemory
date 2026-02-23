@@ -39,10 +39,16 @@ let ctorMappings =
     ("false", 0);
     ("true", 1);
     ("sigcons", -1);
+    ("nothing", 0);
+    ("just", 1);
   ]
-let idof name = match M.find_opt name ctorMappings with
+let tagof name = match M.find_opt name ctorMappings with
   | Some id -> id
   | None -> failwith (Printf.sprintf "Constructor '%s' not found in mapping" name)
+
+(* TODO: change when user defined types are added *)
+let ctor_tag_of_name (name : string) : int =
+  tagof (String.lowercase_ascii name)
 
 let op_to_application = function
   | Add -> "add"
@@ -63,6 +69,8 @@ module LocalsEnv = Set.Make(String)
 
 let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr = 
   match e with
+  | ECtor ((ctor_name, _), args, _) ->
+    RCtor (Ctor { tag = ctor_tag_of_name ctor_name; fields = List.map get_name args })
   | EApp (EVar (f, _), [EVar (x, _)], _) when Rizzo_builtins.is_builtin_projection f ->
     let proj_idx = (Rizzo_builtins.get f).projection_index |> Option.get in
     RProj (proj_idx, x)
@@ -83,15 +91,15 @@ let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr 
     | Some None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: trying to apply a non-function global '%s'" f
     | None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: unable to find '%s' in globals" f)
   | EBinary (SigCons, n1, n2, _)-> RCtor (Signal { head = get_name n1; tail = get_name n2 })
-  | ETuple (n1, n2, _) -> RCtor (Ctor { tag = idof "tuple"; fields = [get_name n1; get_name n2] })
-  | EBinary (BSync, n1, n2, _) -> RCtor (Ctor { tag = idof "sync"; fields = [get_name n1; get_name n2] })
-  | EBinary (BLaterApp, n1, n2, _) -> RCtor (Ctor { tag = idof "later_app"; fields = [get_name n1; get_name n2] })
-  | EBinary (BOStar, n1, n2, _) -> RCtor (Ctor { tag = idof "ostar"; fields = [get_name n1; get_name n2] })
+  | ETuple (n1, n2, _) -> RCtor (Ctor { tag = tagof "tuple"; fields = [get_name n1; get_name n2] })
+  | EBinary (BSync, n1, n2, _) -> RCtor (Ctor { tag = tagof "sync"; fields = [get_name n1; get_name n2] })
+  | EBinary (BLaterApp, n1, n2, _) -> RCtor (Ctor { tag = tagof "later_app"; fields = [get_name n1; get_name n2] })
+  | EBinary (BOStar, n1, n2, _) -> RCtor (Ctor { tag = tagof "ostar"; fields = [get_name n1; get_name n2] })
   | EBinary (op, n1, n2, _) -> RCall (op_to_application op, [get_name n1; get_name n2])
-  | EUnary (UWait, n, _) -> RCtor (Ctor { tag = idof "wait"; fields = [get_name n] })
-  | EUnary (UTail, n, _) -> RCtor (Ctor { tag = idof "tail"; fields = [get_name n] })
-  | EUnary (UWatch, n, _) -> RCtor (Ctor { tag = idof "watch"; fields = [get_name n] })
-  | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = idof "delay"; fields = [get_name n] })
+  | EUnary (UWait, n, _) -> RCtor (Ctor { tag = tagof "wait"; fields = [get_name n] })
+  | EUnary (UTail, n, _) -> RCtor (Ctor { tag = tagof "tail"; fields = [get_name n] })
+  | EUnary (UWatch, n, _) -> RCtor (Ctor { tag = tagof "watch"; fields = [get_name n] })
+  | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = tagof "delay"; fields = [get_name n] })
   | EUnary (Fst, EVar (x, _), _)  -> RProj (0, x)
   | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
   | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
@@ -113,37 +121,6 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
     | PSigCons _ -> 5 (* should it be 2, 3, 4, 5? *)
     | PCtor (_, args, _) -> List.length args 
     in
-    (*match mysync with
-      | Left a ->
-        Some (a+1)
-      | Right b -> Some (b+10)
-      | Both (a,b) -> Some (a + b)
-        
-      case mysync <2> of [
-      1(let a = proj0 mysync in ctor1(a+1))
-      2(let b = proj0 mysync in ctor2(b+10))
-      3(let a = proj0 mysync in let b = proj1 mysync in ctor3(a+b))
-      ]
-
-      match mysig with
-      | 5 :: tl_5 -> ...
-      | 7 :: tl_7 -> ...
-      | hd :: tl -> ...
-      
-      let hd = proj0 mysig in 
-      case hd == 5 of [
-      True<1>(let tl_5 = proj1 mysig in ...)
-      False<2>(
-        case hd == 7 of [
-        True<1>(let tl_7 = proj1 mysig in ...)
-        False<2>(let tl = proj1 mysig in ...)
-        ]
-      ]
-
-      (hd == 5) -> True<1>
-
-      header: <tag, refcount, fields...>
-    *)
     FnCase(x, List.map (fun (c, branch, _) -> (get_fields_of_pattern c, expr_to_fn_body locals branch)) cases)
   | ECase _ -> 
     failwith "expr_to_fn_body failed: case scrutinee is not a variable"

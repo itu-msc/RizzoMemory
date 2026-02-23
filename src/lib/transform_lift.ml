@@ -7,6 +7,8 @@ let rec free_vars_expr e : StringSet.t =
   | EConst _ -> StringSet.empty
   | EVar (x, _) when Rizzo_builtins.is_builtin x -> StringSet.empty
   | EVar (x, _) -> StringSet.singleton x
+  | ECtor (_, args, _) ->
+    List.fold_left StringSet.union StringSet.empty (List.map free_vars_expr args)
   | EApp (f, args, _) -> 
     StringSet.union (free_vars_expr f) (List.fold_left StringSet.union StringSet.empty (List.map free_vars_expr args))
   | EBinary (_, e1, e2, _) | ETuple (e1, e2, _) -> 
@@ -53,6 +55,7 @@ and lift_top_expr (globals: _ top_expr list ref) (te: _ top_expr) : _ top_expr =
 
 and lift_expr (globals: _ top_expr list ref) (e: _ expr) = match e with
   | EConst _ | EVar _ -> e
+  | ECtor (name, args, loc) -> ECtor (name, List.map (lift_expr globals) args, loc)
   | EApp (f, args, loc) -> EApp (lift_expr globals f, List.map (lift_expr globals) args, loc)
   | EBinary (op, e1, e2, loc) -> EBinary (op, lift_expr globals e1, lift_expr globals e2, loc)
   | EUnary (op, e, loc) -> EUnary (op, lift_expr globals e, loc)
