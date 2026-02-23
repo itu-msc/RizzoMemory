@@ -56,6 +56,7 @@ let left_elim = (Rizzo_builtins.get "left_elim").name
 let right_elim = (Rizzo_builtins.get "right_elim").name
 let both_elim_fst = (Rizzo_builtins.get "both_elim_fst").name
 let both_elim_snd = (Rizzo_builtins.get "both_elim_snd").name
+let head_elim = (Rizzo_builtins.get "head").name
 
 let rec transform_patterns (p: 's Ast.program) = 
   List.map (fun (TLet (name, expr, ann)) -> TLet (name, compile_match expr, ann)) p
@@ -87,7 +88,7 @@ and compile_pattern p scrutinee good bad =
       bad, ann), ann)], expr_get_ann scrutinee)
   | PSigCons (hd, (_tl_name, tl_ann as tl), ann) -> 
     let hd_name = Utilities.new_name "hd",ann in
-    let hd_proj = EApp (EVar hd_name, [scrutinee], ann) in
+    let hd_proj = EApp (EVar (head_elim, ann), [scrutinee], ann) in
     ECase (scrutinee, [( (* p -> let hd = head scrutinee in let tl = tail scrutinee ... *)
       p, ELet (hd_name, hd_proj, compile_pattern hd (EVar hd_name) 
       (fun _ -> ELet (tl, EUnary (UTail, scrutinee, tl_ann), good (EVar tl), ann))
