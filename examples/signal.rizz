@@ -6,6 +6,19 @@ fun mk_sig later =
 
 fun map f s = match s with
     | x :: xs -> f x :: (map f |> xs)
+    /*  let x = head s in
+        inc x;
+        inc s;                              -> refcount of s is at least 2 now?
+        let xs = tail s in                  -> ctor2(s)
+        let s' = reset s in
+        inc f;
+        let fx = f x in
+        let map_pap = pap map(f) in
+        let map_delayed = delay map_pap in
+        let new_tail = laterapp map_delayed xs in
+        let r = reuse s' in (fx :: new_tail) in 
+        r
+    */
 
 fun sample xs ys = map (fun x -> (x, head ys)) xs
 
@@ -14,28 +27,23 @@ fun _switch s d = match s with
         let cont = fun mysync -> match mysync with
             | Left (xs_)   -> let partial_switch = _switch xs_ in partial_switch d
             | Right (d_)   -> d_
-            | Both (l, r) -> l == r
+            | Both (_, d_) -> d_ 
         in x :: (cont |> sync xs d)
 
 fun filter_map p s = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
 
-fun filter p s = match s with 
-    | x :: xs -> filter_map (fun x -> if p x then Just (x) else Nothing) s
+fun filter p s = filter_map (fun x -> if p x then Just (x) else Nothing) s
 
 let entry = fun x -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in
     let reactive_signal = 42 :: my_console_sig in
-    /* identical to reactive_signal, but uses the tail constructor */
-    // let reactive_signal2 = 1337 :: (tail reactive_signal) in
-
-    let fourty42_sig = filter (fun x -> x == 42) reactive_signal in
 
     let y = output_int_signal my_int_sig in 
     let z = output_int_signal reactive_signal in
-    // let zz = output_int_signal reactive_signal2 in
 
-    let zzz = output_int_signal (999 :: fourty42_sig) in
+    let fourty42_sig = filter (fun x -> x == 42) (0 :: my_console_sig) in
+    let zzz = output_int_signal (_switch (map (fun x -> "hello there!") reactive_signal) fourty42_sig) in
 
     start_event_loop ()

@@ -59,7 +59,9 @@ module Transformations = struct
   let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transform_copr.copy_propagate
   let eliminate_patterns = Transform_patterns.transform_patterns
+  let eliminate_simple_patterns = Transform_simple_patterns.transform_patterns
   let ast_to_rc_ir = Transform_rc.to_rc_intermediate_representation
+
   
   let builtins = Rizzo_builtins.builtins_ownerships_map
   
@@ -79,7 +81,8 @@ let apply_transforms p =
   |> Transformations.eliminate_consecutive_lambdas_program
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
-  |> Transformations.eliminate_patterns
+  (* |> Transformations.eliminate_patterns *)
+  |> Transformations.eliminate_simple_patterns
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
 
