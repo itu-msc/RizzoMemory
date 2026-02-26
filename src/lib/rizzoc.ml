@@ -55,7 +55,9 @@ module Transformations = struct
   end
   let eliminate_consecutive_lambdas = Transform_lambda.eliminate_consecutive_lambdas_expr
   let eliminate_consecutive_lambdas_program = Transform_lambda.eliminate_consecutive_lambdas_program
+  let remove_duplicate_names = Transforms.Remove_dup_names.subst_program
   let lift = Transform_lift.lift
+
   let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transform_copr.copy_propagate
   let eliminate_patterns = Transform_patterns.transform_patterns
@@ -82,6 +84,7 @@ let apply_transforms p =
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
   (* |> Transformations.eliminate_patterns *)
+  |> Transformations.remove_duplicate_names
   |> Transformations.eliminate_simple_patterns
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
