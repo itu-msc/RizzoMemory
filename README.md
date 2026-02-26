@@ -53,11 +53,11 @@ To run the LSP server, use the command:
 
 ### VS Code extension development
 
-The VS Code extension is located in the `vscode-rizz-lsp` folder.
+The VS Code extension is located in the `vscode-rizzo-lsp` folder.
 It can easily be installed with
 
 ```
-cd vscode-rizz-lsp && npm install && cd ..
+cd vscode-rizzo-lsp && npm install && cd ..
 npm run ext:install
 ```
 This installs the dependencies, builds the project and then installs the extension locally.

@@ -14,7 +14,7 @@
       "command": "npm",
       "args": ["run", "compile"],
       "options": {
-        "cwd": "${workspaceFolder}/vscode-rizz-lsp"
+        "cwd": "${workspaceFolder}/vscode-rizzo-lsp"
       },
       "problemMatcher": "$tsc"
     },
@@ -24,7 +24,7 @@
       "command": "npm",
       "args": ["run", "install:local"],
       "options": {
-        "cwd": "${workspaceFolder}/vscode-rizz-lsp"
+        "cwd": "${workspaceFolder}/vscode-rizzo-lsp"
       },
       "problemMatcher": []
     },

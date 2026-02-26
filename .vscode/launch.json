@@ -14,11 +14,11 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/vscode-rizz-lsp",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-rizzo-lsp",
         "--folder-uri=${workspaceFolder}",
         "--disable-extensions"
       ],
-      "outFiles": ["${workspaceFolder}/vscode-rizz-lsp/out/**/*.js"],
+      "outFiles": ["${workspaceFolder}/vscode-rizzo-lsp/out/**/*.js"],
       "preLaunchTask": "rizzo: prepare extension host"
     }
   ]
