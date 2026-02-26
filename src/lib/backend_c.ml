@@ -12,9 +12,11 @@ and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
     |> Option.value ~default:[]
   | FnLet (_, e, f) -> (collect_string_consts_fn f) @ (collect_string_consts_expr e)
   | FnCase (_, cases) -> List.concat_map (Fun.compose collect_string_consts_fn snd) cases
-  | FnDec _ | FnInc _  -> []
+  | FnDec (_, rest) | FnInc (_, rest)  -> collect_string_consts_fn rest
 and collect_string_consts_expr rexpr = match rexpr with
-  | RConst _ -> []
+  | RConst c -> collect_primitive_string_const (Const c) 
+    |> Option.map (fun a -> [a])
+    |> Option.value ~default:[]
   | RCall (_, args) -> List.filter_map collect_primitive_string_const args
   | RCtor Ctor {tag = _; fields } -> List.filter_map collect_primitive_string_const fields
   | RPartialApp (_, args) -> List.filter_map collect_primitive_string_const args
@@ -22,7 +24,9 @@ and collect_string_consts_expr rexpr = match rexpr with
     |> Option.map (fun a -> [a])
     |> Option.value ~default:[]
   | RCtor Signal {head; tail} -> List.filter_map collect_primitive_string_const [head; tail]
-  | RProj _ | RReset _ | RReuse _  -> []
+  | RReuse (_, Signal {head;tail}) -> List.filter_map collect_primitive_string_const [head; tail]
+  | RReuse (_, Ctor {fields; _}) -> List.filter_map collect_primitive_string_const fields
+  | RProj _ | RReset _ -> []
 and collect_primitive_string_const p = match p with
   | Const (CString x as c) -> Some (c, (x, Utilities.new_name "rz_string_lit"))
   | _ -> None
