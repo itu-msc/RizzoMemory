@@ -6,20 +6,20 @@
       "type": "ocaml.earlybird",
       "request": "launch",
       "program": "${workspaceFolder}/_build/default/src/bin/main.bc",
-      "preLaunchTask": "rizz: build"
+      "preLaunchTask": "rizzo: build"
     },
     {
-      "name": "Run Rizz Extension (repo root)",
+      "name": "Run Rizzo Extension (repo root)",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/vscode-rizz-lsp",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-rizzo-lsp",
         "--folder-uri=${workspaceFolder}",
         "--disable-extensions"
       ],
-      "outFiles": ["${workspaceFolder}/vscode-rizz-lsp/out/**/*.js"],
-      "preLaunchTask": "rizz: prepare extension host"
+      "outFiles": ["${workspaceFolder}/vscode-rizzo-lsp/out/**/*.js"],
+      "preLaunchTask": "rizzo: prepare extension host"
     }
   ]
 }

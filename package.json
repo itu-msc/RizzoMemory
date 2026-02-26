@@ -6,9 +6,10 @@
         "dev": "opam exec -- dune exec --watch rizzoc examples/first.rizz",
         "test": "opam exec -- dune test",
         "run:lsp": "opam exec -- dune exec rizzolsp",
-        "ext:install:nobuild": "cd vscode-rizz-lsp && npm run install:local",
+        "ext:install:nobuild": "cd vscode-rizzo-lsp && npm run install:local",
         "ext:install": "npm run build && npm run ext:install:nobuild",
-        "transpile": "gcc -I./src/runtime output.c || clang -I./src/runtime output.c",
-        "rizz": "npm run transpile && (./a.out || ./a.exe)"
+        "transpile": "gcc -I./src/runtime output.c -o output || clang -I./src/runtime output.c -o output",
+        "rizzo": "npm run transpile && ./output",
+        "rizz": "npm run rizzo"
     }
 }
