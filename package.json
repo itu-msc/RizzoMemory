@@ -9,6 +9,7 @@
         "ext:install:nobuild": "cd vscode-rizz-lsp && npm run install:local",
         "ext:install": "npm run build && npm run ext:install:nobuild",
         "transpile": "gcc -I./src/runtime output.c -o output || clang -I./src/runtime output.c -o output",
-        "rizz": "npm run transpile && ./output"
+        "rizzo": "npm run transpile && ./output",
+        "rizz": "npm run rizzo"
     }
 }

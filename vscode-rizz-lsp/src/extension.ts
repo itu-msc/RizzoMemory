@@ -13,6 +13,40 @@ let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let currentState: State = State.Stopped;
 
+async function getValidWorkspaceFolder(config: vscode.WorkspaceConfiguration) {
+    let workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const customWorkspaceFolders = config.get<string[]>("server.workspaceFolder", []).map(folder => folder.trim());
+    if (customWorkspaceFolders.length > 0) {
+        const validFolders = customWorkspaceFolders.filter(folder => fs.existsSync(folder) && fs.statSync(folder).isDirectory());
+        if (validFolders.length > 0) {
+            workspaceFolder = validFolders[0];
+        } else {
+            await vscode.window.showWarningMessage(
+                "Rizzo LSP: No valid workspace folders found in configuration. " +
+                "Falling back to default workspace folder or extension directory."
+            );
+        }
+    }
+    return workspaceFolder;
+}
+
+function getOrCreateRunTerminal(workspaceFolder: string): vscode.Terminal {
+    const activeTerminal = vscode.window.activeTerminal;
+    if (activeTerminal) {
+        return activeTerminal;
+    }
+
+    const existingTerminal = vscode.window.terminals.at(-1);
+    if (existingTerminal) {
+        return existingTerminal;
+    }
+
+    return vscode.window.createTerminal({
+        name: "Rizzo Run",
+        cwd: workspaceFolder
+    });
+}
+
 function stateLabel(state: State): string {
     switch (state) {
         case State.Starting:
@@ -31,23 +65,23 @@ function updateStatusBar(): void {
     }
 
     if (currentState === State.Running) {
-        statusBarItem.text = "$(check) Rizz LSP";
-        statusBarItem.tooltip = "Rizz LSP is running";
+        statusBarItem.text = "$(check) Rizzo LSP";
+        statusBarItem.tooltip = "Rizzo LSP is running";
         statusBarItem.backgroundColor = undefined;
     } else if (currentState === State.Starting) {
-        statusBarItem.text = "$(sync~spin) Rizz LSP";
-        statusBarItem.tooltip = "Rizz LSP is starting";
+        statusBarItem.text = "$(sync~spin) Rizzo LSP";
+        statusBarItem.tooltip = "Rizzo LSP is starting";
         statusBarItem.backgroundColor = undefined;
     } else {
-        statusBarItem.text = "$(warning) Rizz LSP";
-        statusBarItem.tooltip = "Rizz LSP is stopped";
+        statusBarItem.text = "$(warning) Rizzo LSP";
+        statusBarItem.tooltip = "Rizzo LSP is stopped";
         statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
     }
 }
 
 async function restartLanguageServer(): Promise<void> {
     if (!client) {
-        await vscode.window.showWarningMessage("Rizz LSP is not running.");
+        await vscode.window.showWarningMessage("Rizzo LSP is not running.");
         return;
     }
 
@@ -62,12 +96,12 @@ async function restartLanguageServer(): Promise<void> {
         await client.start();
         currentState = State.Running;
         updateStatusBar();
-        await vscode.window.showInformationMessage("Rizz LSP server restarted.");
+        await vscode.window.showInformationMessage("Rizzo LSP server restarted.");
     } catch (error) {
         currentState = State.Stopped;
         updateStatusBar();
         const message = error instanceof Error ? error.message : String(error);
-        await vscode.window.showErrorMessage(`Failed to restart Rizz LSP server: ${message}`);
+        await vscode.window.showErrorMessage(`Failed to restart Rizzo LSP server: ${message}`);
     }
 }
 
@@ -86,14 +120,14 @@ function getRuntimePath(context: vscode.ExtensionContext): string {
 /**
  * Resolves the rizzoc compiler command and arguments.
  * Priority:
- *   1. User setting rizzLsp.compiler.command (if non-empty)
+ *   1. User setting rizzoLsp.compiler.command (if non-empty)
  *   2. Local dune build: <workspace>/_build/default/src/bin/main.exe
  *   3. Fallback: opam exec -- dune exec rizzoc --
  */
 function getRizzocCommand(
     workspaceFolder: string | undefined
 ): { command: string; args: string[] } {
-    const config = vscode.workspace.getConfiguration("rizzLsp");
+    const config = vscode.workspace.getConfiguration("rizzoLsp");
     const userCommand = config.get<string>("compiler.command", "").trim();
     if (userCommand.length > 0) {
         return { command: userCommand, args: [] };
@@ -126,13 +160,13 @@ function getRizzocCommand(
 async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-        await vscode.window.showErrorMessage("Rizz: No active editor.");
+        await vscode.window.showErrorMessage("Rizzo: No active editor.");
         return;
     }
 
     const doc = editor.document;
-    if (doc.languageId !== "rizz") {
-        await vscode.window.showErrorMessage("Rizz: Active file is not a .rizz file.");
+    if (doc.languageId !== "rizzo") {
+        await vscode.window.showErrorMessage("Rizzo: Active file is not a .rizz file.");
         return;
     }
 
@@ -140,16 +174,17 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     await doc.save();
 
     const filePath = doc.uri.fsPath;
-    const workspaceFolder =
-        vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath ??
-        path.dirname(filePath);
+
+    const config = vscode.workspace.getConfiguration("rizzoLsp");
+    const workspaceFolder = await getValidWorkspaceFolder(vscode.workspace.getConfiguration("rizzoLsp"));
 
     const rizzoc = getRizzocCommand(workspaceFolder);
     const runtimePath = getRuntimePath(context);
-    const config = vscode.workspace.getConfiguration("rizzLsp");
+    const isWindows = process.platform === "win32";
 
     // Build the rizzoc invocation.
-    const quotedCommand = `"${rizzoc.command}"`;
+    const commandPrefix = isWindows ? "& " : "";
+    const quotedCommand = `${commandPrefix}"${rizzoc.command}"`;
     const quotedArgs = rizzoc.args.join(" ");
     const quotedFile = `"${filePath}"`;
     const rizzocCmd =
@@ -161,30 +196,33 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     const rawCc = config.get<string>("compiler.cc", "gcc").trim() || "gcc";
     if (!/^[a-zA-Z0-9\-_./ \\:]+$/.test(rawCc)) {
         await vscode.window.showErrorMessage(
-            `Rizz: Invalid rizzLsp.compiler.cc value: "${rawCc}". ` +
+            `Rizzo: Invalid rizzoLsp.compiler.cc value: "${rawCc}". ` +
             `Only alphanumeric characters, spaces, and path separators are allowed.`
         );
         return;
     }
     const cc = rawCc;
 
-    const ccCmd = `${cc} -I"${runtimePath}" output.c -o output`;
-    const runCmd = process.platform === "win32" ? `.\\output.exe` : `./output`;
+    const outputName = isWindows ? "output.exe" : "output";
+    const windowsArchFlag = isWindows ? " -m64" : "";
+    const ccCmd = `${cc}${windowsArchFlag} -I"${runtimePath}" output.c -o ${outputName}`;
+    const runCmd = isWindows ? `.\\${outputName}` : `./${outputName}`;
 
-    const terminal = vscode.window.createTerminal({
-        name: "Rizz Run",
-        cwd: workspaceFolder
-    });
+    const terminal = getOrCreateRunTerminal(workspaceFolder ?? "");
     terminal.show(true);
-    terminal.sendText(`${rizzocCmd} && ${ccCmd} && ${runCmd}`);
+
+    const pwdVar = isWindows ? "$PREV_PWD = $PWD" : "PREV_PWD=$(pwd)";
+    //TODO: Dont change dirs if the user use the opam installed rizzoc instead of a local build.
+    //TODO: Use the c library files from the local workspace if not using the opam rizzoc installation.
+    terminal.sendText(`${pwdVar}; cd "${workspaceFolder}" && ${rizzocCmd} && ${ccCmd} && echo "" && ${runCmd}; cd $PREV_PWD`);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    const config = vscode.workspace.getConfiguration("rizzLsp");
+    const config = vscode.workspace.getConfiguration("rizzoLsp");
     let command = config.get<string>("server.command", "opam");
     let args = config.get<string[]>("server.args", ["exec", "--", "dune", "exec", "rizzolsp"]);
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    let workspaceFolder = await getValidWorkspaceFolder(config);
     const fallbackCwd = path.dirname(context.extensionPath);
     const serverRoot = workspaceFolder ?? fallbackCwd;
     const builtServerPath = path.join(serverRoot, "_build", "default", "src", "bin", "rizzolsp.exe");
@@ -203,7 +241,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
 
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBarItem.command = "rizzLsp.checkHealth";
+    statusBarItem.command = "rizzoLsp.checkHealth";
     currentState = State.Starting;
     updateStatusBar();
     statusBarItem.show();
@@ -215,15 +253,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ language: "rizz" }],
+        documentSelector: [{ language: "rizzo" }],
         synchronize: {
             fileEvents: vscode.workspace.createFileSystemWatcher("**/*.rizz")
         }
     };
 
     client = new LanguageClient(
-        "rizzLanguageServer",
-        "Rizz Language Server",
+        "rizzoLanguageServer",
+        "Rizzo Language Server",
         serverOptions,
         clientOptions
     );
@@ -236,7 +274,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("rizzLsp.checkHealth", async () => {
+        vscode.commands.registerCommand("rizzoLsp.checkHealth", async () => {
             const state = stateLabel(currentState);
             const workspace = workspaceFolder ?? "<none>";
             const cwd = serverExecutable.options?.cwd ?? "<none>";
@@ -249,21 +287,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             ].join("\n");
 
             if (currentState === State.Running) {
-                await vscode.window.showInformationMessage(`Rizz LSP health OK\n${message}`);
+                await vscode.window.showInformationMessage(`Rizzo LSP health OK\n${message}`, { modal: true });
             } else {
-                await vscode.window.showWarningMessage(`Rizz LSP health warning\n${message}`);
+                await vscode.window.showWarningMessage(`Rizzo LSP health warning\n${message}`);
             }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("rizzLsp.restartServer", async () => {
+        vscode.commands.registerCommand("rizzoLsp.restartServer", async () => {
             await restartLanguageServer();
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("rizzLsp.runFile", async () => {
+        vscode.commands.registerCommand("rizzoLsp.runFile", async () => {
             await runCurrentFile(context);
         })
     );
@@ -282,6 +320,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     });
 }
+
+
 
 export async function deactivate(): Promise<void> {
     if (!client) {

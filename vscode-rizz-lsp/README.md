@@ -1,4 +1,4 @@
-# Rizz Language Support (Local)
+# Rizzo Language Support (Local)
 
 This VS Code extension starts the local `rizzolsp` language server for `.rizz` files.
 
@@ -16,10 +16,10 @@ This VS Code extension starts the local `rizzolsp` language server for `.rizz` f
 
 ## Commands
 
-- `Rizz: Check LSP Health`
-- `Rizz: Restart LSP Server`
+- `Rizzo: Check LSP Health`
+- `Rizzo: Restart LSP Server`
 
 ## Settings
 
-- `rizzLsp.server.command`
-- `rizzLsp.server.args`
+- `rizzoLsp.server.command`
+- `rizzoLsp.server.args`

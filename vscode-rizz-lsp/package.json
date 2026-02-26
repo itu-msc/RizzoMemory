@@ -1,14 +1,14 @@
 {
-    "name": "rizz-lsp",
-    "displayName": "Rizz Language Support",
+    "name": "rizzo-lsp",
+    "displayName": "Rizzo Language Support",
     "description": "Language Server Protocol client for .rizz files",
-    "version": "0.1.0",
+    "version": "0.0.5",
     "publisher": "local",
     "license": "MIT",
     "repository": {
         "type": "git",
         "url": "https://github.com/itu-msc/RizzoMemory.git",
-        "directory": "vscode-rizz-lsp"
+        "directory": "vscode-rizzo-lsp"
     },
     "engines": {
         "vscode": "^1.90.0"
@@ -20,36 +20,37 @@
     "contributes": {
         "commands": [
             {
-                "command": "rizzLsp.checkHealth",
-                "title": "Rizz: Check LSP Health",
-                "category": "Rizz"
+                "command": "rizzoLsp.checkHealth",
+                "title": "Rizzo: Check LSP Health",
+                "category": "Rizzo"
             },
             {
-                "command": "rizzLsp.restartServer",
-                "title": "Rizz: Restart LSP Server",
-                "category": "Rizz"
+                "command": "rizzoLsp.restartServer",
+                "title": "Rizzo: Restart LSP Server",
+                "category": "Rizzo"
             },
             {
-                "command": "rizzLsp.runFile",
-                "title": "Rizz: Run Current File",
-                "category": "Rizz",
+                "command": "rizzoLsp.runFile",
+                "title": "Rizzo: Run Current File",
+                "category": "Rizzo",
                 "icon": "$(play)"
             }
         ],
         "menus": {
             "editor/title/run": [
                 {
-                    "command": "rizzLsp.runFile",
-                    "when": "resourceLangId == rizz",
+                    "command": "rizzoLsp.runFile",
+                    "when": "resourceLangId == rizzo",
                     "group": "navigation"
                 }
             ]
         },
         "languages": [
             {
-                "id": "rizz",
+                "id": "rizzo",
                 "aliases": [
-                    "Rizz",
+                    "Rizzo",
+                    "rizzo",
                     "rizz"
                 ],
                 "extensions": [
@@ -60,30 +61,38 @@
         ],
         "grammars": [
             {
-                "language": "rizz",
-                "scopeName": "source.rizz",
-                "path": "./syntaxes/rizz.tmLanguage.json"
+                "language": "rizzo",
+                "scopeName": "source.rizzo",
+                "path": "./syntaxes/rizzo.tmLanguage.json"
             },
             {
-                "scopeName": "markdown.rizz.codeblock",
-                "path": "./syntaxes/rizz-markdown-codeblock.tmLanguage.json",
+                "scopeName": "markdown.rizzo.codeblock",
+                "path": "./syntaxes/rizzo-markdown-codeblock.tmLanguage.json",
                 "injectTo": [
                     "text.html.markdown"
                 ],
                 "embeddedLanguages": {
-                    "meta.embedded.block.rizz": "rizz"
+                    "meta.embedded.block.rizzo": "rizzo"
                 }
             }
         ],
         "configuration": {
-            "title": "Rizz LSP",
+            "title": "Rizzo LSP",
             "properties": {
-                "rizzLsp.server.command": {
+                "rizzoLsp.server.workspaceFolder": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Useful for development of Rizzo or the LSP. Sets the workspace folder to launch the Rizzo language server in. If empty, the server will be launched in the current workspace root."
+                },
+                "rizzoLsp.server.command": {
                     "type": "string",
                     "default": "opam",
-                    "description": "Command used to launch the Rizz language server"
+                    "description": "Command used to launch the Rizzo language server"
                 },
-                "rizzLsp.server.args": {
+                "rizzoLsp.server.args": {
                     "type": "array",
                     "default": [
                         "exec",
@@ -95,14 +104,14 @@
                     "items": {
                         "type": "string"
                     },
-                    "description": "Arguments used to launch the Rizz language server"
+                    "description": "Arguments used to launch the Rizzo language server"
                 },
-                "rizzLsp.compiler.command": {
+                "rizzoLsp.compiler.command": {
                     "type": "string",
                     "default": "",
                     "description": "Path to the rizzoc compiler binary. Leave empty to auto-detect from local build or opam."
                 },
-                "rizzLsp.compiler.cc": {
+                "rizzoLsp.compiler.cc": {
                     "type": "string",
                     "default": "gcc",
                     "description": "C compiler command used to compile generated C output (e.g. gcc or clang)."
@@ -118,7 +127,7 @@
         "copy:runtime": "node scripts/copy-runtime.js",
         "vscode:prepublish": "npm run copy:runtime && npm run typecheck && npm run bundle",
         "package:vsix": "vsce package --out ./out",
-        "install:local": "npm run package:vsix && code --install-extension ./out/rizz-lsp-0.1.0.vsix --force"
+        "install:local": "npm run package:vsix && code --install-extension ./out/rizzo-lsp-0.0.5.vsix --force"
     },
     "devDependencies": {
         "@vscode/vsce": "^3.7.1",

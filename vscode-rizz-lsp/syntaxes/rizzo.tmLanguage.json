@@ -1,62 +1,62 @@
 {
-    "scopeName": "source.rizz",
-    "name": "Rizz",
+    "scopeName": "source.rizzo",
+    "name": "Rizzo",
     "patterns": [
         {
-            "name": "meta.function.definition.rizz",
+            "name": "meta.function.definition.rizzo",
             "match": "\\b(fun)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
             "captures": {
                 "1": {
-                    "name": "keyword.control.rizz"
+                    "name": "keyword.control.rizzo"
                 },
                 "2": {
-                    "name": "entity.name.function.rizz"
+                    "name": "entity.name.function.rizzo"
                 }
             }
         },
         {
-            "name": "meta.variable.definition.rizz",
+            "name": "meta.variable.definition.rizzo",
             "match": "\\b(let)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
             "captures": {
                 "1": {
-                    "name": "keyword.control.rizz"
+                    "name": "keyword.control.rizzo"
                 },
                 "2": {
-                    "name": "variable.other.readwrite.rizz"
+                    "name": "variable.other.readwrite.rizzo"
                 }
             }
         },
         {
-            "name": "keyword.control.rizz",
+            "name": "keyword.control.rizzo",
             "match": "\\b(let|fun|match|with|if|then|else|in)\\b"
         },
         {
-            "name": "constant.language.rizz",
+            "name": "constant.language.rizzo",
             "match": "\\b(true|false|never|unit)\\b"
         },
         {
-            "name": "string.quoted.double.rizz",
+            "name": "string.quoted.double.rizzo",
             "begin": "\"",
             "end": "\""
         },
         {
-            "name": "constant.numeric.rizz",
+            "name": "constant.numeric.rizzo",
             "match": "\\b[0-9]+\\b"
         },
         {
-            "name": "entity.name.type.constructor.rizz",
+            "name": "entity.name.type.constructor.rizzo",
             "match": "\\b[A-Z][a-zA-Z0-9_']*\\b"
         },
         {
-            "name": "variable.other.readwrite.rizz",
+            "name": "variable.other.readwrite.rizzo",
             "match": "\\b(?!let\\b|fun\\b|match\\b|with\\b|if\\b|then\\b|else\\b|in\\b|true\\b|false\\b|never\\b|unit\\b)[a-z_][a-zA-Z0-9_']*\\b"
         },
         {
-            "name": "comment.line.double-slash.rizz",
+            "name": "comment.line.double-slash.rizzo",
             "match": "//.*$"
         },
         {
-            "name": "comment.block.rizz",
+            "name": "comment.block.rizzo",
             "begin": "/\\*",
             "end": "\\*/"
         }
