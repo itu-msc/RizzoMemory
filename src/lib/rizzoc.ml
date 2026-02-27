@@ -50,19 +50,19 @@ end
 
 module Transformations = struct
   module ANF = struct
-    let anf_expr = Transform_anf.normalize_expr
-    let anf = Transform_anf.normalize_program
+    let anf_expr = Transforms.Anf.normalize_expr
+    let anf = Transforms.Anf.normalize_program
   end
-  let eliminate_consecutive_lambdas = Transform_lambda.eliminate_consecutive_lambdas_expr
-  let eliminate_consecutive_lambdas_program = Transform_lambda.eliminate_consecutive_lambdas_program
+  let eliminate_consecutive_lambdas = Transforms.Consecutive_lambda.eliminate_consecutive_lambdas_expr
+  let eliminate_consecutive_lambdas_program = Transforms.Consecutive_lambda.eliminate_consecutive_lambdas_program
   let remove_duplicate_names = Transforms.Remove_dup_names.subst_program
-  let lift = Transform_lift.lift
+  let lift = Transforms.Lambda_lifting.lift
 
-  let eliminate_copy_propagation = Transform_copr.eliminate_copy_propagation
-  let eliminate_copy_propagation_program = Transform_copr.copy_propagate
-  let eliminate_patterns = Transform_patterns.transform_patterns
-  let eliminate_simple_patterns = Transform_simple_patterns.transform_patterns
-  let ast_to_rc_ir = Transform_rc.to_rc_intermediate_representation
+  let eliminate_copy_propagation = Transforms.Copy_propagation.eliminate_copy_propagation
+  let eliminate_copy_propagation_program = Transforms.Copy_propagation.copy_propagate
+  let eliminate_patterns = Transforms.Patterns.transform_patterns
+  let eliminate_simple_patterns = Transforms.Simple_patterns.transform_patterns
+  let ast_to_rc_ir = Transforms.Pure_to_rc.to_rc_intermediate_representation
 
   
   let builtins = Rizzo_builtins.builtins_ownerships_map
