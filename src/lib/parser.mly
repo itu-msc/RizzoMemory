@@ -72,22 +72,22 @@ top_exprs:
 
 top_expr:
   | LET name=ID EQ body=expr
-    { TLet (name, body, mkloc $startpos $endpos) }
+    { TopLet (name, body, mkloc $startpos $endpos) }
   | FUN name=ID params=nonempty_id_list EQ body=expr
     {
       check_unique_params (List.map fst params);
-      TLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
+      TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
     }
   | EFFECTFUL FUN name=ID params=nonempty_id_list EQ body=expr
     {
       check_unique_params (List.map fst params);
       Effectful.mark_effectful name;
-      TLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
+      TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
     }
   | EFFECTFUL LET name=ID EQ body=expr
     {
       Effectful.mark_effectful name;
-      TLet (name, body, mkloc $startpos $endpos)
+      TopLet (name, body, mkloc $startpos $endpos)
     }
 
 nonempty_id_list:

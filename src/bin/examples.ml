@@ -78,15 +78,15 @@ let example_anf_then_rc () =
     let _ = fun x -> garbage_sig x
   *)
   let program: _ Ast.program = [
-    TLet("id", EFun(["x"], EVar "x"));
-    TLet("garbage_sig", EFun(["x"], 
+    TopLet("id", EFun(["x"], EVar "x"));
+    TopLet("garbage_sig", EFun(["x"], 
       ELet("my_sig", EBinary(SigCons,
         ECase (EVar "x", [(PVar "x", EVar "x"); (PWildcard, ELet ("y", EApp (EVar "id", [EVar "x"]), EVar "y"))]), 
         EApp (EVar("id"), [EVar "x"])),
       EApp (EVar "id", [EVar "my_sig"])
       )
     ));
-    TLet("_", EFun(["x"], 
+    TopLet("_", EFun(["x"], 
       EApp (EVar "garbage_sig", [EVar "x"])
     ))
   ] in
@@ -101,9 +101,9 @@ let example_anf_then_rc () =
 
 let example_anf () = 
   let program: _ Ast.program = [
-    TLet("id", EFun(["x"], EVar "x"));
-    TLet("some", EFun(["g"], EVar "g"));
-    TLet("_", EFun(["x"; "g"], 
+    TopLet("id", EFun(["x"], EVar "x"));
+    TopLet("some", EFun(["g"], EVar "g"));
+    TopLet("_", EFun(["x"; "g"], 
       let case = Ast.ECase (EVar "x", [(PWildcard, EVar "none"); (PVar "x", EApp (EVar "some", [EVar "g"]))]) in
       let sig_cons = Ast.EBinary(SigCons, case, EVar "never") in
       let my_sig = sig_cons in

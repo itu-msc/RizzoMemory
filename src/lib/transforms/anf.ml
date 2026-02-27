@@ -51,4 +51,4 @@ and normalize_name_mult ms k = match ms with
 | m :: ms -> normalize_name m (fun t -> normalize_name_mult ms (fun t' -> k (t :: t')))
 
 let normalize_program (p: parsed program) : parsed program =
-  List.map (fun (TLet (x,e, loc)) -> TLet (x, normalize_expr e, loc)) p
+  List.map (fun (TopLet (x,e, loc)) -> TopLet (x, normalize_expr e, loc)) p

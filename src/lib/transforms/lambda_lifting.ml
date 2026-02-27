@@ -4,15 +4,15 @@ module StringSet = Set.Make(String)
 
 let rec lift (p: _ program) : _ program =
   let lifted_lambdas = ref [] in
-  let top_decl_names = StringSet.of_list @@ List.map (fun (TLet(name,_,_)) -> name) p in
+  let top_decl_names = StringSet.of_list @@ List.map (fun (TopLet(name,_,_)) -> name) p in
   let lifted_program = List.fold_right (fun te acc -> lift_top_expr top_decl_names lifted_lambdas te :: acc) p [] in
   List.rev_append !lifted_lambdas lifted_program
 
 and lift_top_expr top_names (lifted_lambdas: _ top_expr list ref) (te: _ top_expr) : _ top_expr =
   let lift_expr = lift_expr top_names lifted_lambdas in
   match te with
-  | TLet (x, EFun (params, body, fun_loc), let_loc) -> TLet (x, EFun (params, lift_expr body, fun_loc), let_loc)
-  | TLet (x, e, loc) -> TLet (x, lift_expr e, loc)
+  | TopLet (x, EFun (params, body, fun_loc), let_loc) -> TopLet (x, EFun (params, lift_expr body, fun_loc), let_loc)
+  | TopLet (x, e, loc) -> TopLet (x, lift_expr e, loc)
 
 and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) = 
   let lift_expr = lift_expr top_names lifted_lambdas in
@@ -37,6 +37,6 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
     let lifted_loc = loc in
     let name = Utilities.new_name "lifted_fun" in
     let lifted_body = lift_expr body in
-    lifted_lambdas := TLet (name, EFun(fv_with_loc @ params, lifted_body, lifted_loc), lifted_loc) :: !lifted_lambdas;
+    lifted_lambdas := TopLet (name, EFun(fv_with_loc @ params, lifted_body, lifted_loc), lifted_loc) :: !lifted_lambdas;
     if List.length fv = 0 then EVar (name, loc)
     else EApp (EVar (name, loc), List.map (fun v -> EVar (v, loc)) fv, loc) (* TODO optimise with partial application when possible *)

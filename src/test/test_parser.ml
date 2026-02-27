@@ -13,14 +13,14 @@ let test_parser_program () =
   in
   let parsed = Rizzoc.Parser.parse_string input in
   let expected : parsed program =
-    [ tlet "x" (int 1);
-      tlet "id" (fun_ ["y"] (var "y"));
-      tlet "pair" (tuple (var "x") (int 2));
+    [ toplet "x" (int 1);
+      toplet "id" (fun_ ["y"] (var "y"));
+      toplet "pair" (tuple (var "x") (int 2));
       (* x :: (y :: z) *)
-      tlet "xs" (binary SigCons (var "x") (binary SigCons (var "y") (var "z")));
-      tlet "m" (case (var "xs") [ (psigcons (pvar "h") (name "t"), var "h"); (pwild, var "y") ]);
-      tlet "app" (app (var "f") [var "x"; var "y"]);
-      tlet "local" (let_ "z" (int 1) (var "z"));
+      toplet "xs" (binary SigCons (var "x") (binary SigCons (var "y") (var "z")));
+      toplet "m" (case (var "xs") [ (psigcons (pvar "h") (name "t"), var "h"); (pwild, var "y") ]);
+      toplet "app" (app (var "f") [var "x"; var "y"]);
+      toplet "local" (let_ "z" (int 1) (var "z"));
     ]
   in
   Alcotest.check program_testable "parser builds AST" expected parsed
@@ -32,7 +32,7 @@ let test_top_level_let_many_locals () =
   let parsed = Rizzoc.Parser.parse_string input in
   let expected : parsed program =
     [
-      tlet "pipeline"
+      toplet "pipeline"
         (let_ "a" (int 1)
            (let_ "b" (var "a")
               (let_ "c" (tuple (var "b") (var "a"))
@@ -48,7 +48,7 @@ let test_arbitrary_length_tuple () =
   let parsed = Rizzoc.Parser.parse_string input in
   let expected : parsed program =
     [
-      tlet "t" (tuple (int 1) (tuple (int 2) (tuple (int 3) (int 4))));
+      toplet "t" (tuple (int 1) (tuple (int 2) (tuple (int 3) (int 4))));
     ]
   in
   Alcotest.check program_testable "arbitrary length tuple parses" expected parsed
@@ -59,7 +59,7 @@ let test_effectful_decorator_marks_function () =
   in
   let parsed = Rizzoc.Parser.parse_string input in
   let expected : parsed program =
-    [ tlet "output_log" (fun_ ["x"] (var "x")) ]
+    [ toplet "output_log" (fun_ ["x"] (var "x")) ]
   in
   Alcotest.check program_testable "effectful decorated fun parses" expected parsed;
   Alcotest.(check bool) "effectful name registered" true (Rizzoc.Effectful.is_effectful "output_log")

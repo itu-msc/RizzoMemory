@@ -44,7 +44,7 @@ let case (scrutinee : parsed expr) (branches : (parsed pattern * parsed expr) li
   let annotated = List.map (fun (p, e) -> (p, e, ann)) branches in
   ECase (scrutinee, annotated, ann)
 
-let tlet (n : string) (e : parsed expr) : parsed top_expr = TLet (n, e, ann)
+let toplet (n : string) (e : parsed expr) : parsed top_expr = TopLet (n, e, ann)
 
 let program_testable : parsed Ast.program Alcotest.testable =
   Alcotest.testable Ast.pp_program Ast.eq_program

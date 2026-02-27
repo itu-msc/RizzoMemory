@@ -4,7 +4,7 @@ open Ast
 let head_elim = (Rizzo_builtins.get "head").name
 
 let rec transform_patterns (p: 's Ast.program) = 
-  List.map (fun (TLet (name, expr, ann)) -> TLet (name, compile_match expr, ann)) p
+  List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) p
 
 and compile_pattern p scrutinee good bad = 
   match p with

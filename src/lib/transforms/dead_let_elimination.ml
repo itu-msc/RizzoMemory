@@ -49,4 +49,4 @@ let rec eliminate_dead_let (e : _ expr) : _ expr =
 			else e2'
 
 let dead_let_eliminate (p : _ program) : _ program =
-	List.map (fun (TLet (x, e, ann)) -> TLet (x, eliminate_dead_let e, ann)) p
+	List.map (fun (TopLet (x, e, ann)) -> TopLet (x, eliminate_dead_let e, ann)) p

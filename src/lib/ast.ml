@@ -22,18 +22,33 @@ type binary_op =
 (** Source location for an expression node *)
 type location = Location.t
 
+type 'a list1 = Cons1 of 'a * 'a list
+
 type typ = 
+  | TUnit 
+  | TInt
+  | TString
+  | TBool
   | TVar of string
-  | TFun of typ list * typ
+  | TFun of typ list1 * typ
   | TSignal of typ
   | TTuple of typ * typ
+  | TLater of typ
+  | TDelay of typ
+  | TSync of typ * typ
   (* could include type variables, type constructors, etc. *)
 
 type parsed (* just parsed *)
+type bound 
 type typed (* typechecking *)
+
+type scope = 
+  | Scope_global
+  | Scope_local of { level: int }
 
 type _ ann =
   | Ann_parsed : Location.t -> parsed ann
+  | Ann_bound : Location.t * scope -> bound ann
   | Ann_typed : Location.t * typ -> typed ann
 
 type _ pattern =
@@ -62,7 +77,7 @@ and 's case_branch = 's pattern * 's expr  * 's ann
 and 's name = string * 's ann
 
 type _ top_expr =
-  | TLet : string * 's expr  * 's ann -> 's top_expr
+  | TopLet : string * 's expr  * 's ann -> 's top_expr
   (* could include types, modules idk *)
 
 type 'stage program  = 'stage top_expr list
@@ -82,9 +97,10 @@ end)
 let get_location : type stage. stage ann -> Location.t = fun a ->
   match a with
   | Ann_parsed loc -> loc
+  | Ann_bound (loc, _) -> loc
   | Ann_typed (loc, _) -> loc
 
-let expr_get_ann (e : _ expr) : _ ann =
+let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   match e with
   | EConst (_, ann) | EVar (_, ann) | ECtor (_, _, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
   | EApp (_, _, ann) | EUnary (_, _, ann) | EBinary (_, _, _, ann)
@@ -205,11 +221,11 @@ and pp_expr out =
       cases
 
 let eq_top_expr a b = match a,b with
-  | TLet (x1, e1, _), TLet (x2, e2, _) -> x1 = x2 && eq_expr e1 e2 
+  | TopLet (x1, e1, _), TopLet (x2, e2, _) -> x1 = x2 && eq_expr e1 e2 
 
 let pp_top_expr out =
   function
-  | TLet (x, e, _) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
+  | TopLet (x, e, _) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
 
 let eq_program a b = 
   List.length a = List.length b && List.for_all2 eq_top_expr a b

@@ -25,7 +25,7 @@ fun sample xs ys = map (fun x -> (x, head ys)) xs
 fun _switch s d = match s with
     | x :: xs -> 
         let cont = fun mysync -> match mysync with
-            | Left (xs_)   -> let partial_switch = _switch xs_ in partial_switch d
+            | Left (xs_)   -> _switch xs_ d
             | Right (d_)   -> d_
             | Both (_, d_) -> d_ 
         in x :: (cont |> sync xs d)
@@ -34,6 +34,8 @@ fun filter_map p s = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
 
 fun filter p s = filter_map (fun x -> if p x then Just (x) else Nothing) s
+
+// fun applier f x1 x2 x3 = f x1 x2 x3 
 
 fun mytail s = match s with
     | x :: xs -> let x_delayed = delay x in xs

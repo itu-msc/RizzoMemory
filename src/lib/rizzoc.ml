@@ -76,7 +76,7 @@ module Transformations = struct
   
   let auto_ref_count (program: Ast.parsed Ast.program) = 
     let program = ast_to_rc_ir builtins program in
-    RefCount.reference_count_program builtins program 
+    RefCount.reference_count_program builtins program
 end
 
 module Utilities = struct include Utilities end

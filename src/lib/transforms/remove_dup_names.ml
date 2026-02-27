@@ -3,7 +3,7 @@ open! Ast
 module StringMap = Map.Make(String)
 
 let rec subst_program (p: _ program) = 
-  List.map (fun (TLet(x, rhs, ann)) -> TLet(x, subst StringMap.empty rhs, ann)) p
+  List.map (fun (TopLet(x, rhs, ann)) -> TopLet(x, subst StringMap.empty rhs, ann)) p
 
 and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
   match e with

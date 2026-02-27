@@ -335,7 +335,7 @@ let top_level_declarations ~(text : string) (program : Ast.parsed Ast.program) :
   let lines = lines_of_text text in
   let declaration_of_top (top : Ast.parsed Ast.top_expr) =
     match top with
-    | Ast.TLet (name, rhs, ann) ->
+    | Ast.TopLet (name, rhs, ann) ->
         let kind =
           match rhs with
           | Ast.EFun _ -> Function
@@ -382,7 +382,7 @@ let collect_expr_ranges (program : Ast.parsed Ast.program) : (Ast.parsed Ast.exp
     acc := (expr, expr_range) :: !acc
   in
   let visit_top = function
-    | Ast.TLet (_, rhs, _) -> iter_expr push rhs
+    | Ast.TopLet (_, rhs, _) -> iter_expr push rhs
   in
   List.iter visit_top program;
   !acc
@@ -590,7 +590,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
       let rec find_in_tops tops =
         match tops with
         | [] -> None
-        | Ast.TLet (name, rhs, ann) :: rest ->
+        | Ast.TopLet (name, rhs, ann) :: rest ->
             let top_range = range_of_ann ann in
             let name_range = top_level_name_range ~lines top_range ~name in
             if range_contains_position name_range position then
@@ -718,7 +718,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
       in
       List.iter
         (function
-          | Ast.TLet (name, rhs, ann) ->
+          | Ast.TopLet (name, rhs, ann) ->
               let top_range = range_of_ann ann in
               let name_range = top_level_name_range ~lines top_range ~name in
               let kind =

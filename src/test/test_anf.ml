@@ -11,7 +11,7 @@ let test_anf_case_is_lifted_to_top () =
   let case_expr = case y [ (pvar "y", y); (pwild, app id [y]) ] in
   (* let x = id (case y of y; id y) *)
   let p : parsed program = [
-    tlet "x" (app id [case_expr])
+    toplet "x" (app id [case_expr])
   ] in
 
   let transformed = ANF.anf p in
@@ -21,7 +21,7 @@ let test_anf_case_is_lifted_to_top () =
   let varName = Utilities.new_var () in
   let varValue = var varName in
   let expected : parsed program = [
-    tlet "x"
+    toplet "x"
       (case y
          [ (pvar "y", app id [y]);
            (pwild, let_ varName (app id [y]) (app id [varValue])) ])
@@ -35,7 +35,7 @@ let test_anf_signal_cons_unchanged () =
   let y = var "y" in
   (* let z = x :: y *)
   let p : parsed program = [
-    tlet "z" (binary SigCons x y)
+    toplet "z" (binary SigCons x y)
   ] in
 
   let transformed = ANF.anf p in
@@ -74,7 +74,7 @@ let test_case_is_lifted_out_of_let () =
          (binary SigCons (var "y") (var "x")))
   in
   let p : parsed program = [
-    tlet "my_fun" my_fun
+    toplet "my_fun" my_fun
   ] in
 
   let transformed = ANF.anf p in
@@ -86,7 +86,7 @@ let test_case_is_lifted_out_of_let () =
       | (let y = 1 in y :: x) *)
   Utilities.new_name_reset ();
   let expected =
-    [ tlet "my_fun"
+    [ toplet "my_fun"
         (fun_ ["x"]
            (case (bool false)
               [ (pconst (CBool false), let_ "y" (int 0) (binary SigCons (var "y") (var "x")));

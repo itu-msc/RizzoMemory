@@ -67,7 +67,7 @@ type globals_env = int option M.t
   that leaves variables as either 'Global of string' or 'Local of string' or w/e *)
 module LocalsEnv = Set.Make(String)
 
-let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr = 
+let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr = 
   match e with
   | ECtor ((ctor_name, _), args, _) ->
     RCtor (Ctor { tag = ctor_tag_of_name ctor_name; fields = List.map get_name args })
@@ -80,14 +80,26 @@ let rec expr_to_rexpr (globals: globals_env) locals (e: _ expr): Refcount.rexpr 
       RCall (f, List.map get_name args)
     | _ -> RPartialApp (f, List.map get_name args)
     )
-  | EApp (EVar (f, _), xs, _) when LocalsEnv.mem f locals ->
-    if List.length xs = 1 then RVarApp(f, get_name (List.hd xs))
-    else 
-      failwith (Format.asprintf "todo! expr_to_rexpr variable application has more than one argument - not supported in refcount IR. For expression '%a'" Ast.pp_expr e)
+  | EApp (EVar (f, _), [x], _) when LocalsEnv.mem f locals -> Refcount.RVarApp (f, get_name x)
+  | EApp (EVar (f, _), _,_) when LocalsEnv.mem f locals -> 
+    failwith "expr_to_rexpr failed: variable application has more than one argument - not supported in refcount IR"
+    (* f x1 x2 x3 -> (((f x1) x2) x3)
+      =>
+      let fx1 = f x1 in
+      let fx2 = fx1 x2 in
+      let fx3 = fx2 x3 in
+      fx3
+    *)
+    (* let fx1 = Refcount.RVarApp (f, get_name x) in
+    List.fold_left (fun acc arg ->
+      let intermediate_var = Utilities.new_var () in
+      let binding  = Refcount.FnLet (intermediate_var, acc, rest_rexpr) in
+      Refcount.RVarApp (intermediate_var, get_name arg)
+    ) fx1 xs *)
   | EApp (EVar (f, _), xs, _) -> 
     (match M.find_opt f globals with
     | Some Some arity when arity = List.length xs -> RCall (f, List.map get_name xs)
-    | Some Some _ -> RPartialApp (f, List.map get_name xs) 
+    | Some Some _ -> RPartialApp (f, List.map get_name xs)
     | Some None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: trying to apply a non-function global '%s'" f
     | None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: unable to find '%s' in globals" f)
   | EBinary (SigCons, n1, n2, _)-> RCtor (Signal { head = get_name n1; tail = get_name n2 })
@@ -137,8 +149,8 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
   (* maps  top-level-names to its parameter number *)
   let globals: globals_env = 
     let mapper = function 
-    | TLet(name, EFun (params, _, _), _) -> (name, Some (List.length params))
-    | TLet(name, _, _) -> (name, None)
+    | TopLet(name, EFun (params, _, _), _) -> (name, Some (List.length params))
+    | TopLet(name, _, _) -> (name, None)
     in
     let builtins_arity = M.map (fun b -> Some (List.length b)) builtins in
     List.map mapper p |> M.of_list 
@@ -150,4 +162,4 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
     Refcount.Fun (params, expr_to_fn_body globals (LocalsEnv.of_list params) body) 
   | _ -> failwith "TODO: only top level functions"
   in
-  List.map (fun (TLet (name, rhs, _)) -> name, to_fun rhs) p
+  List.map (fun (TopLet (name, rhs, _)) -> name, to_fun rhs) p

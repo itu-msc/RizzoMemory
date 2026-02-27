@@ -7,7 +7,7 @@ let is_var_or_wildcard = function
   | _ -> false
 
 let rec transform_patterns (p: 's Ast.program) = 
-  List.map (fun (TLet (name, expr, ann)) -> TLet (name, compile_match expr, ann)) p
+  List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) p
   
 and compile_simple_pattern scrutinee case_body = function
   | PVar (s, ann) -> 
