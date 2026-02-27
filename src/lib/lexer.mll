@@ -48,6 +48,7 @@ rule read = parse
   | '\n' { Lexing.new_line lexbuf; read lexbuf}
   | "//" { line_comment lexbuf; read lexbuf }
   | "/*" { block_comment lexbuf; read lexbuf }
+  | "@effectful" { EFFECTFUL }
   | "()" { UNIT }
   | "|>" { PIPE_GT }
   | "->" { ARROW }

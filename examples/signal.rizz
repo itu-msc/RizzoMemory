@@ -35,13 +35,16 @@ fun filter_map p s = match s with
 
 fun filter p s = filter_map (fun x -> if p x then Just (x) else Nothing) s
 
+fun mytail s = match s with
+    | x :: xs -> let x_delayed = delay x in xs
+
 let entry = fun x -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in
     let reactive_signal = 42 :: my_console_sig in
 
-    let y = output_int_signal my_int_sig in 
-    let z = output_int_signal reactive_signal in
+    let xx = output_int_signal my_int_sig in 
+    let xxx = output_int_signal reactive_signal in
 
     let fourty42_sig = filter (fun x -> x == 42) (0 :: my_console_sig) in
     let zzz = output_int_signal (_switch (map (fun x -> "hello there!") reactive_signal) fourty42_sig) in

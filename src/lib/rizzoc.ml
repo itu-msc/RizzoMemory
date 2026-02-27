@@ -13,6 +13,7 @@ include Parser
 exception Error of Location.t * string
 
 let parse_with lexbuf =
+  Effectful.reset_custom ();
   try Parser.main Lexer.read lexbuf 
   with
   | Lexer.Error _ as exn ->
@@ -44,6 +45,10 @@ module Ast = struct
 include Ast
 end
 
+module Effectful = struct
+include Effectful
+end
+
 module RefCount = struct
 include Refcount
 end
@@ -60,6 +65,8 @@ module Transformations = struct
 
   let eliminate_copy_propagation = Transforms.Copy_propagation.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transforms.Copy_propagation.copy_propagate
+  let eliminate_dead_let = Transforms.Dead_let_elimination.eliminate_dead_let
+  let eliminate_dead_let_program = Transforms.Dead_let_elimination.dead_let_eliminate
   let eliminate_patterns = Transforms.Patterns.transform_patterns
   let eliminate_simple_patterns = Transforms.Simple_patterns.transform_patterns
   let ast_to_rc_ir = Transforms.Pure_to_rc.to_rc_intermediate_representation
@@ -83,11 +90,13 @@ let apply_transforms p =
   |> Transformations.eliminate_consecutive_lambdas_program
   |> Transformations.lift
   |> Transformations.eliminate_copy_propagation_program
+  (* |> Transformations.eliminate_dead_let_program *)
   (* |> Transformations.eliminate_patterns *)
   |> Transformations.remove_duplicate_names
   |> Transformations.eliminate_simple_patterns
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
+  |> Transformations.eliminate_dead_let_program
 
 let ref_count p = snd @@ Transformations.auto_ref_count p
 

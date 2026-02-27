@@ -43,6 +43,7 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %}
 
 %token LET FUN MATCH WITH IN
+%token EFFECTFUL
 %token EQ CONS COMMA LPAREN RPAREN BAR
 %token IF THEN ELSE
 %token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ
@@ -76,6 +77,17 @@ top_expr:
     {
       check_unique_params (List.map fst params);
       TLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
+    }
+  | EFFECTFUL FUN name=ID params=nonempty_id_list EQ body=expr
+    {
+      check_unique_params (List.map fst params);
+      Effectful.mark_effectful name;
+      TLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
+    }
+  | EFFECTFUL LET name=ID EQ body=expr
+    {
+      Effectful.mark_effectful name;
+      TLet (name, body, mkloc $startpos $endpos)
     }
 
 nonempty_id_list:

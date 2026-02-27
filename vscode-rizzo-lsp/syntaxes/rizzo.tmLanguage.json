@@ -3,8 +3,12 @@
     "name": "Rizzo",
     "patterns": [
         {
+            "name": "storage.modifier.rizzo",
+            "match": "@effectful\\b"
+        },
+        {
             "name": "meta.function.definition.rizzo",
-            "match": "\\b(fun)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
+            "match": "(?:@effectful\\s+)?\\b(fun)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
             "captures": {
                 "1": {
                     "name": "keyword.control.rizzo"
@@ -16,7 +20,7 @@
         },
         {
             "name": "meta.variable.definition.rizzo",
-            "match": "\\b(let)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
+            "match": "(?:@effectful\\s+)?\\b(let)\\s+([a-z_][a-zA-Z0-9_']*)\\b",
             "captures": {
                 "1": {
                     "name": "keyword.control.rizzo"

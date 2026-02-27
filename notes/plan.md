@@ -11,7 +11,7 @@
   - [x] Lambda lifting
   - [x] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
   - [ ] Transform applications on (local) variables to a series of 1 apps. Because variable applications take one argument in the reference counted IR. Or just change the Refcount.VarApp to take a list of primitives ... 
-  - [ ] Dead let-binding (code) elimination
+  - [x] Dead let-binding (code) elimination
   - [x] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...
   - [x] A-Normalization (ANF, Flanagan et al.). May have to be more aggressive, since we need all arguments to be variables.
   - [x] Add consecutive lambda elimination (lowers nested lambdas to a single function with multiple parameters, e.g. `fun x -> fun y -> e` becomes `fun (x, y) -> e`)

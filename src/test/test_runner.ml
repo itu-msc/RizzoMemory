@@ -8,6 +8,7 @@ let () =
     "LIFT TESTS", Test_lift.lift_tests;
     "LAMBDA TESTS", Test_lambda.lambda_tests;
     "COPY PROP TESTS", Test_copr.tests_copy_propagation;
+    "DEAD LET TESTS", Test_dead_let.tests_dead_let;
     "RESET REUSE TESTS", Test_reset_reuse.reset_reuse_tests;
   ]
 
