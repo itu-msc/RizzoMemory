@@ -47,6 +47,10 @@ let emit_c_code (p:program) (filename:string) =
     |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
     write "\n";
 
+    (* forward functions *)
+    List.iter (fun (name, _) -> write @@ make_fun_decl ~ending:";\n" name) p;
+    write "\n";
+
     List.iter emit_fn p;
     match List.assoc_opt "entry" p with
     | Some _ -> write ("int main() {\n"

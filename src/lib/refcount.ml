@@ -121,7 +121,16 @@ let name_of_primitive_opt = function
   | Var x -> Some x
   | Const _ -> None
 
-let rec free_vars_expr rexpr : StringSet.t = 
+(** all names (constants in the paper language) defined at a top - level
+  Why not pass it through as parameters? Because it is called in multiple places, and it easier to assign global_names once at the beginning. *)
+let global_names = ref StringSet.empty
+
+(** Free variables of an [fn_body] minus all global names *)
+let rec free_vars fn = StringSet.diff (free_vars_fn fn) !global_names
+and free_vars_rexpr rexpr = StringSet.diff (free_vars_rexpr_inner rexpr) !global_names
+
+(** Inner version so we don't have to do a diff on EVERY rexpr *)
+and free_vars_rexpr_inner rexpr : StringSet.t = 
   match rexpr with
   | RConst _ -> StringSet.empty
   | RCall (c, args) | RPartialApp (c, args) ->
@@ -138,18 +147,18 @@ let rec free_vars_expr rexpr : StringSet.t =
     StringSet.of_list (name :: List.filter_map name_of_primitive_opt fields)
   | RReuse (name, Signal {head; tail}) ->
     StringSet.of_list (name :: List.filter_map name_of_primitive_opt [head; tail])
-and free_vars = function
+and free_vars_fn = function
   | FnRet x -> 
     name_of_primitive_opt x
     |> Option.fold ~none:StringSet.empty ~some:StringSet.singleton
   | FnLet (x, rhs, f) -> 
-    StringSet.union (free_vars_expr rhs) (StringSet.remove x @@ free_vars f)
+    StringSet.union (free_vars_rexpr_inner rhs) (StringSet.remove x @@ free_vars f)
   | FnCase (scrutinee, branches) ->
     StringSet.singleton scrutinee
     |> StringSet.union (List.fold_left (fun acc (_, branch) -> StringSet.union acc (free_vars branch)) StringSet.empty branches)
   | FnInc (v, f) | FnDec (v, f) ->
     StringSet.union (StringSet.singleton v) (free_vars f)
-
+  
 type ownership =
   | Owned
   | Borrowed
@@ -433,7 +442,7 @@ and insert_reset z num_fields fn_body =
   match fn_body with
   | FnCase (s, cases) -> FnCase (s, List.map (fun (i, arm) -> (i, insert_reset z num_fields arm)) cases)
   | FnRet _ -> fn_body
-  | FnLet (x, e, f) when StringSet.mem z (free_vars_expr e) || StringSet.mem z (free_vars f) -> 
+  | FnLet (x, e, f) when StringSet.mem z (free_vars_rexpr e) || StringSet.mem z (free_vars f) -> 
     (* (z in e) or (z in F) *)
     FnLet (x, e, insert_reset z num_fields f)
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
@@ -460,6 +469,7 @@ and insert_reuse w num_fields fn_body: fn_body =
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
 
 let reference_count_program builtins (p: program) =
+  global_names := StringSet.of_list (List.map fst p @ (StringMap.to_list builtins |> List.map fst));
   let reset_reuse_program = insert_reset_and_reuse_pairs_program p in
   let func_ownerships = infer_all ~builtins:builtins reset_reuse_program in
 
