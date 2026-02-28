@@ -30,8 +30,8 @@ let () =
 		Format.printf "Parsed:\n%a\n\n" Ast.pp_program program;
 		let typed = Rizzoc.typecheck program in
 		let () = match typed with
-		| Ok typed_program -> Format.printf "Typechecked:\n%a\n\n" Rizzoc.Ast.pp_program typed_program
-		| Error Typing_error msg -> print_endline ("Type error: " ^ msg)
+		| Ok _ -> () (* TODO: a pretty print for 'typed expr' would be nice ? *)
+		| Error Typing_error (loc, msg) -> Location.show_error_context loc msg
 		in
 
     let transformed = Rizzoc.apply_transforms program in

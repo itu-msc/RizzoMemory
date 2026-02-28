@@ -1,9 +1,11 @@
 open! Ast
 
-type typing_error = Typing_error of string
+type typing_error = Typing_error of Location.t * string
 let ( let* ) = Result.bind
 let return = Result.ok
-let error msg = Result.error (Typing_error msg)
+let error ann msg = Result.error (Typing_error (get_location ann, msg))
+let errorl_from_to (loc_start: Location.t) (loc_end: Location.t) msg = 
+  Result.error (Typing_error (Location.mk loc_start.start_pos loc_end.end_pos, msg))
 
 let result_combine (rs : ('a,'b) result list) : ('a list, 'b) result =
   let mapper r acc =
@@ -49,7 +51,7 @@ let rec typecheck : type stage. stage program -> (typed program, typing_error) R
 and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) Result.t = fun env e ->
   match e with
   | EConst (c, ann) -> 
-    let* const_type = infer_const_type c in
+    let* const_type = infer_const_type ann c in
     return (EConst (c, Ann_typed (get_location ann, const_type)))
   | EAnno (e, t, ann) -> 
     let* te = check env e t in
@@ -59,12 +61,12 @@ and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) R
     let* var_type = 
       match StringMap.find_opt name env.global with
       | Some (Forall ([], t)) -> return t
-      | Some (Forall (_, _)) -> error "Polymorphic types not supported yet"
+      | Some (Forall (_, _)) -> error ann "Polymorphic types not supported yet"
       | None -> (
         match StringMap.find_opt name env.local with
         | Some (Forall ([], t)) -> return t
-        | Some (Forall (_, _)) -> error "Polymorphic types not supported yet"
-        | None -> error ("Unbound variable: " ^ name)
+        | Some (Forall (_, _)) -> error ann "Polymorphic types not supported yet"
+        | None -> error ann ("Unbound variable: " ^ name)
       )
     in
     return (EVar (name, Ann_typed (get_location ann, var_type)))
@@ -80,7 +82,7 @@ and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) R
     let tf_type = get_typ tf in
     (match tf_type with
     | TFun (param_types, ret_type) -> infer_application env tf param_types ret_type args ann
-    | _ -> error (Format.asprintf "Infered a non-function type '%a' for an application" Ast.pp_typ tf_type))
+    | _ -> error (expr_get_ann f) (Format.asprintf "Cannot apply a non-function type '%a'" Ast.pp_typ tf_type))
   | ECase (scrutinee, branches, ann) ->
     let* tscrutinee = infer env scrutinee in
     let t_scrutinee = get_typ tscrutinee in
@@ -90,7 +92,7 @@ and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) R
     let branch_types = List.map (fun (_, branch) -> get_typ branch) tbranches in
     (* check that all branches have the same type *)
     (match branch_types with
-    | [] -> error "Case expression must have at least one branch"
+    | [] -> error ann "Case expression must have at least one branch"
     | t :: ts -> 
       if List.for_all (fun t' -> Ast.eq_typ t' t) ts
       then 
@@ -98,9 +100,11 @@ and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) R
           List.map2 (fun (_,_, ann) (typed_pattern, typed_body) -> (typed_pattern, typed_body, Ann_typed(get_location ann, get_typ typed_body))) branches tbranches 
         in
         return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, t)))
-      else error "All case branches must have the same type")
-  | EFun _ -> error "Inference for functions not implemented yet - unification todo"
-  | _ -> error "todo!"
+      else error ann "All case branches must have the same type")
+  | EFun (_,_, ann) -> error ann "Inference for functions not implemented yet - unification todo"
+  | _ -> 
+    let msg = (Format.asprintf "Unable to infer type for this expression.\n  Try (%a : T) to check against an expected type T" Ast.pp_expr e) in
+    error (expr_get_ann e) msg
 
 (** Checks a type against an expected type *)
 and check : type stage. typing_env -> stage expr -> typ -> (typed expr, typing_error) Result.t =
@@ -108,13 +112,13 @@ and check : type stage. typing_env -> stage expr -> typ -> (typed expr, typing_e
   | EConst (CNever, ann) -> 
     (match expected with 
     | TLater (_) -> return (EConst (CNever, Ann_typed (get_location ann, expected)))
-    | _ -> error "Never can only be of type 'Later t' for some t")
+    | _ -> error ann "Never can only be of type 'Later t' for some t")
   | EFun (params, body, ann) -> 
     let* Cons1(p1_type, param_types_rest), ret_type = match expected with
       | TFun (param_types, ret_type) when Ast_helpers.list1_length param_types = List.length params -> 
         return (param_types, ret_type)
-      | TFun (_, _) -> error (Format.asprintf "Function type does not match number of parameters which was expected of %a" Ast.pp_typ expected)
-      | _ -> error (Format.asprintf "Checking '%a' but expected a non-function type" Ast.pp_expr e)
+      | TFun (_, _) -> error ann (Format.asprintf "Function type does not match number of parameters which was expected of %a" Ast.pp_typ expected)
+      | _ -> error ann (Format.asprintf "Type check expected non-function '%a'" Ast.pp_expr e)
     in
     let params_annotated = List.map2 (fun (pn, pann) pt -> (pn, Ann_typed(get_location pann, pt))) params (p1_type :: param_types_rest) in
     let env' = typing_env_add_locals env (List.map (fun (p, ann) -> (p, mono (ann_get_type ann))) params_annotated) in
@@ -126,14 +130,15 @@ and check : type stage. typing_env -> stage expr -> typ -> (typed expr, typing_e
     let* te = infer env e in
     let t = get_typ te in
     if Ast.eq_typ expected t then return te
-    else error (Format.asprintf "Type mismatch: expected '%a' but got '%a'" Ast.pp_typ expected Ast.pp_typ t)
+    else error (expr_get_ann e) (Format.asprintf "Type mismatch: expected '%a' but got '%a'" Ast.pp_typ expected Ast.pp_typ t)
 
-and infer_const_type : const -> (typ, typing_error) Result.t = function
+and infer_const_type : type stage. stage ann -> const -> (typ, typing_error) Result.t = 
+  fun ann -> function
   | CUnit -> return TUnit
   | CInt _ -> return TInt
   | CBool _ -> return TBool
   | CString _ -> return TString
-  | CNever -> error "Never cannot be inferred?"
+  | CNever -> error ann "Never cannot be inferred (yet) - consider annotating (never : Later T)"
 
 (* and check_pattern_and_infer_branch env pattern rhs scrutinee_type : ((typed pattern * typed expr), typing_error) Result.t = *)
 and check_pattern_and_infer_branch : type stage. typing_env -> stage pattern -> stage expr -> typ -> ((typed pattern * typed expr), typing_error) Result.t =
@@ -149,14 +154,14 @@ and check_pattern_and_infer_branch : type stage. typing_env -> stage pattern -> 
     let* rhs' = infer env' rhs in
     return (pattern, rhs')
   | PConst (c, ann) ->
-    let* const_type = infer_const_type c in
+    let* const_type = infer_const_type ann c in
     if const_type = scrutinee_type 
     then let* rhs' = infer env rhs in return (PConst (c, Ann_typed (get_location ann, const_type)), rhs')
-    else error "Pattern constant type does not match scrutinee type"
+    else error ann "Pattern constant type does not match scrutinee type"
   | PTuple (PVar (n1,_) , PVar (n2,_), ann) ->
     let* (t1, t2) = match scrutinee_type with
       | TTuple (t1, t2) -> return (t1, t2)
-      | _ -> error "Pattern tuple type does not match scrutinee type"
+      | _ -> error ann "Pattern tuple type does not match scrutinee type"
     in
     let env' = typing_env_add_local env n1 (mono t1) in
     let env' = typing_env_add_local env' n2 (mono t2) in 
@@ -169,7 +174,7 @@ and check_pattern_and_infer_branch : type stage. typing_env -> stage pattern -> 
   | PSigCons (PVar (hd_name, hd_ann), (tail_name, _), ann) ->
     let* t = match scrutinee_type with
       | TSignal t -> return t
-      | _ -> error "Pattern SigCons type does not match scrutinee type"
+      | _ -> error ann "Pattern SigCons type does not match scrutinee type"
     in
     let env' = { env with local = StringMap.add hd_name (mono t) env.local } in 
     let env' = { env' with local = StringMap.add tail_name (mono (TLater (TSignal t))) env'.local } in
@@ -180,7 +185,7 @@ and check_pattern_and_infer_branch : type stage. typing_env -> stage pattern -> 
     let pattern = PSigCons (hd_pattern, tail_name, Ann_typed (get_location ann, pattern_type)) in
     return (pattern, rhs')
   | PCtor _ -> failwith "saving ctor patterns for later"
-  | _ -> error "Pattern type checking not implemented yet"
+  | PTuple (_,_,ann) | PSigCons(_,_,ann) -> error ann "Pattern type checking not implemented yet"
 
 and infer_binary : type stage. typing_env -> binary_op -> stage expr -> stage expr -> stage ann -> (typed expr, typing_error) Result.t =
   fun env op e1 e2 ann -> match op with
@@ -215,7 +220,7 @@ and infer_binary : type stage. typing_env -> binary_op -> stage expr -> stage ex
       which after applying te2 to it should give a function of type TFun ([t2; t3; t4], t5), makes sense I guess *)
     | TDelay (TFun (Cons1(a, []), b)) -> return (a, b)
     | TDelay (TFun (Cons1(a, a' :: rest), b)) -> return (a, TFun(Cons1(a',rest), b))
-    | _ -> error "not too sure here"
+    | _ -> error (expr_get_ann e1) (Format.asprintf "Expected a delayed function - but got '%a'" Ast.pp_typ (get_typ te1))
     in
     let* te2 = check env e2 (TDelay a) in
     return (EBinary (BOStar, te1, te2, Ann_typed (get_location ann, TDelay b)))
@@ -224,7 +229,7 @@ and infer_binary : type stage. typing_env -> binary_op -> stage expr -> stage ex
     let* (a,b) = match get_typ te1 with
     | TDelay (TFun (Cons1(a,[]), b)) -> return (a, b)
     | TDelay (TFun (Cons1(a, a' :: rest), b)) -> return (a, TFun(Cons1(a',rest), b))
-    | _ -> error "not too sure here"
+    | _ -> error (expr_get_ann e1) (Format.asprintf "Expected a delayed function - but got '%a'" Ast.pp_typ (get_typ te1))
     in
     let* te2 = check env e2 (TLater a) in
     return (EBinary (BLaterApp, te1, te2, Ann_typed (get_location ann, TLater b)))
