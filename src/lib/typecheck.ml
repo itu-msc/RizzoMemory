@@ -56,6 +56,13 @@ and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) R
   | EAnno (e, t, ann) -> 
     let* te = check env e t in
     return (EAnno (te, t, Ann_typed (get_location ann, t)))
+  | ELet ((name, name_ann), rhs, body, ann) ->
+    let* trhs = infer env rhs in
+    let t_rhs = get_typ trhs in
+    let env' = typing_env_add_local env name (mono t_rhs) in
+    let* tbody = infer env' body in
+    let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
+    return (ELet (name', trhs, tbody, Ann_typed (get_location ann, get_typ tbody)))
   | EVar (name, ann) -> 
     (* TODO: when we do this look up, record that it either came from scope_global or scope_local *)
     let* var_type = 
@@ -113,6 +120,13 @@ and check : type stage. typing_env -> stage expr -> typ -> (typed expr, typing_e
     (match expected with 
     | TLater (_) -> return (EConst (CNever, Ann_typed (get_location ann, expected)))
     | _ -> error ann "Never can only be of type 'Later t' for some t")
+  | ELet ((name, name_ann), rhs, body, ann) ->
+    let* trhs = infer env rhs in
+    let t_rhs = get_typ trhs in
+    let env' = typing_env_add_local env name (mono t_rhs) in
+    let* tbody = check env' body expected in
+    let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
+    return (ELet (name', trhs, tbody, Ann_typed (get_location ann, get_typ tbody)))
   | EFun (params, body, ann) -> 
     let* Cons1(p1_type, param_types_rest), ret_type = match expected with
       | TFun (param_types, ret_type) when Ast_helpers.list1_length param_types = List.length params -> 
