@@ -21,6 +21,7 @@ let rec has_effectful_call (e : _ expr) : bool =
 			|| List.exists (fun (_, branch, _) -> has_effectful_call branch) branches
 	| EFun (_, _, _) -> false
 	| ELet (_, e1, e2, _) -> has_effectful_call e1 || has_effectful_call e2
+	| EAnno (e, _, _) -> has_effectful_call e
 
 let rec eliminate_dead_let (e : _ expr) : _ expr =
 	match e with
@@ -47,6 +48,7 @@ let rec eliminate_dead_let (e : _ expr) : _ expr =
 			if Ast_helpers.StringSet.mem x (Ast_helpers.free_vars_expr_no_globals e2') || has_effectful_call e1'
 			then ELet (name, e1', e2', ann)
 			else e2'
+	| EAnno (e, t, ann) -> EAnno (eliminate_dead_let e, t, ann)
 
 let dead_let_eliminate (p : _ program) : _ program =
 	List.map (fun (TopLet (x, e, ann)) -> TopLet (x, eliminate_dead_let e, ann)) p

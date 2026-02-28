@@ -14,6 +14,7 @@ and normalize (m: _ expr) k = match m with
 | ECtor (name, args, loc) ->
   normalize_name_mult args (fun args' -> k (ECtor (name, args', loc)))
 | EFun (params, body, loc) -> k (EFun (params, normalize_expr body, loc))
+| EAnno (e, t, loc) -> k (EAnno (normalize_expr e, t, loc))
 | ELet (x, m1, m2, loc) -> normalize m1 (
   fun n1 ->
     let body = normalize m2 k in

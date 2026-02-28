@@ -40,3 +40,6 @@ and free_vars_expr top_decl_names e : StringSet.t =
       scrutinee_fv
       branches
   | EFun (params, body, _) -> free_vars_fun top_decl_names params body
+  | EAnno (e, _, _) -> free_vars_expr e
+
+let list1_length (Cons1 (_, rest)) = 1 + List.length rest

@@ -50,6 +50,7 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
         let params = List.map fst names in
         let env' = remove_keys params env in
         EFun (names, aux env' body, ann)
+    | EAnno (e, t, ann) -> EAnno (aux env e, t, ann)
   in
   aux [] e
 

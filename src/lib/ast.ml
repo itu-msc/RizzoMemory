@@ -29,14 +29,15 @@ type typ =
   | TInt
   | TString
   | TBool
-  | TVar of string
+  | TName of string
+  | TParam of string  (* type parameters 'a -> 'b ... *)
+  | TVar of int (* placeholder types - think 'weak42 *)
   | TFun of typ list1 * typ
-  | TSignal of typ
   | TTuple of typ * typ
+  | TSignal of typ
   | TLater of typ
   | TDelay of typ
   | TSync of typ * typ
-  (* could include type variables, type constructors, etc. *)
 
 type parsed (* just parsed *)
 type bound 
@@ -72,6 +73,7 @@ and _ expr =
   | ETuple : 's expr * 's expr  * 's ann -> 's expr
   | ECase : 's expr * 's case_branch list  * 's ann -> 's expr
   | EIfe : 's expr * 's expr * 's expr  * 's ann -> 's expr      (* if-then-else *) 
+  | EAnno : 's expr * typ * 's ann -> 's expr
   (* | EPartialApp : 's expr * 's expr list  * 's ann -> 's expr *)
 and 's case_branch = 's pattern * 's expr  * 's ann
 and 's name = string * 's ann
@@ -100,11 +102,14 @@ let get_location : type stage. stage ann -> Location.t = fun a ->
   | Ann_bound (loc, _) -> loc
   | Ann_typed (loc, _) -> loc
 
+let ann_get_type (Ann_typed (_, t))= t
+
 let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   match e with
   | EConst (_, ann) | EVar (_, ann) | ECtor (_, _, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
   | EApp (_, _, ann) | EUnary (_, _, ann) | EBinary (_, _, _, ann)
-  | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann) -> ann
+  | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann) 
+  | EAnno (_,_, ann)-> ann
 
 let rec pattern_bound_vars = function
   | PWildcard | PConst _ -> []
@@ -143,6 +148,16 @@ and eq_pattern a b =
   | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2
   | PCtor (name1, args1, _), PCtor (name2, args2, _) ->
     eq_name name1 name2 && List.length args1 = List.length args2 && List.for_all2 eq_pattern args1 args2
+  | _ -> false
+and eq_typ a b = match a,b with
+  | TUnit, TUnit | TInt, TInt | TString, TString | TBool, TBool -> true
+  | TName n1, TName n2 -> String.equal n1 n2
+  | TParam p1, TParam p2 -> String.equal p1 p2
+  | TVar v1, TVar v2 -> v1 = v2
+  | TFun (Cons1 (p1, p_rest1), r1), TFun (Cons1 (p2, p_rest2), r2) ->
+    eq_typ p1 p2 && eq_typ r1 r2 && List.length p_rest1 = List.length p_rest2 && List.for_all2 eq_typ p_rest1 p_rest2
+  | TTuple (a1, b1), TTuple (a2, b2) | TSync(a1, b1), TSync(a2,b2) -> eq_typ a1 a2 && eq_typ b1 b2
+  | TSignal t1, TSignal t2 | TLater t1, TLater t2 | TDelay t1, TDelay t2 -> eq_typ t1 t2
   | _ -> false
 
 let pp_const out = function
@@ -219,6 +234,23 @@ and pp_expr out =
       pp_expr e
       (pp_print_list ~pp_sep:(fun out () -> fprintf out "@,") pp_case_branch)
       cases
+  | EAnno (e, typ, _) -> fprintf out "(%a : %a)" pp_expr e pp_typ typ
+and pp_typ fmt = 
+  let open Format in 
+  function 
+  | TBool -> fprintf fmt "Bool"
+  | TInt -> fprintf fmt "Int"
+  | TString -> fprintf fmt "String"
+  | TUnit -> fprintf fmt "Unit"
+  | TFun (Cons1(t1, []), t) -> fprintf fmt "(%a -> %a)" pp_typ t1 pp_typ t
+  | TFun (Cons1(t1, ts), t) -> fprintf fmt "(%a -> %a -> %a)" pp_typ t1 (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " -> ") pp_typ) ts pp_typ t
+  | TDelay t -> fprintf fmt "(Delay %a)" pp_typ t
+  | TLater t -> fprintf fmt "(Later %a)" pp_typ t
+  | TName n | TParam n -> fprintf fmt "%s" n
+  | TSignal t -> fprintf fmt "(Signal %a)" pp_typ t
+  | TTuple (t1, t2) -> fprintf fmt ("(%a * %a)") pp_typ t1 pp_typ t2
+  | TSync (t1, t2) -> fprintf fmt ("Sync(%a, %a)") pp_typ t1 pp_typ t2
+  | TVar i -> fprintf fmt "`TVar%d" i
 
 let eq_top_expr a b = match a,b with
   | TopLet (x1, e1, _), TopLet (x2, e2, _) -> x1 = x2 && eq_expr e1 e2 

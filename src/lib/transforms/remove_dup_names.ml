@@ -56,6 +56,7 @@ and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
     ECase (e', branches', ann)
   | EUnary (op, e, ann) -> EUnary (op, subst replacement_of e, ann)
   | ETuple (e1, e2, ann) -> ETuple (subst replacement_of e1, subst replacement_of e2, ann)
+  | EAnno (e, t, ann) -> EAnno (subst replacement_of e, t, ann)
 and subst_pattern (replacement_of : string StringMap.t) (p : 's pattern) : 's pattern =
   match p with
   | PWildcard -> p

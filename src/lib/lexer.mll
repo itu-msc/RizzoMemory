@@ -63,7 +63,14 @@ rule read = parse
   | "|" { BAR }
   | "_" { UNDERSCORE }
   | type_var as x { TYPEVAR x }
-  | type_id as x { TYPE_ID x }
+  | type_id as x { 
+    match x with
+    | "Later" -> TYPE_LATER
+    | "Delay" -> TYPE_DELAY
+    | "Sync" -> TYPE_SYNC
+    | "Signal" -> TYPE_SIGNAL
+    | _ -> TYPE_ID x 
+    }
   | int as i { INT (int_of_string i) }
   | '"' { STRING (read_string (Buffer.create 32) lexbuf) }
   | id as x {

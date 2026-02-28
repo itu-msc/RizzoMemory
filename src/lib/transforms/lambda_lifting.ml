@@ -12,6 +12,8 @@ and lift_top_expr top_names (lifted_lambdas: _ top_expr list ref) (te: _ top_exp
   let lift_expr = lift_expr top_names lifted_lambdas in
   match te with
   | TopLet (x, EFun (params, body, fun_loc), let_loc) -> TopLet (x, EFun (params, lift_expr body, fun_loc), let_loc)
+  | TopLet (x, EAnno (EFun (params, body, fun_loc), t, annotation_loc), let_loc) ->
+    TopLet (x, EAnno (EFun (params, lift_expr body, fun_loc), t, annotation_loc), let_loc)
   | TopLet (x, e, loc) -> TopLet (x, lift_expr e, loc)
 
 and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) = 
@@ -40,3 +42,4 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
     lifted_lambdas := TopLet (name, EFun(fv_with_loc @ params, lifted_body, lifted_loc), lifted_loc) :: !lifted_lambdas;
     if List.length fv = 0 then EVar (name, loc)
     else EApp (EVar (name, loc), List.map (fun v -> EVar (v, loc)) fv, loc) (* TODO optimise with partial application when possible *)
+  | EAnno (e, t, loc) -> EAnno (lift_expr e, t, loc)

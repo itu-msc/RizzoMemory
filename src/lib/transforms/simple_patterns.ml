@@ -62,3 +62,4 @@ and compile_match e =
   | EFun (args, body, ann) -> EFun (args, compile_match body, ann)
   | EBinary (op, e1, e2, ann) -> EBinary (op, compile_match e1, compile_match e2, ann)
   | EIfe (cond, e1, e2, ann) -> EIfe (compile_match cond, compile_match e1, compile_match e2, ann)
+  | EAnno (e, t, ann) -> EAnno (compile_match e, t, ann)

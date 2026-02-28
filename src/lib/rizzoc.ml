@@ -70,7 +70,6 @@ module Transformations = struct
   let eliminate_patterns = Transforms.Patterns.transform_patterns
   let eliminate_simple_patterns = Transforms.Simple_patterns.transform_patterns
   let ast_to_rc_ir = Transforms.Pure_to_rc.to_rc_intermediate_representation
-
   
   let builtins = Rizzo_builtins.builtins_ownerships_map
   
@@ -99,5 +98,7 @@ let apply_transforms p =
   |> Transformations.eliminate_dead_let_program
 
 let ref_count p = snd @@ Transformations.auto_ref_count p
+
+let typecheck = Typecheck.typecheck
 
 let emit = Backend_c.emit_c_code

@@ -48,6 +48,7 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %token IF THEN ELSE
 %token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY
+%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC
 %token <string> ID
 %token <string> TYPE_ID
 %token <string> TYPEVAR
@@ -60,6 +61,7 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 
 %nonassoc BELOW_BAR
 %nonassoc BAR
+// %left PIPE_GT EQEQ
 
 %%
 
@@ -71,23 +73,22 @@ top_exprs:
   | d=top_expr ds=top_exprs { d :: ds }
 
 top_expr:
-  | LET name=ID EQ body=expr
-    { TopLet (name, body, mkloc $startpos $endpos) }
-  | FUN name=ID params=nonempty_id_list EQ body=expr
+  | effect_dec=option(EFFECTFUL) 
+    LET name=ID te_opt=option(type_annotation) EQ body=expr
+    { 
+      if Option.is_some effect_dec then Effectful.mark_effectful name;
+      if Option.is_none te_opt 
+      then TopLet (name, body, mkloc $startpos $endpos) 
+      else TopLet (name, EAnno(body, Option.get te_opt, mkloc $startpos(body) $endpos(body)), mkloc $startpos $endpos)
+    }
+  | effect_dec=option(EFFECTFUL)
+    FUN name=ID params=nonempty_id_list te_opt=option(type_annotation) EQ body=expr
     {
       check_unique_params (List.map fst params);
-      TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
-    }
-  | EFFECTFUL FUN name=ID params=nonempty_id_list EQ body=expr
-    {
-      check_unique_params (List.map fst params);
-      Effectful.mark_effectful name;
-      TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
-    }
-  | EFFECTFUL LET name=ID EQ body=expr
-    {
-      Effectful.mark_effectful name;
-      TopLet (name, body, mkloc $startpos $endpos)
+      if Option.is_some effect_dec then Effectful.mark_effectful name;
+      match te_opt with
+      | None -> TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
+      | Some te -> TopLet (name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $startpos $endpos)
     }
 
 nonempty_id_list:
@@ -103,7 +104,7 @@ expr:
     { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
   | FUN params=nonempty_id_list ARROW body=expr
     { check_unique_params (List.map fst params); EFun (params, body, mkloc $startpos $endpos) }
-  | e=op_expr
+  | e=pipe_and_cmp_op
       { e }
 
 opt_leading_bar:
@@ -119,11 +120,11 @@ match_case_tail:
   | BAR c=match_case rest=match_case_tail
       { c :: rest }
 
-op_expr:
-  | left=op_expr PIPE_GT right=cons_expr
+pipe_and_cmp_op:
+  | left=pipe_and_cmp_op PIPE_GT right=cons_expr
     { (* creates laterapp (delay left) right*)
       EBinary (BLaterApp, EUnary (UDelay, left, mkloc $startpos(left) $endpos(left)), right, mkloc $startpos $endpos) }
-  | left=op_expr EQEQ right=cons_expr
+  | left=pipe_and_cmp_op EQEQ right=cons_expr
     { EBinary (Eq, left, right, mkloc $startpos $endpos) }
   | e=cons_expr
       { e }
@@ -142,22 +143,13 @@ app_expr:
   | LATERAPP e1=atom e2=atom { EBinary(BLaterApp, e1, e2, mkloc $startpos $endpos) }
   | DELAY e1=atom { EUnary(UDelay, e1, mkloc $startpos $endpos) }
   | OSTAR e1=atom e2=atom { EBinary(BOStar, e1, e2, mkloc $startpos $endpos) }
-  | head=atom tail=app_args
-      {
-        match tail with
-        | [] -> head
-        | args -> EApp (head, args, mkloc $startpos $endpos)
-      }
-
-app_args:
-  | { [] }
-  | a=atom rest=app_args { a :: rest }
+  | head=atom args=atom+ { EApp (head, args, mkloc $startpos $endpos) }
+  | e = atom { e }
 
 atom:
-  | name=TYPE_ID LPAREN args=ctor_expr_args RPAREN
-    { ECtor ((name, mkloc $startpos(name) $endpos(name)), args, mkloc $startpos $endpos) }
-  | name=TYPE_ID
-    { ECtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }
+  | name=TYPE_ID { ECtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }
+  | name=TYPE_ID LPAREN fields=separated_nonempty_list(COMMA, expr) RPAREN
+    { ECtor ((name, mkloc $startpos(name) $endpos(name)), fields, mkloc $startpos $endpos) }
   | x=ID { EVar (x, mkloc $startpos $endpos) }
   | i=INT { EConst (CInt i, mkloc $startpos $endpos) }
   | s=STRING { EConst (CString s, mkloc $startpos $endpos) }
@@ -166,7 +158,7 @@ atom:
   | UNIT { EConst (CUnit, mkloc $startpos $endpos) }
   | NEVER { EConst (CNever, mkloc $startpos $endpos) }
   | LPAREN es=tuple_expr_list RPAREN { tuple_expr_of_list $startpos $endpos es }
-  | LPAREN e=expr COLON ann=type_expr RPAREN { let _ = ann in e }
+  | LPAREN e=expr COLON ann=type_expr RPAREN { EAnno (e, ann, mkloc $startpos $endpos) }
   | LPAREN e=expr RPAREN { e }
 
 tuple_expr_list:
@@ -176,15 +168,6 @@ tuple_expr_list:
 tuple_expr_list_tail:
   | { [] }
   | COMMA e=expr rest=tuple_expr_list_tail
-      { e :: rest }
-
-ctor_expr_args:
-  | e=expr rest=ctor_expr_args_tail
-      { e :: rest }
-
-ctor_expr_args_tail:
-  | { [] }
-  | COMMA e=expr rest=ctor_expr_args_tail
       { e :: rest }
 
 pattern:
@@ -222,22 +205,37 @@ comma_separated_patterns:
   | COMMA p=pattern rest=comma_separated_patterns
       { p :: rest }
 
+type_annotation:
+  | COLON te=type_expr { te }
+
 type_expr:
-  | ft=fun_type { let _ = ft in () }
+  | ft=fun_type { ft }
 
 fun_type:
-  | pt=prod_type { let _ = pt in () }
-  | pt=prod_type ARROW ft=fun_type { let _ = (pt, ft) in () }
+  | pt=prod_type ARROW ft=fun_type { TFun (Cons1 (pt, []), ft) } (* TODO: pt should be a list? *)
+  | pt=prod_type { pt }
 
 prod_type:
-  | at=app_type { let _ = at in () }
-  | at=app_type STAR pt=prod_type { let _ = (at, pt) in () }
+  | at=app_type STAR pt=prod_type { TTuple (at, pt) }
+  | at=app_type { at }
 
 app_type:
-  | ta=type_atom { let _ = ta in () }
-  | at=app_type ta=type_atom { let _ = (at, ta) in () }
+  | TYPE_SIGNAL ta=type_atom { TSignal ta }
+  | TYPE_LATER ta=type_atom { TLater ta }
+  | TYPE_DELAY ta=type_atom { TDelay ta }
+  | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
+  | ta=type_atom { ta }
+  (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
+  // | at=app_type ta=type_atoma { failwith "type application ..." }
 
 type_atom:
-  | tid=TYPE_ID { let _ = tid in () }
-  | tv=TYPEVAR { let _ = tv in () }
-  | LPAREN te=type_expr RPAREN { let _ = te in () }
+  | tid=TYPE_ID { 
+    match tid with 
+    | "Int" -> TInt
+    | "String" -> TString
+    | "Bool" -> TBool
+    | "Unit" -> TUnit
+    | _ -> TName tid 
+    }
+  | tv=TYPEVAR { TParam tv }
+  | LPAREN te=type_expr RPAREN { te }

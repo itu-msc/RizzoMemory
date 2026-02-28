@@ -374,6 +374,7 @@ let rec iter_expr (f : Ast.parsed Ast.expr -> unit) (expr : Ast.parsed Ast.expr)
       iter_expr f c;
       iter_expr f t;
       iter_expr f e
+  | Ast.EAnno (e, _, _) -> iter_expr f e
 
 let collect_expr_ranges (program : Ast.parsed Ast.program) : (Ast.parsed Ast.expr * range) list =
   let acc = ref [] in
@@ -407,6 +408,7 @@ let hover_text_for_expr (expr : Ast.parsed Ast.expr) : string =
   | Ast.ETuple _ -> "tuple expression"
   | Ast.ECase _ -> "match expression"
   | Ast.EIfe _ -> "if expression"
+  | Ast.EAnno _ -> "annotated expression"
 
 let rec pattern_bound_decls (pat : Ast.parsed Ast.pattern) : (string * range) list =
   match pat with
@@ -586,6 +588,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                  match find_in_expr env t with
                  | Some _ as found -> found
                  | None -> find_in_expr env e)
+        | Ast.EAnno (e, _, _) -> find_in_expr env e
       in
       let rec find_in_tops tops =
         match tops with
@@ -714,7 +717,8 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
          | Ast.EIfe (c, t, e, _) ->
              walk_expr env c;
              walk_expr env t;
-             walk_expr env e)
+             walk_expr env e
+         | Ast.EAnno (e, _, _) -> walk_expr env e)
       in
       List.iter
         (function
