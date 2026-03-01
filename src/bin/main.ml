@@ -11,12 +11,16 @@ let ensure_rizz_extension path =
 
 let () =
 	let input_file = ref None in
+  let show_types = ref false in
 	let set_input_file path =
 		match !input_file with
 		| None -> input_file := Some path
 		| Some _ -> raise (Arg.Bad "Only one input file is allowed")
 	in
-	Arg.parse [] set_input_file usage_msg;
+	Arg.parse
+    [ "--show-types", Arg.Set show_types, "Print typed AST after typechecking" ]
+    set_input_file
+    usage_msg;
 	let input_file =
 		match !input_file with
 		| Some path -> path
@@ -28,6 +32,13 @@ let () =
 	try
 		let program = Rizzoc.Parser.parse_file input_file in
 		Format.printf "Parsed:\n%a\n\n" Ast.pp_program program;
+    (match Rizzoc.Typecheck.typecheck program with
+     | Ok typed_program ->
+         if !show_types then
+           Format.printf "Typed:\n%a\n\n" Ast.pp_typed_program typed_program
+     | Error (Rizzoc.Typecheck.Typing_error msg) ->
+         Printf.eprintf "Type error:\n%s\n" msg;
+         exit 1);
     let transformed = Rizzoc.apply_transforms program in
     Format.printf "Transformed:\n%a\n\n" Ast.pp_program transformed;
     let rc_program = Rizzoc.ref_count transformed in

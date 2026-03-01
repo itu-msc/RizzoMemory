@@ -347,7 +347,8 @@ let top_level_declarations ~(text : string) (program : Ast.parsed Ast.program) :
   in
   List.filter_map declaration_of_top program
 
-let rec iter_expr (f : Ast.parsed Ast.expr -> unit) (expr : Ast.parsed Ast.expr) : unit =
+let rec iter_expr : type stage. (stage Ast.expr -> unit) -> stage Ast.expr -> unit =
+  fun f expr ->
   f expr;
   match expr with
   | Ast.EConst _ | Ast.EVar _ -> ()
@@ -375,7 +376,8 @@ let rec iter_expr (f : Ast.parsed Ast.expr -> unit) (expr : Ast.parsed Ast.expr)
       iter_expr f t;
       iter_expr f e
 
-let collect_expr_ranges (program : Ast.parsed Ast.program) : (Ast.parsed Ast.expr * range) list =
+let collect_expr_ranges : type stage. stage Ast.program -> (stage Ast.expr * range) list =
+  fun program ->
   let acc = ref [] in
   let push expr =
     let expr_range = range_of_ann (Ast.expr_get_ann expr) in
@@ -387,7 +389,8 @@ let collect_expr_ranges (program : Ast.parsed Ast.program) : (Ast.parsed Ast.exp
   List.iter visit_top program;
   !acc
 
-let hover_text_for_expr (expr : Ast.parsed Ast.expr) : string =
+let hover_text_for_expr : type stage. stage Ast.expr -> string =
+  fun expr ->
   match expr with
   | Ast.EConst (c, _) -> "constant " ^ (
     match c with
@@ -407,6 +410,10 @@ let hover_text_for_expr (expr : Ast.parsed Ast.expr) : string =
   | Ast.ETuple _ -> "tuple expression"
   | Ast.ECase _ -> "match expression"
   | Ast.EIfe _ -> "if expression"
+
+let hover_text_for_typed_expr (expr : Ast.typed Ast.expr) : string =
+  let type_text = Format.asprintf "%a" Ast.pp_typ (Ast.typ_of_typed_expr expr) in
+  Printf.sprintf "%s\nType: %s" (hover_text_for_expr expr) type_text
 
 let rec pattern_bound_decls (pat : Ast.parsed Ast.pattern) : (string * range) list =
   match pat with
@@ -464,9 +471,22 @@ let valid_single_line_range (token_range : range) : bool =
   token_range.start_pos.line = token_range.end_pos.line
   && token_range.end_pos.character > token_range.start_pos.character
 
+let diagnostics_of_typecheck_errors (errors : Typecheck.top_level_typing_error list) : diagnostic list =
+  List.map
+    (fun (loc, message) ->
+      {
+        range = range_of_location loc;
+        severity = Error;
+        message;
+        source = "rizzoc";
+      })
+    errors
+
 let analyze_document ~(uri : string) ~(filename : string option) ~(text : string) : analysis_result =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
-  | Ok _ -> { diagnostics = [] }
+  | Ok program ->
+      let _, type_errors = Typecheck.typecheck_collect program in
+      { diagnostics = diagnostics_of_typecheck_errors type_errors }
   | Error diagnostic -> { diagnostics = [diagnostic] }
 
 let document_symbols ~(uri : string) ~(filename : string option) ~(text : string) : document_symbol list =
@@ -607,11 +627,24 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> None
   | Ok program ->
-      collect_expr_ranges program
-      |> List.filter (fun (_, range) -> range_contains_position range position)
-      |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
-      |> first_opt
-      |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
+      let parsed_hover () =
+        collect_expr_ranges program
+        |> List.filter (fun (_, range) -> range_contains_position range position)
+        |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
+        |> first_opt
+        |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
+      in
+      match Typecheck.typecheck program with
+      | Ok typed_program ->
+          (match collect_expr_ranges typed_program
+                 |> List.filter (fun (_, range) -> range_contains_position range position)
+                 |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
+                 |> first_opt
+                 |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_typed_expr expr })
+           with
+           | Some hover -> Some hover
+           | None -> parsed_hover ())
+      | Error _ -> parsed_hover ()
 
 let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string) : semantic_token list =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with

@@ -6,6 +6,7 @@ MSc thesis
 
 - Build: `opam exec -- dune build`
 - Run compiler on a source file: `opam exec -- dune exec rizzoc ./examples/first.rizz`
+- Show typed AST during compile: `opam exec -- dune exec rizzoc -- --show-types ./examples/first.rizz`
 
 ## Full flow: compile and run a `.rizz` file
 

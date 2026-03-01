@@ -85,6 +85,10 @@ module Language_service = struct
 include Language_service
 end
 
+module Typecheck = struct
+include Typecheck
+end
+
 let apply_transforms p =
   p
   |> Transformations.eliminate_consecutive_lambdas_program

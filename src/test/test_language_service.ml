@@ -14,9 +14,21 @@ let contains_substring ~(text : string) ~(substring : string) : bool =
   if sub_len = 0 then true else go 0
 
 let test_valid_document_has_no_diagnostics () =
-  let text = "let x = 1\nfun id y = y\n" in
+  let text = "let x = 1\nlet y = x\n" in
   let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check int) "diagnostic count" 0 (List.length result.Language_service.diagnostics)
+
+let test_type_error_reports_diagnostic () =
+  let text = "let y = missing\n" in
+  let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
+  match result.Language_service.diagnostics with
+  | [] -> Alcotest.fail "expected type diagnostic"
+  | first :: _ ->
+      Alcotest.(check bool)
+        "message includes unbound variable"
+        true
+        (contains_substring ~text:first.Language_service.message ~substring:"Unbound variable: missing");
+      Alcotest.(check int) "line is zero-based" 0 first.Language_service.range.start_pos.line
 
 let test_invalid_document_reports_diagnostic () =
   let text = "let x = @\n" in
@@ -253,6 +265,7 @@ let test_semantic_tokens_after_block_comment () =
 
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
+  "type error diagnostics", `Quick, test_type_error_reports_diagnostic;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
   "missing paren gives friendly diagnostic", `Quick, test_missing_paren_reports_friendly_message;
   "malformed match branch gives hint", `Quick, test_malformed_match_branch_reports_hint;
@@ -299,5 +312,9 @@ let tests = [
       with
       | None -> Alcotest.fail "expected hover"
       | Some hover ->
-          Alcotest.(check bool) "hover has text" true (String.length hover.Language_service.contents > 0));
+          Alcotest.(check bool) "hover has text" true (String.length hover.Language_service.contents > 0);
+          Alcotest.(check bool)
+            "hover includes inferred type"
+            true
+            (contains_substring ~text:hover.Language_service.contents ~substring:"Type: int"));
 ]
