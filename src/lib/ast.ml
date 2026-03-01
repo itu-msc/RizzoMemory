@@ -25,6 +25,7 @@ type location = Location.t
 type 'a list1 = Cons1 of 'a * 'a list
 
 type typ = 
+  | TError (* typing error *)
   | TUnit 
   | TInt
   | TString
@@ -238,6 +239,7 @@ and pp_expr out =
 and pp_typ fmt = 
   let open Format in 
   function 
+  | TError -> fprintf fmt "*Error-type*"
   | TBool -> fprintf fmt "Bool"
   | TInt -> fprintf fmt "Int"
   | TString -> fprintf fmt "String"
@@ -246,11 +248,12 @@ and pp_typ fmt =
   | TFun (Cons1(t1, ts), t) -> fprintf fmt "(%a -> %a -> %a)" pp_typ t1 (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " -> ") pp_typ) ts pp_typ t
   | TDelay t -> fprintf fmt "(Delay %a)" pp_typ t
   | TLater t -> fprintf fmt "(Later %a)" pp_typ t
-  | TName n | TParam n -> fprintf fmt "%s" n
+  | TName n -> fprintf fmt "%s" n
+  | TParam n -> fprintf fmt "%s" n
   | TSignal t -> fprintf fmt "(Signal %a)" pp_typ t
   | TTuple (t1, t2) -> fprintf fmt ("(%a * %a)") pp_typ t1 pp_typ t2
   | TSync (t1, t2) -> fprintf fmt ("Sync(%a, %a)") pp_typ t1 pp_typ t2
-  | TVar i -> fprintf fmt "`TVar%d" i
+  | TVar i -> fprintf fmt "`weak%d" i
 
 let eq_top_expr a b = match a,b with
   | TopLet (x1, e1, _), TopLet (x2, e2, _) -> x1 = x2 && eq_expr e1 e2 

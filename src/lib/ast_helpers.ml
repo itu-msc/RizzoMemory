@@ -43,3 +43,8 @@ and free_vars_expr top_decl_names e : StringSet.t =
   | EAnno (e, _, _) -> free_vars_expr e
 
 let list1_length (Cons1 (_, rest)) = 1 + List.length rest
+let list1_map f (Cons1 (x, rest)) = Cons1 (f x, List.map f rest)
+let list1_fold_left f acc (Cons1 (x, rest)) = List.fold_left f (f acc x) rest
+let list1_fold_left2 f acc (Cons1 (x1, rest1)) (Cons1 (x2, rest2)) = 
+  let acc = f acc x1 x2 in
+  List.fold_left2 f acc rest1 rest2
