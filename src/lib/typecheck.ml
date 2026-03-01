@@ -87,8 +87,10 @@ and infer : type stage. typing_env -> stage expr -> (typed expr, typing_error) R
   | EApp (f, args, ann) -> 
     let* tf = infer env f in 
     let tf_type = get_typ tf in
-    (match tf_type with
-    | TFun (param_types, ret_type) -> infer_application env tf param_types ret_type args ann
+    (match tf_type, args with
+    | TFun (param_types, ret_type), arg1 :: arg_rest -> 
+      infer_application env tf param_types ret_type (Cons1 (arg1, arg_rest)) ann
+    | TFun _, [] -> error ann "Cannot apply a function to no arguments"
     | _ -> error (expr_get_ann f) (Format.asprintf "Cannot apply a non-function type '%a'" Ast.pp_typ tf_type))
   | ECase (scrutinee, branches, ann) ->
     let* tscrutinee = infer env scrutinee in
@@ -248,33 +250,41 @@ and infer_binary : type stage. typing_env -> binary_op -> stage expr -> stage ex
     let* te2 = check env e2 (TLater a) in
     return (EBinary (BLaterApp, te1, te2, Ann_typed (get_location ann, TLater b)))
 
-and infer_application : type s. typing_env -> typed expr -> typ list1 -> typ -> s expr list -> s ann -> (typed expr, typing_error) Result.t =
+and infer_application : type s. typing_env -> typed expr -> typ list1 -> typ -> s expr list1 -> s ann -> (typed expr, typing_error) Result.t =
   fun env typed_function_expr param_types ret_type args ann ->
   let Cons1(param_type1, param_types_rest) = param_types in
-  if Ast_helpers.list1_length param_types == List.length args 
-  then begin
-    let* checked = 
-      let args_and_expected = (List.combine args (param_type1 :: param_types_rest)) in
-      let checked_results = List.map (fun (arg, expected_type) -> check env arg expected_type) args_and_expected in
-      result_combine checked_results
-    in
-    return (EApp (typed_function_expr, checked, Ann_typed (get_location ann, ret_type)))
-  end
-  else if Ast_helpers.list1_length param_types > List.length args
-  then begin 
-    (* only a partial application *)
-    let check_hd = check env (List.hd args) param_type1 in (* parser can't produce EApp(f, [], ...) *)
+  let Cons1(arg1, args_rest) = args in
+  if Ast_helpers.list1_length param_types >= Ast_helpers.list1_length args
+  then begin (* either partial or full application *)
+    let check_hd = check env arg1 param_type1 in (* parser can't produce EApp(f, [], ...) *)
     let rec go p_types arg_types acc = match p_types, arg_types with
-    | [], _ -> failwith (Printf.sprintf "(%s, %d) oops - mismatching lengths" __FILE__ __LINE__)
-    | first :: rest, [] -> return (Cons1(first, rest), List.rev acc)
+    | [], [] -> return ([], List.rev acc)
+    | param_rest, [] -> return (param_rest, List.rev acc)
     | t :: ts, arg :: args -> 
       let check_arg_result = check env arg t in
       go ts args (check_arg_result :: acc)
+    | [], _ -> failwith (Printf.sprintf "(%s, %d) oops - more arguments than parameter types - this is handled separately" __FILE__ __LINE__)
     in
-    let* remaining_params, go_result = go param_types_rest args [check_hd] in
+    let* remaining_params, go_result = go param_types_rest args_rest [check_hd] in
     let* typed_args = result_combine go_result in
-    let new_fun_type = TFun (remaining_params, ret_type) in
-    return (EApp (typed_function_expr, typed_args, Ann_typed (get_location ann, new_fun_type)))
+    let ret_type = match remaining_params with
+    | [] -> ret_type
+    | first :: rest -> TFun (Cons1(first, rest), ret_type) 
+    in
+    return (EApp (typed_function_expr, typed_args, Ann_typed (get_location ann, ret_type)))
   end 
-  else (* it is now the case that length(param_types) < length(args) ... *)  
-      failwith (Printf.sprintf "(%s, %d) TODO! function was overapplied, needs a split?" __FILE__ __LINE__)
+  else (* Overapplied - length(param_types) < length(args) - split into more applications *)  
+    let check_hd = check env arg1 param_type1 in
+    let args_to_take = List.length param_types_rest in
+    let args_for_this_app = List.take args_to_take args_rest in
+    let* checked = 
+      let args_and_expected = (List.combine args_for_this_app param_types_rest) in
+      let checked_results = check_hd :: List.map (fun (arg, expected_type) -> check env arg expected_type) args_and_expected in
+      result_combine (checked_results)
+    in
+    let args_for_next_app = List.drop args_to_take args_rest in
+    let app = EApp (typed_function_expr, checked, Ann_typed (get_location ann, ret_type)) in
+    match ret_type, args_for_next_app with
+    | TFun (remaining_param_types, final_ret_type), first_arg :: rest_arg-> 
+      infer_application env app remaining_param_types final_ret_type (Cons1(first_arg, rest_arg)) ann
+    | _ -> error ann (Format.asprintf "Too many arguments applied to non-function type '%a'" Ast.pp_typ ret_type)

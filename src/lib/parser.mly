@@ -96,8 +96,12 @@ nonempty_id_list:
   | x=ID xs=nonempty_id_list { (x, mkloc $startpos $endpos) :: xs }
 
 expr:
-  | LET x=ID EQ e1=expr IN e2=expr
-    { ELet ((x, mkloc $startpos(x) $endpos(x)), e1, e2, mkloc $startpos $endpos) }
+  | LET x=ID te_opt=option(type_annotation) EQ e1=expr IN e2=expr
+    { let name = (x, mkloc $startpos(x) $endpos(x)) in
+      match te_opt with
+      | None    -> ELet (name, e1, e2, mkloc $startpos $endpos) 
+      | Some te -> ELet (name, EAnno(e1, te, mkloc $startpos(e1) $endpos(e1)), e2, mkloc $startpos $endpos) 
+    }
   | IF e1=expr THEN e2=expr ELSE e3=expr
     { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
@@ -212,8 +216,16 @@ type_expr:
   | ft=fun_type { ft }
 
 fun_type:
-  | pt=prod_type ARROW ft=fun_type { TFun (Cons1 (pt, []), ft) } (* TODO: pt should be a list? *)
-  | pt=prod_type { pt }
+  | ts=separated_nonempty_list(ARROW, prod_type)
+    { match ts with
+      | [] -> failwith "impossible - nonempty list"
+      | [prod] -> prod
+      | _ -> 
+        let length = List.length ts in
+        let param_types = List.take (length - 1) ts in
+        let ret_type = List.nth ts (length - 1) in
+        TFun (Cons1 (List.hd param_types, List.tl param_types), ret_type) } 
+  // | pt=prod_type { pt }
 
 prod_type:
   | at=app_type STAR pt=prod_type { TTuple (at, pt) }
