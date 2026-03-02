@@ -1,7 +1,7 @@
-fun _const x = x :: never
+fun _const x : 'a -> Signal 'a = x :: never
 //must be _const, otherwise it ouptuts 'const' which is a keyword, oops.
 
-fun mk_sig later = 
+fun mk_sig later : Later 'a -> Later (Signal 'a) = 
     laterapp (delay (fun a -> a :: (mk_sig later))) later
 
 fun map f s = match s with
@@ -20,9 +20,9 @@ fun map f s = match s with
         r
     */
 
-fun sample xs ys = map (fun x -> (x, head ys)) xs
+fun sample xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b)= map (fun x -> (x, head ys)) xs
 
-fun _switch s d = match s with
+fun _switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
     | x :: xs -> 
         let cont = fun mysync -> match mysync with
             | Left (xs_)   -> _switch xs_ d
@@ -30,17 +30,17 @@ fun _switch s d = match s with
             | Both (_, d_) -> d_ 
         in x :: (cont |> sync xs d)
 
-fun filter_map p s = match s with
+fun filter_map p s : ('a -> (Option 'b)) -> Signal 'a -> Later (Signal 'a) = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
 
-fun filter p s = filter_map (fun x -> if p x then Just (x) else Nothing) s
+fun filter p s : ('a -> Bool) -> Signal 'a -> Later (Signal 'a) = filter_map (fun x -> if p x then Just (x) else Nothing) s
 
 // fun applier f x1 x2 x3 = f x1 x2 x3 
 
-fun mytail s = match s with
+fun mytail s : Signal 'a -> Later (Signal 'a) = match s with
     | x :: xs -> let x_delayed = delay x in xs
 
-let entry = fun x -> 
+let entry : Unit -> Unit = fun ignore -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait 0) in
     let reactive_signal = 42 :: my_console_sig in

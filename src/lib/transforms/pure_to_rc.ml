@@ -148,6 +148,7 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
   let globals: globals_env = 
     let mapper = function 
     | TopLet(name, EFun (params, _, _), _) -> (name, Some (List.length params))
+    | TopLet(name, EAnno(EFun (params, _, _), _, _), _) -> (name, Some (List.length params))
     | TopLet(name, _, _) -> (name, None)
     in
     let builtins_arity = M.map (fun b -> Some (List.length b)) builtins in
