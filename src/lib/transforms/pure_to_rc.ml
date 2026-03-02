@@ -114,6 +114,7 @@ let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr =
   | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = tagof "delay"; fields = [get_name n] })
   | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
   | EConst (const, _) -> RConst const
+  | EAnno (e, _, _) -> expr_to_rexpr globals locals e
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
 
 and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
@@ -138,6 +139,7 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
     (* We decided booleans are objects with 0 fields but with tag 0 or 1*)
     FnCase (x, [(0,expr_to_fn_body locals e1); (0,expr_to_fn_body locals e2)]) 
   | EIfe _ -> failwith "expr_to_fn_body failed: if condition is not a variable"
+  | EAnno (e, _, _) -> expr_to_fn_body locals e
   | _ -> 
     (* TODO: should ANF not handle this? *)
     let x = Utilities.new_var () in

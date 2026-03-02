@@ -33,6 +33,8 @@ let builtins = [
   mk "right_elim"     ~proj_idx:(Some 0)  TError ();
   mk "both_elim_fst"  ~proj_idx:(Some 0)  TError ();
   mk "both_elim_snd"  ~proj_idx:(Some 1)  TError ();
+
+  mk "console" (TChan TInt) ()
 ]
 
 let builtins_map = List.map (fun b -> b.name, b) builtins |> M.of_list

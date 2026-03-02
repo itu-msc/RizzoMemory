@@ -155,6 +155,7 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
     else
       let* () = unify ann rt1 rt2 in
       Ast_helpers.list1_fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) ts1 ts2
+  | TVar id1 , TVar id2 when id1 = id2 -> return ()
   | TVar id, t | t, TVar id -> 
     if occurs_in id t 
     then report_error ann "Occurs check failed: cannot unify type variable with type that contains it"

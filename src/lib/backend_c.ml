@@ -43,6 +43,9 @@ let emit_c_code (p:program) (filename:string) =
   let rec emit_program (p: program) : unit = 
     write "#include \"rizzo.h\"\n";
     write "\n";
+
+    write "static int16_t console = RZ_CHANNEL_CONSOLE_IN;\n";
+
     string_consts 
     |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
     write "\n";

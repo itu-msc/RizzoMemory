@@ -76,7 +76,7 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
   let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
     let* acc = acc in
     let* te = match e with
-    | EFun (params, _, _) -> 
+    | EFun (params, _, _) | EAnno (EFun (params, _, _), _, _)-> 
       let* param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) params) in
       let* ret_type = Type_env.fresh_type_var () in
       let  t = TFun (Cons1(List.hd param_types, List.tl param_types), ret_type) in
@@ -165,19 +165,18 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     | [] -> 
       let* _ = error ann "Case expression must have at least one branch" in
       return (ECase (tscrutinee, [], Ann_typed (get_location ann, TError)))
-    | t :: ts -> 
-      if List.for_all (fun t' -> Ast.eq_typ t' t) ts
-      then 
-        let* typed_branches = 
-          Type_env.collect @@
-          List.map2 (fun (_,_, ann) (typed_pattern, typed_body) -> 
+    | t :: _ -> 
+      let* _ = Type_env.collect (List.map (fun t' -> Type_env.expected_equal ann t t')  branch_types) in
+      let* t = Type_env.apply_subst t in
+      let* typed_branches = 
+        List.map2 (
+          fun (_,_, ann) (typed_pattern, typed_body) -> 
             let* body_type = get_typ typed_body in
-            return (typed_pattern, typed_body, Ann_typed(get_location ann, body_type))) branches tbranches 
-        in
-        return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, t)))
-      else 
-        let* _ = error ann "All case branches must have the same type" in 
-        return (ECase (tscrutinee, [], Ann_typed (get_location ann, TError))))
+            return (typed_pattern, typed_body, Ann_typed(get_location ann, body_type))) 
+          branches tbranches
+        |> Type_env.collect
+      in
+      return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, t))))
   | EFun (param_names, body, ann) -> 
     let* param_types = Type_env.collect @@ List.map (fun (p, _) -> 
       let* pt = Type_env.fresh_type_var () in
@@ -190,15 +189,21 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let fun_type = TFun (Cons1(List.hd param_types, List.tl param_types), body_type) in
     let param_names = List.map2 (fun (p, pann) pt -> (p, Ann_typed(get_location pann, pt))) param_names param_types in
     return (EFun (param_names, typed_body, Ann_typed(get_location ann, fun_type)))
-  | _ -> 
-    let msg = (Format.asprintf "Unable to infer type for this expression.\n  Try (%a : T) to check against an expected type T" Ast.pp_expr e) in
-    let* _ = error (expr_get_ann e) msg in
-    (* TODO: What to do when everything fails? *)
-    return (dummy (expr_get_ann e))
+  | ECtor ((typ_name, typ_name_ann), args, ann) ->
+    (* TODO: proper handling here - [get_constructor_signature] returns an error message mentioning patterns! *)
+    let* arg_types, ctor_type = get_constructor_signature typ_name typ_name_ann in
+    let* inferred_args = Type_env.collect (List.map infer args) in
+    let* inferred_arg_types = Type_env.collect (List.map get_typ inferred_args) in
+    let* _ = Type_env.collect (List.map2 (fun expected actual -> Type_env.expected_equal ann expected actual) arg_types inferred_arg_types) in
+    let* ctor_type = Type_env.apply_subst ctor_type in
+    let name = (typ_name, Ann_typed (get_location typ_name_ann, ctor_type)) in
+    return (ECtor (name, inferred_args, Ann_typed (get_location ann, ctor_type)))
 
 (** Checks a type against an expected type *)
-and check : type stage. stage expr -> typ -> typed expr Type_env.t =
-  fun e expected -> match e with
+and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expected -> 
+  let* expected = Type_env.apply_subst expected in
+  let () = Format.printf "check: %a against %a\n" Ast.pp_expr e Ast.pp_typ expected in
+  match e with
   | EConst (CNever, ann) -> 
     let* inner = Type_env.fresh_type_var () in 
     let* _ = Type_env.expected_equal ann expected (TLater inner) in
@@ -359,11 +364,13 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     let* te2 = check e2 TInt in
     return (EBinary (op, te1, te2, Ann_typed (get_location ann, TInt)))
   | BSync ->
-    let* te1 = infer e1 in
-    let* t1 = get_typ te1 in
-    let* te2 = infer e2 in 
-    let* t2 = get_typ te2 in
-    return (EBinary (BSync, te1, te2, Ann_typed (get_location ann, TLater (TSync (t1, t2))))) 
+    let* a1 = Type_env.fresh_type_var () in
+    let* a2 = Type_env.fresh_type_var () in
+    let* te1 = check e1 (TLater a1) in
+    let* te2 = check e2 (TLater a2)in 
+    let* a1 = Type_env.apply_subst a1 in
+    let* a2 = Type_env.apply_subst a2 in
+    return (EBinary (BSync, te1, te2, Ann_typed (get_location ann, TLater (TSync (a1, a2))))) 
   | BOStar ->
     let* a = Type_env.fresh_type_var () in
     let* b = Type_env.fresh_type_var () in
