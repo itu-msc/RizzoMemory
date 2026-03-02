@@ -203,8 +203,7 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
 
 (** Checks a type against an expected type *)
 and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expected -> 
-  let* expected = Type_env.apply_subst expected in
-  let () = Format.printf "check: %a against %a\n" Ast.pp_expr e Ast.pp_typ expected in
+  let* expected = Type_env.apply_subst expected in (* I think this is fine - some extra work, hell yea! *)
   match e with
   | EConst (CNever, ann) -> 
     let* inner = Type_env.fresh_type_var () in 
