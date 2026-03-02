@@ -81,7 +81,7 @@ and 's case_branch = 's pattern * 's expr  * 's ann
 and 's name = string * 's ann
 
 type _ top_expr =
-  | TopLet : string * 's expr  * 's ann -> 's top_expr
+  | TopLet : 's name * 's expr  * 's ann -> 's top_expr
   (* could include types, modules idk *)
 
 type 'stage program  = 'stage top_expr list
@@ -258,11 +258,11 @@ and pp_typ fmt =
   | TVar i -> fprintf fmt "`weak%d" i
 
 let eq_top_expr a b = match a,b with
-  | TopLet (x1, e1, _), TopLet (x2, e2, _) -> x1 = x2 && eq_expr e1 e2 
+  | TopLet (x1, e1, _), TopLet (x2, e2, _) -> eq_name x1 x2 && eq_expr e1 e2 
 
 let pp_top_expr out =
   function
-  | TopLet (x, e, _) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
+  | TopLet ((x, _), e, _) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
 
 let eq_program a b = 
   List.length a = List.length b && List.for_all2 eq_top_expr a b
@@ -280,7 +280,7 @@ let rec pp_typed_program out (p: typed program) =
     p
 and pp_typed_top_expr out =
   function
-  | TopLet (x, e, Ann_typed (_, t)) ->
+  | TopLet ((x, _), e, Ann_typed (_, t)) ->
     Format.fprintf out "@[<hov 2>let %s : %a =@ %a@]" x pp_typ t pp_typed_expr e
 and pp_typed_expr out = 
   let open Format in

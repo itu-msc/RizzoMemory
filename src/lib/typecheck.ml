@@ -75,12 +75,13 @@ let rec typecheck : type stage. stage program -> typed program * ((Location.t * 
 and typecheck_program : type stage. stage program -> typed program Type_env.t = fun p -> 
   let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
     let* acc = acc in
+    let name_text = fst name in
     let* te = match e with
     | EFun (params, _, _) | EAnno (EFun (params, _, _), _, _)-> 
       let* param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) params) in
       let* ret_type = Type_env.fresh_type_var () in
       let  t = TFun (Cons1(List.hd param_types, List.tl param_types), ret_type) in
-      let* typed_e = Type_env.with_locals [name, mono t] (infer e) in
+      let* typed_e = Type_env.with_locals [name_text, mono t] (infer e) in
       let* inferred_t = get_typ typed_e in
       let* _ = Type_env.expected_equal ann inferred_t t in
       return typed_e
@@ -89,11 +90,12 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     let* t = get_typ te in
     let* t = Type_env.generalize_type_vars t in
     let* generalized_type = generalize t in
-    let* () = Type_env.add_global name generalized_type in
-    let toplet_expr = TopLet (name, te, Ann_typed (get_location ann, t)) in
+    let* () = Type_env.add_global name_text generalized_type in
+    let typed_name = (name_text, Ann_typed (get_location (snd name), t)) in
+    let toplet_expr = TopLet (typed_name, te, Ann_typed (get_location ann, t)) in
     return (toplet_expr :: acc)
   ) (return []) p in
-  return checked_program
+  return (List.rev checked_program)
 
 (** Infers the type of an expr*)
 and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->

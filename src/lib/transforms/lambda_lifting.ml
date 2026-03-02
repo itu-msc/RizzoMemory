@@ -4,7 +4,7 @@ module StringSet = Set.Make(String)
 
 let rec lift (p: _ program) : _ program =
   let lifted_lambdas = ref [] in
-  let top_decl_names = StringSet.of_list @@ List.map (fun (TopLet(name,_,_)) -> name) p in
+  let top_decl_names = StringSet.of_list @@ List.map (fun (TopLet(name,_,_)) -> fst name) p in
   let lifted_program = List.fold_right (fun te acc -> lift_top_expr top_decl_names lifted_lambdas te :: acc) p [] in
   List.rev_append !lifted_lambdas lifted_program
 
@@ -21,9 +21,9 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
   match e with
   | EConst _ | EVar _ -> e
   | ECtor (name, args, loc) -> ECtor (name, List.map lift_expr args, loc)
-  | EApp (f, args, loc) -> EApp (lift_expr  f, List.map lift_expr args, loc)
-  | EBinary (op, e1, e2, loc) -> EBinary (op, lift_expr  e1, lift_expr e2, loc)
-  | EUnary (op, e, loc) -> EUnary (op, lift_expr  e, loc)
+  | EApp (f, args, loc) -> EApp (lift_expr f, List.map lift_expr args, loc)
+  | EBinary (op, e1, e2, loc) -> EBinary (op, lift_expr e1, lift_expr e2, loc)
+  | EUnary (op, e, loc) -> EUnary (op, lift_expr e, loc)
   | ELet (x, e1, e2, loc) ->
       let lifted_e1 = lift_expr e1 in
       let lifted_e2 = lift_expr e2 in
@@ -39,7 +39,7 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
     let lifted_loc = loc in
     let name = Utilities.new_name "lifted_fun" in
     let lifted_body = lift_expr body in
-    lifted_lambdas := TopLet (name, EFun(fv_with_loc @ params, lifted_body, lifted_loc), lifted_loc) :: !lifted_lambdas;
+    lifted_lambdas := TopLet ((name, lifted_loc), EFun(fv_with_loc @ params, lifted_body, lifted_loc), lifted_loc) :: !lifted_lambdas;
     if List.length fv = 0 then EVar (name, loc)
     else EApp (EVar (name, loc), List.map (fun v -> EVar (v, loc)) fv, loc) (* TODO optimise with partial application when possible *)
   | EAnno (e, t, loc) -> EAnno (lift_expr e, t, loc)

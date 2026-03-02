@@ -297,70 +297,29 @@ let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_res
       let msg = Printf.sprintf "Parse error: %s" (Printexc.to_string exn) in
       Error { range = range_of_location loc; severity = Error; message = msg; source = "rizzoc" }
 
-let is_ident_char = function
-  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '\'' -> true
-  | _ -> false
-
 let lines_of_text (text : string) : string array =
   text |> String.split_on_char '\n' |> Array.of_list
-
-let safe_line (lines : string array) (line_no : int) : string option =
-  if line_no < 0 || line_no >= Array.length lines then None else Some lines.(line_no)
-
-let find_identifier_in_line ~(line : string) ~(name : string) ~(from_col : int) : (int * int) option =
-  let line_len = String.length line in
-  let name_len = String.length name in
-  let rec go col =
-    if col + name_len > line_len then
-      None
-    else if String.sub line col name_len = name then
-      let left_ok = col = 0 || not (is_ident_char line.[col - 1]) in
-      let right_index = col + name_len in
-      let right_ok = right_index >= line_len || not (is_ident_char line.[right_index]) in
-      if left_ok && right_ok then Some (col, right_index) else go (col + 1)
-    else
-      go (col + 1)
-  in
-  go (max 0 from_col)
 
 let file_name ~(uri : string) ~(filename : string option) : string =
   match filename with
   | Some path when String.length path > 0 -> path
   | _ -> if String.length uri = 0 then "<memory>.rizz" else uri
 
-let top_level_name_range ~(lines : string array) (top_range : range) ~(name : string) : range =
-  let fallback =
-    {
-      start_pos = top_range.start_pos;
-      end_pos = { line = top_range.start_pos.line; character = top_range.start_pos.character + max 1 (String.length name) };
-    }
-  in
-  let line_no = top_range.start_pos.line in
-  match safe_line lines line_no with
-  | None -> fallback
-  | Some line_text ->
-      (match find_identifier_in_line ~line:line_text ~name ~from_col:top_range.start_pos.character with
-       | Some (s_col, e_col) ->
-           {
-             start_pos = { line = line_no; character = s_col };
-             end_pos = { line = line_no; character = e_col };
-           }
-       | None -> fallback)
-
 let top_level_declarations : type s.
     text:string -> s Ast.program -> (string * symbol_kind * range * range) list =
   fun ~text program ->
-  let lines = lines_of_text text in
+  let _ = text in
   let declaration_of_top : s Ast.top_expr -> (string * symbol_kind * range * range) option = fun top ->
     match top with
-    | Ast.TopLet (name, rhs, ann) ->
+    | Ast.TopLet (top_name, rhs, ann) ->
         let kind =
           match rhs with
           | Ast.EFun _ -> Function
           | _ -> Variable
         in
+        let name = name_text top_name in
         let top_range = range_of_ann ann in
-        let selection_range = top_level_name_range ~lines top_range ~name in
+        let selection_range = range_of_name top_name in
         Some (name, kind, top_range, selection_range)
   in
   List.filter_map declaration_of_top program
@@ -397,16 +356,16 @@ let top_level_declarations : type s.
 
     let collect_expr_ranges : type s. s Ast.program -> (s Ast.expr * range) list =
       fun program ->
-  let acc = ref [] in
-  let push expr =
-    let expr_range = range_of_ann (Ast.expr_get_ann expr) in
-    acc := (expr, expr_range) :: !acc
-  in
-  let visit_top = function
-    | Ast.TopLet (_, rhs, _) -> iter_expr push rhs
-  in
-  List.iter visit_top program;
-  !acc
+        let acc = ref [] in
+        let push expr =
+          let expr_range = range_of_ann (Ast.expr_get_ann expr) in
+          acc := (expr, expr_range) :: !acc
+        in
+        let visit_top = function
+          | Ast.TopLet (_, rhs, _) -> iter_expr push rhs
+        in
+        List.iter visit_top program;
+        !acc
 
 let typ_of_ann_opt : type s. s Ast.ann -> Ast.typ option = function
   | Ast.Ann_typed (_, t) -> Some t
@@ -524,7 +483,6 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
-  let lines = lines_of_text text in
       let top_decls = top_level_declarations ~text program in
       let top_env =
         top_decls
@@ -634,9 +592,9 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
       let rec find_in_tops tops =
         match tops with
         | [] -> None
-        | Ast.TopLet (name, rhs, ann) :: rest ->
-            let top_range = range_of_ann ann in
-            let name_range = top_level_name_range ~lines top_range ~name in
+        | Ast.TopLet (top_name, rhs, _) :: rest ->
+            let name = name_text top_name in
+            let name_range = range_of_name top_name in
             if range_contains_position name_range position then
               Some { name; range = name_range }
             else
@@ -651,17 +609,41 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
-      collect_expr_ranges program
-      |> List.filter (fun (_, range) -> range_contains_position range position)
-      |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
-      |> first_opt
-      |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
+      let top_level_hover =
+        List.find_map
+          (fun (top : Ast.typed Ast.top_expr) ->
+            match top with
+            | Ast.TopLet (top_name, rhs, top_ann) ->
+                let name_range = range_of_name top_name in
+                if range_contains_position name_range position then
+                  let base =
+                    match rhs with
+                    | Ast.EFun _ -> "top-level function " ^ name_text top_name
+                    | _ -> "top-level binding " ^ name_text top_name
+                  in
+                  let type_block =
+                    match typ_of_ann_opt top_ann with
+                    | None -> ""
+                    | Some t -> Format.asprintf "\nType: %a" Ast.pp_typ t
+                  in
+                  Some { range = name_range; contents = base ^ type_block }
+                else
+                  None)
+          program
+      in
+      match top_level_hover with
+      | Some _ as hover -> hover
+      | None ->
+          collect_expr_ranges program
+          |> List.filter (fun (_, range) -> range_contains_position range position)
+          |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
+          |> first_opt
+          |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
 
 let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string) : semantic_token list =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> []
   | Ok { typed_program = program; _ } ->
-      let lines = lines_of_text text in
       let top_decls = top_level_declarations ~text program in
       let tokens : semantic_token list ref = ref [] in
       let push_token ~(kind : semantic_token_kind) ~(range : range) =
@@ -763,9 +745,9 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
       in
       List.iter
         (function
-          | Ast.TopLet (name, rhs, ann) ->
-              let top_range = range_of_ann ann in
-              let name_range = top_level_name_range ~lines top_range ~name in
+          | Ast.TopLet (top_name, rhs, _) ->
+              let name = name_text top_name in
+              let name_range = range_of_name top_name in
               let kind =
                 match rhs with
                 | Ast.EFun _ -> SemanticFunction
