@@ -93,7 +93,7 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     let toplet_expr = TopLet (name, te, Ann_typed (get_location ann, t)) in
     return (toplet_expr :: acc)
   ) (return []) p in
-  return checked_program
+  return (List.rev checked_program)
 
 (** Infers the type of an expr*)
 and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->

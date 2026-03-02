@@ -78,8 +78,8 @@ top_expr:
     { 
       if Option.is_some effect_dec then Effectful.mark_effectful name;
       if Option.is_none te_opt 
-      then TopLet (name, body, mkloc $startpos $endpos) 
-      else TopLet (name, EAnno(body, Option.get te_opt, mkloc $startpos(body) $endpos(body)), mkloc $startpos $endpos)
+      then TopLet (name, body, mkloc $symbolstartpos $endpos(body)) 
+      else TopLet (name, EAnno(body, Option.get te_opt, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
     }
   | effect_dec=option(EFFECTFUL)
     FUN name=ID params=nonempty_id_list te_opt=option(type_annotation) EQ body=expr
@@ -87,8 +87,8 @@ top_expr:
       check_unique_params (List.map fst params);
       if Option.is_some effect_dec then Effectful.mark_effectful name;
       match te_opt with
-      | None -> TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $startpos $endpos)
-      | Some te -> TopLet (name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $startpos $endpos)
+      | None -> TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $symbolstartpos $endpos(body))
+      | Some te -> TopLet (name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
     }
 
 nonempty_id_list:
@@ -147,8 +147,13 @@ app_expr:
   | LATERAPP e1=atom e2=atom { EBinary(BLaterApp, e1, e2, mkloc $startpos $endpos) }
   | DELAY e1=atom { EUnary(UDelay, e1, mkloc $startpos $endpos) }
   | OSTAR e1=atom e2=atom { EBinary(BOStar, e1, e2, mkloc $startpos $endpos) }
-  | head=atom args=atom+ { EApp (head, args, mkloc $startpos $endpos) }
+  | head=app_head args=atom+ { EApp (head, args, mkloc $startpos $endpos) }
   | e = atom { e }
+
+app_head:
+  | x=ID { EVar (x, mkloc $startpos $endpos) }
+  | LPAREN e=expr COLON ann=type_expr RPAREN { EAnno (e, ann, mkloc $startpos $endpos) }
+  | LPAREN e=expr RPAREN { e }
 
 atom:
   | name=TYPE_ID { ECtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }

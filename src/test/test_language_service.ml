@@ -108,7 +108,7 @@ let test_semantic_tokens_mvp () =
   Alcotest.(check bool)
     "variable declaration token"
     true
-    (has_semantic_token
+     (has_semantic_token
        ~tokens
        ~line:1
        ~character:4
@@ -207,18 +207,18 @@ let test_semantic_tokens_after_line_comment () =
   in
   let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check bool)
-    "second let declaration keeps correct line after line comment"
+     "second let declaration keeps correct line after line comment"
     true
-    (has_semantic_token
+     (has_semantic_token
        ~tokens
        ~line:1
        ~character:4
        ~kind:Language_service.SemanticVariable
        ~declaration:false);
-  Alcotest.(check bool)
-    "reference after line comment keeps correct line"
-    true
-    (has_semantic_token
+    Alcotest.(check bool)
+     "reference after line comment keeps correct line"
+     true
+     (has_semantic_token
        ~tokens
        ~line:1
        ~character:8
@@ -233,18 +233,18 @@ let test_semantic_tokens_after_block_comment () =
   in
   let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check bool)
-    "second let declaration keeps correct line after block comment"
+     "second let declaration keeps correct line after block comment"
     true
-    (has_semantic_token
+     (has_semantic_token
        ~tokens
        ~line:2
        ~character:4
        ~kind:Language_service.SemanticVariable
        ~declaration:false);
-  Alcotest.(check bool)
-    "reference after block comment keeps correct line"
-    true
-    (has_semantic_token
+    Alcotest.(check bool)
+     "reference after block comment keeps correct line"
+     true
+     (has_semantic_token
        ~tokens
        ~line:2
        ~character:8

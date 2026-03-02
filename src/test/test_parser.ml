@@ -64,10 +64,25 @@ let test_effectful_decorator_marks_function () =
   Alcotest.check program_testable "effectful decorated fun parses" expected parsed;
   Alcotest.(check bool) "effectful name registered" true (Rizzoc.Effectful.is_effectful "output_log")
 
+let test_constructor_application_with_parenthesized_let () =
+  let input =
+    "let x = Just (let y = y in y :: never)\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [
+      toplet "x"
+        (ctor "Just"
+           [let_ "y" (var "y") (binary SigCons (var "y") (const CNever))]);
+    ]
+  in
+  Alcotest.check program_testable "constructor application with parenthesized let" expected parsed
+
 let parser_tests =
   [
     "parser accepts syntax", `Quick, test_parser_program;
     "top-level let with many locals", `Quick, test_top_level_let_many_locals;
     "arbitrary length tuple", `Quick, test_arbitrary_length_tuple;
     "effectful decorator", `Quick, test_effectful_decorator_marks_function;
+    "constructor application with parenthesized let", `Quick, test_constructor_application_with_parenthesized_let;
   ]
