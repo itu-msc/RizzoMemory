@@ -48,34 +48,73 @@ let read_line filename line_num =
     find_line 1
   with _ -> None
 
+(** Read a range of lines from a file (inclusive) *)
+let read_lines filename start_line end_line =
+  try
+    let ic = open_in filename in
+    let rec collect n acc =
+      if n > end_line then (
+        close_in ic;
+        Some (List.rev acc)
+      ) else
+        let line = input_line ic in
+        if n >= start_line then
+          collect (n + 1) (line :: acc)
+        else
+          collect (n + 1) acc
+    in
+    collect 1 []
+  with _ -> None
+
 (** Show error with source context (Bun/Rust style) *)
 let show_error_context loc msg =
   let open Lexing in
-  let line = loc.start_pos.pos_lnum in
-  
-  let col_start = loc.start_pos.pos_cnum - loc.start_pos.pos_bol in
-  let col_end = loc.end_pos.pos_cnum - loc.end_pos.pos_bol in
+  let start_line = loc.start_pos.pos_lnum in
+  let end_line = max start_line loc.end_pos.pos_lnum in
+  let col_start = max 0 (loc.start_pos.pos_cnum - loc.start_pos.pos_bol) in
+  let col_end = max 0 (loc.end_pos.pos_cnum - loc.end_pos.pos_bol) in
   let filename = loc.start_pos.pos_fname in
   
   Printf.eprintf "\nError: %s\n" msg;
   Printf.eprintf "  --> %s\n" (to_string loc);
   
-  (* Try to show the actual source line *)
-  match read_line filename line with
-  | Some source_line ->
-      let line_num_str = string_of_int line in
-      let padding = String.make (String.length line_num_str) ' ' in
-      
-      Printf.eprintf " %s |\n" padding;
-      Printf.eprintf " %s | %s\n" line_num_str source_line;
-      
-      (* Show the error indicator *)
-      let underline_len = max 1 (col_end - col_start) in
-      Printf.eprintf " %s | %s%s\n"
-        padding
-        (String.make col_start ' ')
-        (String.make underline_len '^');
-      Printf.eprintf " %s |\n" padding
+  (* Try to show the actual source span *)
+  match read_lines filename start_line end_line with
+  | Some source_lines ->
+      if source_lines <> [] then (
+        let line_num_width = String.length (string_of_int end_line) in
+        let padding = String.make line_num_width ' ' in
+
+        Printf.eprintf " %s |\n" padding;
+
+        List.iteri
+          (fun i source_line ->
+            let current_line = start_line + i in
+            let source_len = String.length source_line in
+
+            let indicator_start, indicator_len =
+              if start_line = end_line then
+                let start_col = min col_start source_len in
+                let end_col = max start_col (min col_end source_len) in
+                (start_col, max 1 (end_col - start_col))
+              else if current_line = start_line then
+                let start_col = min col_start source_len in
+                (start_col, max 1 (source_len - start_col))
+              else if current_line = end_line then
+                let end_col = min col_end source_len in
+                (0, max 1 end_col)
+              else
+                (0, max 1 source_len)
+            in
+
+            Printf.eprintf " %*d | %s\n" line_num_width current_line source_line;
+            Printf.eprintf " %s | %s%s\n"
+              padding
+              (String.make indicator_start ' ')
+              (String.make indicator_len '^'))
+          source_lines;
+
+        Printf.eprintf " %s |\n" padding)
   | None ->
       (* Can't read file, just show the message *)
       ()
