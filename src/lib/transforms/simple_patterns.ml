@@ -14,7 +14,9 @@ and compile_simple_pattern scrutinee case_body = function
     let x = ELet ((s, ann), scrutinee, case_body (), ann) in
     Some (x)
   | PCtor (_, ps, ann) when List.for_all is_var_or_wildcard ps -> 
-    let projs = (List.mapi (fun i p -> i,p) ps) |> List.filter_map (fun (i,p) -> 
+    let projs = 
+      (List.mapi (fun i p -> i,p) ps) 
+      |> List.filter_map (fun (i,p) -> 
       match p with 
       | PVar (name, name_ann ) -> Some ((name, name_ann), EUnary (UProj i, scrutinee, ann))
       | PWildcard -> None
@@ -22,15 +24,15 @@ and compile_simple_pattern scrutinee case_body = function
     in
     Some( List.fold_right (fun (name, proj) acc -> ELet (name, proj, acc, ann)) projs (case_body ()))
   | PTuple (PVar (x, x_ann), PWildcard, ann) -> 
-    Some (ELet ((x, x_ann), EUnary (Fst, scrutinee, ann), case_body (), ann))
+    Some (ELet ((x, x_ann), EApp (EVar ("fst", ann), [scrutinee], ann), case_body (), ann))
   | PTuple (PWildcard, PVar (x, x_ann), ann) -> 
-    Some (ELet ((x, x_ann), EUnary (Snd, scrutinee, ann), case_body (), ann))
+    Some (ELet ((x, x_ann), EApp (EVar ("snd", ann), [scrutinee], ann), case_body (), ann))
   | PTuple (PVar (left, left_ann), PVar (right, right_ann), ann) -> 
     let t0 = left, left_ann in
     let t1 = right, right_ann in
     Some (
-      ELet (t0, EUnary (Fst, scrutinee, ann), 
-      ELet (t1, EUnary (Snd, scrutinee, ann), case_body (), ann), ann))
+      ELet (t0, EApp (EVar ("fst", ann), [scrutinee], ann), 
+      ELet (t1, EApp (EVar ("snd", ann), [scrutinee], ann), case_body (), ann), ann))
   | PSigCons (PVar (head, head_ann), tail, ann) ->
     let hd_proj = EApp (EVar (head_elim, ann), [scrutinee], ann) in
     let tl_proj = EUnary (UTail, scrutinee, ann) in

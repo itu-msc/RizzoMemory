@@ -112,8 +112,6 @@ let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr =
   | EUnary (UTail, n, _) -> RCtor (Ctor { tag = tagof "tail"; fields = [get_name n] })
   | EUnary (UWatch, n, _) -> RCtor (Ctor { tag = tagof "watch"; fields = [get_name n] })
   | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = tagof "delay"; fields = [get_name n] })
-  | EUnary (Fst, EVar (x, _), _)  -> RProj (0, x)
-  | EUnary (Snd, EVar (x, _), _)  -> RProj (1, x)
   | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
   | EConst (const, _) -> RConst const
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)

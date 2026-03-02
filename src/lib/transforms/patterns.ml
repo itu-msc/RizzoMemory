@@ -18,18 +18,18 @@ and compile_pattern p scrutinee good bad =
   | PTuple (PWildcard, PWildcard, _) -> good scrutinee
   | PTuple (p1, PWildcard, ann) -> 
     let t = Utilities.new_name "t", ann in
-    ELet (t, EUnary (Snd, scrutinee, ann), compile_pattern p1 (EVar t) good bad, ann)
+    ELet (t, EApp (EVar ("fst", ann), [scrutinee], ann), compile_pattern p1 (EVar t) good bad, ann)
   | PTuple (PWildcard, p2, ann) -> 
     let t = Utilities.new_name "t", ann in
-    ELet (t, EUnary (Snd, scrutinee, ann), compile_pattern p2 (EVar t) good bad, ann)
+    ELet (t, EApp (EVar ("snd", ann), [scrutinee], ann), compile_pattern p2 (EVar t) good bad, ann)
   | PTuple (p1, p2, ann) as pat ->
     let t0 = Utilities.new_name "t", ann in
     let t1 = Utilities.new_name "t", ann in
     (* TODO: we leave a match so later transformation stages can still
       emit how many fields a constructor has. Keep match/case or type info *)
     ECase(scrutinee, [(pat,
-      ELet (t0, EUnary (Fst, scrutinee, ann), compile_pattern p1 (EVar t0) 
-      (fun _ -> ELet (t1, EUnary (Snd, scrutinee, ann), compile_pattern p2 (EVar t1) good bad, ann))
+      ELet (t0, EApp (EVar ("fst", ann), [scrutinee], ann), compile_pattern p1 (EVar t0) 
+      (fun _ -> ELet (t1, EApp (EVar ("snd", ann), [scrutinee], ann), compile_pattern p2 (EVar t1) good bad, ann))
       bad, ann), ann)], expr_get_ann scrutinee)
   | PSigCons (hd, (_tl_name, tl_ann as tl), ann) -> 
     let hd_name = Utilities.new_name "hd",ann in

@@ -48,7 +48,7 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %token IF THEN ELSE
 %token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY
-%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC
+%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION
 %token <string> ID
 %token <string> TYPE_ID
 %token <string> TYPEVAR
@@ -236,6 +236,7 @@ app_type:
   | TYPE_LATER ta=type_atom { TLater ta }
   | TYPE_DELAY ta=type_atom { TDelay ta }
   | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
+  | TYPE_OPTION ta=type_atom { TOption ta }
   | ta=type_atom { ta }
   (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
   // | at=app_type ta=type_atoma { failwith "type application ..." }

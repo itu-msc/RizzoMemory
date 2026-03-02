@@ -27,16 +27,16 @@ let () =
 	ensure_rizz_extension input_file;
 	try
 		let program = Rizzoc.Parser.parse_file input_file in
-		Format.printf "Parsed:\n%a\n\n" Ast.pp_program program;
+		Format.printf "------- Parsed -------\n%a\n\n" Ast.pp_program program;
 		let typed = Rizzoc.typecheck program in
 		let () = match typed with
 		| None -> ()
-		| Some _ -> print_endline "--- TYPECHECKED SUCCESSFULLY ---\n"
+		| Some typed_program -> Format.printf "------- Type checked -------\n%a\n\n" Ast.pp_typed_program typed_program
 		in 
     let transformed = Rizzoc.apply_transforms program in
-    Format.printf "Transformed:\n%a\n\n" Ast.pp_program transformed;
+    Format.printf "------- Transformed -------\n%a\n\n" Ast.pp_program transformed;
     let rc_program = Rizzoc.ref_count transformed in
-		Format.printf "Reference counted:\n%a\n" RefCount.pp_ref_counted_program rc_program;
+		Format.printf "------- Reference counted -------\n%a\n" RefCount.pp_ref_counted_program rc_program;
 		Rizzoc.emit rc_program "output.c"
 	with
 	| Rizzoc.Lexer.Error (loc, msg) ->

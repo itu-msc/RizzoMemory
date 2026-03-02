@@ -69,6 +69,7 @@ rule read = parse
     | "Delay" -> TYPE_DELAY
     | "Sync" -> TYPE_SYNC
     | "Signal" -> TYPE_SIGNAL
+    | "Option" -> TYPE_OPTION
     | _ -> TYPE_ID x 
     }
   | int as i { INT (int_of_string i) }

@@ -27,7 +27,7 @@ and free_type_vars_typ : typ -> StringSet.t = function
   | TError -> StringSet.empty
   | TVar _ -> StringSet.empty 
   | TTuple (t1, t2) | TSync (t1, t2) -> StringSet.union (free_type_vars_typ t1) (free_type_vars_typ t2)
-  | TSignal t | TDelay t | TLater t -> free_type_vars_typ t
+  | TSignal t | TDelay t | TLater t | TOption t | TChan t -> free_type_vars_typ t
   | TUnit | TInt | TBool | TString | TName _ -> StringSet.empty
   | TParam v -> StringSet.singleton v
   | TFun (Cons1(front, rest), ret_type) -> 
@@ -85,6 +85,15 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let* tbody_type = get_typ tbody in
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
+  | EIfe (cond, e1, e2, ann) ->
+    let* tcond = check cond TBool in
+    let* te1 = infer e1 in
+    let* te2 = infer e2 in
+    let* t1 = get_typ te1 in
+    let* t2 = get_typ te2 in
+    let* _ = Type_env.expected_equal ann t1 t2 in
+    let* t = Type_env.apply_subst t1 in
+    return (EIfe (tcond, te1, te2, Ann_typed (get_location ann, t)))
   | EVar (name, ann) -> 
     (* TODO: when we do this look up, record that it either came from scope_global or scope_local *)
     let* env = Type_env.get_state in
@@ -107,9 +116,16 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let* t2 = get_typ te2 in
     return (ETuple (te1, te2, Ann_typed (get_location ann, TTuple (t1, t2))))
   | EBinary (op, e1, e2, ann) -> infer_binary op e1 e2 ann
+  | EUnary (op, e, ann) -> infer_unary op e ann
   | EApp (f, args, ann) -> 
+    (*  TFun([fresh_type_var() for each arg in args], fresh_typ_var() ) *)
+    let* fresh_ret_type = Type_env.fresh_type_var () in
+    let* fresh_param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) args) in
+    let expected_fun_type = TFun (Cons1(List.hd fresh_param_types, List.tl fresh_param_types), fresh_ret_type) in
     let* tf = infer f in 
-    let* tf_type = Type_env.get_type tf in
+    let* tf_type = get_typ tf in
+    let* _ = Type_env.expected_equal ann tf_type expected_fun_type in
+    let* tf_type = Type_env.apply_subst tf_type in
     (match tf_type, args with
     | TFun (param_types, ret_type), arg1 :: arg_rest -> 
       infer_application tf param_types ret_type (Cons1 (arg1, arg_rest)) ann
@@ -146,10 +162,18 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
       else 
         let* _ = error ann "All case branches must have the same type" in 
         return (ECase (tscrutinee, [], Ann_typed (get_location ann, TError))))
-  | EFun (_,_, ann) -> 
-    let* _ = error ann "Inference for functions not implemented yet - unification todo" in
-    (* TODO: what about failure causes? can we return a dummy expr? *)
-    return (dummy ann)
+  | EFun (param_names, body, ann) -> 
+    let* param_types = Type_env.collect @@ List.map (fun (p, _) -> 
+      let* pt = Type_env.fresh_type_var () in
+      return (p, mono pt)
+    ) param_names 
+    in
+    let* typed_body = Type_env.with_locals param_types (infer body) in
+    let* body_type = get_typ typed_body in
+    let* param_types = Type_env.collect (List.map (fun (_, Type_env.Forall (_, t)) -> Type_env.apply_subst t) param_types) in
+    let fun_type = TFun (Cons1(List.hd param_types, List.tl param_types), body_type) in
+    let param_names = List.map2 (fun (p, pann) pt -> (p, Ann_typed(get_location pann, pt))) param_names param_types in
+    return (EFun (param_names, typed_body, Ann_typed(get_location ann, fun_type)))
   | _ -> 
     let msg = (Format.asprintf "Unable to infer type for this expression.\n  Try (%a : T) to check against an expected type T" Ast.pp_expr e) in
     let* _ = error (expr_get_ann e) msg in
@@ -206,7 +230,6 @@ and infer_const_type : type stage. stage ann -> const -> typ Type_env.t =
     let* _ = error ann "Never cannot be inferred (yet) - consider annotating (never : Later T)" in
     return TError
 
-(* and check_pattern_and_infer_branch env pattern rhs scrutinee_type : ((typed pattern * typed expr), typing_error) Result.t = *)
 and check_pattern_and_infer_branch : type stage. stage pattern -> stage expr -> typ -> (typed pattern * typed expr) Type_env.t =
   fun pattern rhs scrutinee_type -> 
   match pattern with
@@ -239,19 +262,19 @@ and check_pattern_and_infer_branch : type stage. stage pattern -> stage expr -> 
     let pattern = PTuple (p1, p2, Ann_typed (get_location ann, pattern_type)) in
     return (pattern, rhs')
   | PSigCons (PVar (hd_name, hd_ann), (tail_name, _), ann) ->
-    let* t = match scrutinee_type with
-      | TSignal t -> return t
-      | _ -> 
-        let* _ = error ann "Pattern SigCons type does not match scrutinee type" in
-        return TError
-    in
-    let* rhs' = Type_env.with_locals [(hd_name, mono t); (tail_name, mono (TSignal t))] (infer rhs) in
+    let* a = Type_env.fresh_type_var () in
+    let* _ = Type_env.expected_equal ann scrutinee_type (TSignal a) in
+    let* t = Type_env.apply_subst a in
+
+    let* rhs' = Type_env.with_locals [(hd_name, mono t); (tail_name, mono (TLater (TSignal t)))] (infer rhs) in
     let pattern_type = TSignal t in
     let hd_pattern = PVar (hd_name, Ann_typed (get_location hd_ann, t)) in
-    let tail_name = (tail_name, Ann_typed (get_location ann, TSignal t)) in
+    let tail_name = (tail_name, Ann_typed (get_location ann, TLater (TSignal t))) in
     let pattern = PSigCons (hd_pattern, tail_name, Ann_typed (get_location ann, pattern_type)) in
     return (pattern, rhs')
-  | PCtor _ -> failwith "saving ctor patterns for later"
+  | PCtor (_,_, ann) -> 
+    let* _ = error ann "saving ctor patterns for later" in
+    return (PWildcard, dummy ann)
   | PTuple (_,_,ann) | PSigCons(_,_,ann) -> 
     let* _ = error ann "Pattern type checking not implemented yet" in
     (* TODO: what to do when it all goes wrong? *)
@@ -351,3 +374,62 @@ and infer_application : type s. typed expr -> typ list1 -> typ -> s expr list1 -
     | _ -> 
       let* _ = error ann (Format.asprintf "Too many arguments applied to non-function type '%a'" Ast.pp_typ ret_type) in
       return (dummy ann)
+
+and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env.t = fun op e ann ->
+  match op with
+  | UDelay ->
+    let* te = infer e in
+    let* t = get_typ te in
+    return (EUnary (UDelay, te, Ann_typed (get_location ann, TDelay t)))
+  | UWatch -> 
+    let* fresh_t = Type_env.fresh_type_var () in
+    let* te = check e (TSignal (TOption (fresh_t))) in (* Signal (Option A) *)
+    let* t = Type_env.apply_subst fresh_t in
+    return (EUnary (UWatch, te, Ann_typed (get_location ann, TLater t)))
+  | UTail ->
+    let* fresh_t = Type_env.fresh_type_var () in
+    let* te = check e (TSignal fresh_t) in (* Signal A *)
+    let* t = get_typ te in
+    return (EUnary (UTail, te, Ann_typed (get_location ann, TLater t)))
+  | UWait -> 
+    let* a = Type_env.fresh_type_var () in
+    let* te = check e (TChan a) in
+    let* t = Type_env.apply_subst a in
+    return (EUnary (UWait, te, Ann_typed (get_location ann, TLater t)))
+  | UProj i -> 
+    let* te = infer e in
+    let* t = get_typ te in
+    match t with 
+    | TError -> return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))) (* stop cascading errors *)
+    | TString | TUnit | TInt | TBool | TName _ | TParam _ | TVar _| TFun _ | TChan _ -> 
+      let* _ = error ann (Format.asprintf "Cannot project from non-constructor '%a'" Ast.pp_typ t) in
+      return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
+    | TLater _ -> 
+      let* _ = error ann (Format.asprintf "Cannot project a LATER! '%a'" Ast.pp_typ t) in
+      return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
+    | TDelay _ ->
+      let* _ = error ann (Format.asprintf "Cannot project a DELAY! '%a'" Ast.pp_typ t) in
+      return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
+    | TSignal t' -> 
+      (match i with
+      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t')))
+      | 1 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, TLater t)))
+      | _ -> 
+        let* _ = error ann "Signal only has 2 projections: 0 for head and 1 for tail" in
+        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
+    | TOption t -> 
+      (match i with
+      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t))) 
+      | _ -> 
+        let* _ = error ann "Option has at most one projection" in
+        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
+    | TTuple (t1, t2) -> 
+      (match i with
+      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t1))) 
+      | 1 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t2))) 
+      | _ -> 
+        let* _ = error ann "Tuple only has 2 projections: 0 for first and 1 for second" in
+        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
+    | TSync _ -> 
+      let* _ = error ann "Cannot project a sync?" in
+      return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
