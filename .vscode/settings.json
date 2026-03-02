@@ -1,9 +1,2 @@
 {
-  // "files.associations": {
-  //   "*.rizz": "rizzo"
-  // },
-  // "rizzoLsp.server.command": "opam",
-  // "rizzoLsp.server.args": ["exec", "--", "dune", "exec", "rizzolsp"],
-  // "rizzoLsp.compiler.command": "",
-  // "rizzoLsp.compiler.cc": "clang"
 }

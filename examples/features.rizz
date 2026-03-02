@@ -1,0 +1,13 @@
+fun entry x =
+    let _bool = true in
+    let _int = 42 in
+    let _string = "Hello world!" in
+    let _tuple = (_string, _int) in
+    _bool
+
+@effectful
+fun _const x : 'a -> Signal 'a = x :: never
+
+fun appendSignalToNeverAndAdd1 s a = _const (a |> s)
+
+fun is0 x = x == 0

@@ -164,55 +164,55 @@ and eq_typ a b = match a,b with
 
 let pp_const out = function
   | CUnit -> Format.fprintf out "()"
-  | CNever -> Format.fprintf out "never"
-  | CInt i -> Format.fprintf out "%d" i
-  | CString s -> Format.fprintf out "%S" s
-  | CBool b -> Format.fprintf out "%b" b
+  | CNever -> Format.fprintf out "@{<blue>never@}"
+  | CInt i -> Format.fprintf out "@{<ligtgreen>%d@}" i
+  | CString s -> Format.fprintf out "@{<orange>\"%s\"@}" s
+  | CBool b -> Format.fprintf out "@{<blue>%b@}" b
 
 let rec pp_pattern out = function
-  | PWildcard -> Format.fprintf out "_"
-  | PVar (x, _) -> Format.fprintf out "%s" x
+  | PWildcard -> Format.fprintf out "@{<lightcyan>_@}"
+  | PVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | PConst (c, _) -> pp_const out c
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
-  | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: %s)" pp_pattern p1 (fst p2)
+  | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
   | PCtor (name, args, _) -> 
-    if List.length args = 0 then Format.fprintf out "%s (notice args are empty!!)" (fst name)
-    else Format.fprintf out "%s(%a)" (fst name) (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_pattern) args
+    if List.length args = 0 then Format.fprintf out "@{<red>%s (notice args are empty!!)@}" (fst name)
+    else Format.fprintf out "@{<green>%s@}(%a)" (fst name) (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_pattern) args
 
 let rec pp_case_branch out (p, b, _ : _ case_branch) =
   let open Format in
-  fprintf out "| %a ->@ %a" pp_pattern p pp_expr b
+  fprintf out "@{<blue>|@} %a -> @[<hov 2>%a@]" pp_pattern p pp_expr b
 
 and pp_expr out = 
   let open Format in
   function
   | EConst (c,_) -> pp_const out c
-  | EVar (x, _) -> fprintf out "%s" x
+  | EVar (x, _) -> fprintf out "@{<lightcyan>%s@}" x
   | ECtor (name, args, _) ->
-    if List.length args = 0 then fprintf out "%s" (fst name)
+    if List.length args = 0 then fprintf out "{<red>%s (notice args are empty!!)@}" (fst name)
     else
       fprintf out "%s(%a)" (fst name)
         (pp_print_list ~pp_sep:(fun out () -> fprintf out ",@ ") pp_expr) args
   | ELet ((x, _), e1, e2, _) ->
-    fprintf out "@[<hov 2>let %s =@ %a@ in@ %a@]" x pp_expr e1 pp_expr e2
+    fprintf out "@[<v 0>@{<magenta>let@} @{<lightcyan>%s@} = %a @{<magenta>in@}@,%a@]" x pp_expr e1 pp_expr e2
   | EFun (names, body, _) ->
     let params = List.map fst names in
-    fprintf out "@[<hov 2>fun (%s) ->@ %a@]" (String.concat ", " params) pp_expr body
+    fprintf out "@[<v 2>@{<magenta>fun@} (@{<lightcyan>%s@}) ->@,%a@]" (String.concat ", " params) pp_expr body
   | EApp (f, args, _) ->
     fprintf out "@[<hov 2>%a(@[<hov>%a@])@]"
       pp_expr f
       (pp_print_list ~pp_sep:(fun out () -> fprintf out ",@ ") pp_expr) args
   | EUnary (op, e, _) -> 
     let op_str = string_of_unary_op op in
-    fprintf out "@[<hov 2>%s@ %a@]" op_str pp_expr e
+    fprintf out "@[<hov 2>@{<yellow>%s@}@ %a@]" op_str pp_expr e
   | EBinary (op, e1, e2, _) ->
     let op_str = string_of_binary_op op in
-    fprintf out "@[<hov 2>(%a@ %s@ %a)@]" pp_expr e1 op_str pp_expr e2
+    fprintf out "@[<hov 2>(%a@ @{<yellow>%s@}@ %a)@]" pp_expr e1 op_str pp_expr e2
   | ETuple (e1, e2, _) -> fprintf out "@[<hov>(%a,@ %a)@]" pp_expr e1 pp_expr e2
   | EIfe (e1, e2, e3, _) ->
-    fprintf out "@[<v 2>(if %a@ then@ %a@ else@ %a)@]" pp_expr e1 pp_expr e2 pp_expr e3
+    fprintf out "@[<v 2>(@{<magenta>if@} %a@ @{<magenta>then@}@ %a@ @{<magenta>else@}@ %a)@]" pp_expr e1 pp_expr e2 pp_expr e3
   | ECase (e, cases, _) ->
-    fprintf out "@[<v 0>(match %a with@,%a)@]"
+    fprintf out "@[<v 0>(@{<magenta>match@} %a @{<magenta>with@}@,%a)@]"
       pp_expr e
       (pp_print_list ~pp_sep:(fun out () -> fprintf out "@,") pp_case_branch)
       cases
@@ -221,7 +221,7 @@ and string_of_binary_op = function
   | SigCons -> "::" 
   | BSync -> "sync"
   | BOStar -> "(*)"
-  | BLaterApp -> "(>)"
+  | BLaterApp -> "|>"
   | Add -> "+"
   | Mul -> "*"
   | Sub -> "-"
@@ -239,30 +239,30 @@ and string_of_unary_op = function
 and pp_typ fmt = 
   let open Format in 
   function 
-  | TError -> fprintf fmt "*Error-type*"
-  | TBool -> fprintf fmt "Bool"
-  | TInt -> fprintf fmt "Int"
-  | TString -> fprintf fmt "String"
-  | TUnit -> fprintf fmt "Unit"
+  | TError -> fprintf fmt "@{<red>*Error-type*@}"
+  | TBool -> fprintf fmt "@{<green>Bool@}"
+  | TInt -> fprintf fmt "@{<green>Int@}"
+  | TString -> fprintf fmt "@{<green>String@}"
+  | TUnit -> fprintf fmt "@{<green>Unit@}"
   | TFun (Cons1(t1, []), t) -> fprintf fmt "(%a -> %a)" pp_typ t1 pp_typ t
   | TFun (Cons1(t1, ts), t) -> fprintf fmt "(%a -> %a -> %a)" pp_typ t1 (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " -> ") pp_typ) ts pp_typ t
-  | TDelay t -> fprintf fmt "(Delay %a)" pp_typ t
-  | TLater t -> fprintf fmt "(Later %a)" pp_typ t
-  | TName n -> fprintf fmt "%s" n
-  | TParam n -> fprintf fmt "%s" n
-  | TSignal t -> fprintf fmt "(Signal %a)" pp_typ t
+  | TDelay t -> fprintf fmt "(@{<green>Delay@} %a)" pp_typ t
+  | TLater t -> fprintf fmt "(@{<green>Later@} %a)" pp_typ t
+  | TName n -> fprintf fmt "@{<green>%s@}" n
+  | TParam n -> fprintf fmt "@{<green>%s@}" n
+  | TSignal t -> fprintf fmt "(@{<green>Signal@} %a)" pp_typ t
   | TTuple (t1, t2) -> fprintf fmt ("(%a * %a)") pp_typ t1 pp_typ t2
-  | TSync (t1, t2) -> fprintf fmt ("Sync(%a, %a)") pp_typ t1 pp_typ t2
-  | TOption t -> fprintf fmt "(Option %a)" pp_typ t
-  | TChan t -> fprintf fmt "(Chan %a)" pp_typ t
-  | TVar i -> fprintf fmt "`weak%d" i
+  | TSync (t1, t2) -> fprintf fmt ("@{<green>Sync@}(%a, %a)") pp_typ t1 pp_typ t2
+  | TOption t -> fprintf fmt "(@{<green>Option@} %a)" pp_typ t
+  | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
+  | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
 
 let eq_top_expr a b = match a,b with
   | TopLet (x1, e1, _), TopLet (x2, e2, _) -> eq_name x1 x2 && eq_expr e1 e2 
 
 let pp_top_expr out =
   function
-  | TopLet ((x, _), e, _) -> Format.fprintf out "@[<hov 2>let %s =@ %a@]" x pp_expr e
+  | TopLet ((x, _), e, _) -> Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} =@,%a@]" x pp_expr e
 
 let eq_program a b = 
   List.length a = List.length b && List.for_all2 eq_top_expr a b
@@ -281,41 +281,41 @@ let rec pp_typed_program out (p: typed program) =
 and pp_typed_top_expr out =
   function
   | TopLet ((x, _), e, Ann_typed (_, t)) ->
-    Format.fprintf out "@[<hov 2>let %s : %a =@ %a@]" x pp_typ t pp_typed_expr e
+    Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} : %a =@,%a@]" x pp_typ t pp_typed_expr e
 and pp_typed_expr out = 
   let open Format in
   function
   | EConst (c, _) -> Format.fprintf out "%a" pp_const c
-  | EVar (x, _) -> Format.fprintf out "%s" x
+  | EVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | ECtor (name, args, _) ->
-    if List.length args = 0 then Format.fprintf out "%s" (fst name)
+    if List.length args = 0 then Format.fprintf out "{<red>%s (notice args are empty!!)@}" (fst name)
     else
-      Format.fprintf out "%s(@[<hov>%a@])" (fst name)
+      Format.fprintf out "@{<green>%s@}(@[<hov>%a@])" (fst name)
         (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args
   | ELet ((x, _), e1, e2, _) ->
-    Format.fprintf out "@[<v 0>let %s =@,%a@,in@,%a@]" x pp_typed_expr e1 pp_typed_expr e2
+    Format.fprintf out "@[<v 0>@{<magenta>let@} @{<lightcyan>%s@} = %a @{<magenta>in@}@,%a@]" x pp_typed_expr e1 pp_typed_expr e2
   | EFun (names, body, Ann_typed (_, t)) ->
     let params = List.map fst names in
-    Format.fprintf out "@[<v 0>fun (%s) : %a ->@,%a@]" (String.concat ", " params) pp_typ t pp_typed_expr body
+    Format.fprintf out "@[<v 2>@{<magenta>fun@} (@{<lightcyan>%s@}) : %a @{<magenta>->@}@,%a@]" (String.concat ", " params) pp_typ t pp_typed_expr body
   | EApp (f, args, _) ->
     Format.fprintf out "@[<hov 2>%a(@[<hov>%a@])@]"
       pp_typed_expr f
       (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args
   | EUnary (op, e, _) -> 
     let op_str = string_of_unary_op op in
-    Format.fprintf out "@[<hov 2>%s@ %a@]" op_str pp_typed_expr e
+    Format.fprintf out "@[<hov 2>@{<yellow>%s@}@ %a@]" op_str pp_typed_expr e
   | EBinary (op, e1, e2, _) ->
     let op_str = string_of_binary_op op in
-    Format.fprintf out "@[<hov 2>(%a@ %s@ %a)@]" pp_typed_expr e1 op_str pp_typed_expr e2
+    Format.fprintf out "@[<hov 2>(%a@ @{<yellow>%s@}@ %a)@]" pp_typed_expr e1 op_str pp_typed_expr e2
   | ETuple (e1, e2, _) -> Format.fprintf out "@[<hov>(%a,@ %a)@]" pp_typed_expr e1 pp_typed_expr e2
   | EIfe (e1, e2, e3, _) ->
-    Format.fprintf out "@[<v 0>if %a@,then %a@,else %a@]" pp_typed_expr e1 pp_typed_expr e2 pp_typed_expr e3
+    Format.fprintf out "@[<v 0>@{<magenta>if@} %a@,@{<magenta>then@} %a@,@{<magenta>else@} %a@]" pp_typed_expr e1 pp_typed_expr e2 pp_typed_expr e3
   | ECase (e, cases, _) ->
-    Format.fprintf out "@[<v 0>match %a with@,%a@]"
+    Format.fprintf out "@[<v 0>@{<magenta>match@} %a @{<magenta>with@}@,%a@]"
       pp_typed_expr e
       (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_typed_case_branch)
       cases
-  | EAnno (e, typ, _) -> Format.fprintf out "(%a : %a)" pp_typed_expr e pp_typ typ
+  | EAnno (e, typ, _) -> Format.fprintf out "(@{<green>%a@} : %a)" pp_typed_expr e pp_typ typ
 and pp_typed_case_branch out (p, b, _ : _ case_branch) =
   let open Format in
-  fprintf out "| %a ->@ %a" pp_pattern p pp_typed_expr b
+  fprintf out "@{<blue>|@} %a -> %a" pp_pattern p pp_typed_expr b

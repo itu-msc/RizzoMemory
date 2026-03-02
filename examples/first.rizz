@@ -8,10 +8,12 @@ asdf
 asdf
 */
 
-let x = Just (let y = y in y :: never)
+let z = 5
+let y = z :: never
+let x = Just (y)
 
 fun nestedFunc x = 
-    let inner = fun y -> fun z -> x :: delay y :: z in
+    let inner = fun y -> fun z -> x :: (wait z) in
     inner :: never
 
 fun main x = 

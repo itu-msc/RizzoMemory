@@ -27,6 +27,7 @@
   ocaml
   menhir
   dune
+  fmt
   yojson
   (alcotest :with-test))
  (tags

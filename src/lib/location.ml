@@ -75,8 +75,8 @@ let show_error_context loc msg =
   let col_end = max 0 (loc.end_pos.pos_cnum - loc.end_pos.pos_bol) in
   let filename = loc.start_pos.pos_fname in
   
-  Printf.eprintf "\nError: %s\n" msg;
-  Printf.eprintf "  --> %s\n" (to_string loc);
+  Fmt.epr "@.@{<red>Error@}: %s@." msg;
+  Fmt.epr "  @{<blue>-->@} @{<bold>%s@}@." (to_string loc);
   
   (* Try to show the actual source span *)
   match read_lines filename start_line end_line with
@@ -85,7 +85,7 @@ let show_error_context loc msg =
         let line_num_width = String.length (string_of_int end_line) in
         let padding = String.make line_num_width ' ' in
 
-        Printf.eprintf " %s |\n" padding;
+        Fmt.epr " %s |@." padding;
 
         List.iteri
           (fun i source_line ->
@@ -107,14 +107,14 @@ let show_error_context loc msg =
                 (0, max 1 source_len)
             in
 
-            Printf.eprintf " %*d | %s\n" line_num_width current_line source_line;
-            Printf.eprintf " %s | %s%s\n"
+            let line_label = Printf.sprintf "%*d" line_num_width current_line in
+            Fmt.epr " @{<cyan>%s@} | %s@." line_label source_line;
+            Fmt.epr " %s | %s%a@."
               padding
               (String.make indicator_start ' ')
-              (String.make indicator_len '^'))
-          source_lines;
-
-        Printf.eprintf " %s |\n" padding)
+              Fmt.(styled `Red string) (String.make indicator_len '^'))
+          source_lines
+        )
   | None ->
       (* Can't read file, just show the message *)
       ()
@@ -126,4 +126,6 @@ let report_error loc msg =
 
 (** Report warning (don't exit) *)
 let report_warning loc msg =
-  Printf.eprintf "\nWarning at %s:\n%s\n\n" (to_string loc) msg
+  Fmt.epr "@.@{<yellow>Warning@} at @{<bold>%s@}:@.%s@.@."
+    (to_string loc)
+    msg

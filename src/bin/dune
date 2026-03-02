@@ -1,7 +1,7 @@
 (executable
  (public_name rizzoc)
  (name main)
- (libraries rizzoc)
+ (libraries rizzoc fmt fmt.tty)
  (modes byte exe))
 
 (executable
