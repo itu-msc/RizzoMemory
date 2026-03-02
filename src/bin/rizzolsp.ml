@@ -122,7 +122,7 @@ let json_of_location ~uri (range : LS.range) : Yojson.Safe.t =
 let json_of_hover (hover : LS.hover_info) : Yojson.Safe.t =
   `Assoc [
     ("contents", `Assoc [
-      ("kind", `String "plaintext");
+      ("kind", `String "markdown");
       ("value", `String hover.contents)
     ]);
     ("range", json_of_range hover.range)

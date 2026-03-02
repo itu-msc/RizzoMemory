@@ -375,11 +375,11 @@ let type_info_block : type s. s Ast.expr -> string =
   fun expr ->
     match typ_of_ann_opt (Ast.expr_get_ann expr) with
     | None -> ""
-    | Some t -> Format.asprintf "\nType: %a" Ast.pp_typ t
+    | Some t -> Format.asprintf "\nType:\n```rizz\n%a\n```" Ast.pp_typ t
 
 let expression_info_block : type s. s Ast.expr -> string =
   fun expr ->
-    Format.asprintf "\nExpr: %a" Ast.pp_expr expr
+    Format.asprintf "\nExpr:\n```rizz\n%a\n```" Ast.pp_expr expr
 
 let hover_text_for_expr : type s. s Ast.expr -> string =
   fun expr ->
@@ -624,7 +624,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                   let type_block =
                     match typ_of_ann_opt top_ann with
                     | None -> ""
-                    | Some t -> Format.asprintf "\nType: %a" Ast.pp_typ t
+                    | Some t -> Format.asprintf "\n```rizzo\nType dsafasdf: %a\n```" Ast.pp_typ t
                   in
                   Some { range = name_range; contents = base ^ type_block }
                 else
