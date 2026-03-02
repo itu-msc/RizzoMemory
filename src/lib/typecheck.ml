@@ -59,21 +59,18 @@ and free_type_vars_env : unit -> StringSet.t Type_env.t = fun () ->
   let* local_free = free_type_vars_env_scheme env.local in
   return (StringSet.union global_free local_free)
 
-let rec typecheck : type stage. stage program -> typed program option = fun p -> 
+(*
+* Typechecks a program, returns a typed program and a boolean indicating whether there were any type errors (TODO: this is a bit of a hack - we should probably return the errors instead of printing them and returning a bool)
+*)
+let rec typecheck : type stage. stage program -> typed program * ((Location.t * string) list) = fun p -> 
   let builtins,_ = Type_env.run @@ Type_env.collect (List.map 
     (fun ({name; typ; _}:Rizzo_builtins.builtin_info) -> 
       let* typ_free = free_type_vars_typ typ in
       return (name, forall (StringSet.to_list typ_free) typ)) 
-    Rizzo_builtins.builtins)
-  in
+    Rizzo_builtins.builtins) in
   let checked_program, env  = Type_env.run (typecheck_program p) ~builtins:(Some builtins) in
-  let errors = env.errors in
-  List.iter (fun err -> match err with
-    | Type_env.Typing_error (loc, msg) -> Location.show_error_context loc msg
-  ) errors;
-  match errors with
-  | [] -> Some checked_program
-  | _ -> None
+  let errors = List.map (function | Type_env.Typing_error (loc, err) -> (loc, err)) env.errors in
+  (checked_program, errors)
 
 and typecheck_program : type stage. stage program -> typed program Type_env.t = fun p -> 
   let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
@@ -251,55 +248,95 @@ and infer_const_type : type stage. stage ann -> const -> typ Type_env.t =
     let* _ = error ann "Never cannot be inferred (yet) - consider annotating (never : Later T)" in
     return TError
 
-and check_pattern_and_infer_branch : type stage. stage pattern -> stage expr -> typ -> (typed pattern * typed expr) Type_env.t =
-  fun pattern rhs scrutinee_type -> 
+and get_constructor_signature : type stage. string -> stage ann -> (typ list * typ) Type_env.t =
+  fun ctor_name ann ->
+  match ctor_name with
+  | "Just" ->
+    let* a = Type_env.fresh_type_var () in
+    return ([a], TOption a)
+  | "Nothing" ->
+    let* a = Type_env.fresh_type_var () in
+    return ([], TOption a)
+  | "Left" ->
+    let* a = Type_env.fresh_type_var () in
+    let* b = Type_env.fresh_type_var () in
+    return ([a], TSync (a, b))
+  | "Right" ->
+    let* a = Type_env.fresh_type_var () in
+    let* b = Type_env.fresh_type_var () in
+    return ([b], TSync (a, b))
+  | "Both" ->
+    let* a = Type_env.fresh_type_var () in
+    let* b = Type_env.fresh_type_var () in
+    return ([a; b], TSync (a, b))
+  | _ ->
+    let* _ = error ann (Format.asprintf "Unknown constructor pattern '%s'" ctor_name) in
+    return ([], TError)
+
+and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string * scheme) list) Type_env.t =
+  fun pattern expected_type ->
   match pattern with
-  | PWildcard -> 
-    let* rhs' = infer rhs in
-    return (PWildcard, rhs')
+  | PWildcard ->
+    return (PWildcard, [])
   | PVar (name, ann) ->
-    let pattern_type = scrutinee_type in
-    let* rhs' = Type_env.with_local name (mono pattern_type) (infer rhs) in
-    let pattern = PVar (name, Ann_typed (get_location ann, pattern_type)) in
-    return (pattern, rhs')
+    let* pattern_type = Type_env.apply_subst expected_type in
+    return (PVar (name, Ann_typed (get_location ann, pattern_type)), [name, mono pattern_type])
   | PConst (c, ann) ->
     let* const_type = infer_const_type ann c in
-    if const_type = scrutinee_type 
-    then let* rhs' = infer rhs in return (PConst (c, Ann_typed (get_location ann, const_type)), rhs')
-    else 
-      let* _ = error ann "Pattern constant type does not match scrutinee type" in
-      return (PConst (c, Ann_typed (get_location ann, TError)), dummy ann)
-  | PTuple (PVar (n1,_) , PVar (n2,_), ann) ->
-    let* (t1, t2) = match scrutinee_type with
-      | TTuple (t1, t2) -> return (t1, t2)
-      | _ -> 
-        let* _ = error ann "Pattern tuple type does not match scrutinee type" in
-        return (TError, TError)
-    in
-    let* rhs' = Type_env.with_locals [(n1, mono t1); (n2, mono t2)] (infer rhs) in
-    let p1 = PVar (n1, Ann_typed (get_location ann, t1)) in
-    let p2 = PVar (n2, Ann_typed (get_location ann, t2)) in
+    let* _ = Type_env.expected_equal ann const_type expected_type in
+    let* pattern_type = Type_env.apply_subst const_type in
+    return (PConst (c, Ann_typed (get_location ann, pattern_type)), [])
+  | PTuple (p1, p2, ann) ->
+    let* t1 = Type_env.fresh_type_var () in
+    let* t2 = Type_env.fresh_type_var () in
+    let* _ = Type_env.expected_equal ann expected_type (TTuple (t1, t2)) in
+    let* typed_p1, bindings_1 = check_pattern p1 t1 in
+    let* typed_p2, bindings_2 = check_pattern p2 t2 in
+    let* t1 = Type_env.apply_subst t1 in
+    let* t2 = Type_env.apply_subst t2 in
     let pattern_type = TTuple (t1, t2) in
-    let pattern = PTuple (p1, p2, Ann_typed (get_location ann, pattern_type)) in
-    return (pattern, rhs')
-  | PSigCons (PVar (hd_name, hd_ann), (tail_name, _), ann) ->
+    return (PTuple (typed_p1, typed_p2, Ann_typed (get_location ann, pattern_type)), bindings_1 @ bindings_2)
+  | PSigCons (hd_pattern, (tail_name, tail_ann), ann) ->
     let* a = Type_env.fresh_type_var () in
-    let* _ = Type_env.expected_equal ann scrutinee_type (TSignal a) in
-    let* t = Type_env.apply_subst a in
+    let* _ = Type_env.expected_equal ann expected_type (TSignal a) in
+    let* a = Type_env.apply_subst a in
+    let* typed_hd, hd_bindings = check_pattern hd_pattern a in
+    let tail_type = TLater (TSignal a) in
+    let tail_binding = (tail_name, mono tail_type) in
+    let typed_tail = (tail_name, Ann_typed (get_location tail_ann, tail_type)) in
+    let pattern_type = TSignal a in
+    return (PSigCons (typed_hd, typed_tail, Ann_typed (get_location ann, pattern_type)), hd_bindings @ [tail_binding])
+  | PCtor ((ctor_name, ctor_ann), args, ann) ->
+    let* param_types, ctor_result = get_constructor_signature ctor_name ctor_ann in
+    let* _ = Type_env.expected_equal ann expected_type ctor_result in
+    let expected_arity = List.length param_types in
+    let actual_arity = List.length args in
+    let param_types =
+      if expected_arity = actual_arity
+      then param_types
+      else if expected_arity < actual_arity
+      then param_types @ List.init (actual_arity - expected_arity) (fun _ -> TError)
+      else List.take actual_arity param_types
+    in
+    let* _ =
+      if expected_arity = actual_arity
+      then return ()
+      else error ann (Format.asprintf "Constructor '%s' expects %d argument(s), but pattern has %d" ctor_name expected_arity actual_arity)
+    in
+    let* checked_args =
+      Type_env.collect (List.map2 (fun p pt -> check_pattern p pt) args param_types)
+    in
+    let typed_args = List.map fst checked_args in
+    let bindings = List.concat_map snd checked_args in
+    let* pattern_type = Type_env.apply_subst ctor_result in
+    let typed_ctor_name = (ctor_name, Ann_typed (get_location ctor_ann, pattern_type)) in
+    return (PCtor (typed_ctor_name, typed_args, Ann_typed (get_location ann, pattern_type)), bindings)
 
-    let* rhs' = Type_env.with_locals [(hd_name, mono t); (tail_name, mono (TLater (TSignal t)))] (infer rhs) in
-    let pattern_type = TSignal t in
-    let hd_pattern = PVar (hd_name, Ann_typed (get_location hd_ann, t)) in
-    let tail_name = (tail_name, Ann_typed (get_location ann, TLater (TSignal t))) in
-    let pattern = PSigCons (hd_pattern, tail_name, Ann_typed (get_location ann, pattern_type)) in
-    return (pattern, rhs')
-  | PCtor (_,_, ann) -> 
-    let* _ = error ann "saving ctor patterns for later" in
-    return (PWildcard, dummy ann)
-  | PTuple (_,_,ann) | PSigCons(_,_,ann) -> 
-    let* _ = error ann "Pattern type checking not implemented yet" in
-    (* TODO: what to do when it all goes wrong? *)
-    return (PWildcard, dummy ann)
+and check_pattern_and_infer_branch : type stage. stage pattern -> stage expr -> typ -> (typed pattern * typed expr) Type_env.t =
+  fun pattern rhs scrutinee_type -> 
+  let* typed_pattern, bindings = check_pattern pattern scrutinee_type in
+  let* rhs' = Type_env.with_locals bindings (infer rhs) in
+  return (typed_pattern, rhs')
 
 and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage ann -> typed expr Type_env.t =
   fun op e1 e2 ann -> match op with

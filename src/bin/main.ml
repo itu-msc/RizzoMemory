@@ -28,11 +28,15 @@ let () =
 	try
 		let program = Rizzoc.Parser.parse_file input_file in
 		Format.printf "------- Parsed -------\n%a\n\n" Ast.pp_program program;
-		let typed = Rizzoc.typecheck program in
-		let () = match typed with
-		| None -> ()
-		| Some typed_program -> Format.printf "------- Type checked -------\n%a\n\n" Ast.pp_typed_program typed_program
-		in 
+		let (typed, errors) = Rizzoc.typecheck program in
+		(match errors with
+		| [] ->
+			Format.printf "------- Type checking failed, showing partial typechecked program -------\n%a\n\n" Ast.pp_typed_program typed;
+			List.iter (fun err -> 
+				match err with
+				| (loc, msg) -> Location.show_error_context loc msg
+			) errors;
+		| _ -> Format.printf "------- Type checked -------\n%a\n\n" Ast.pp_typed_program typed);
     let transformed = Rizzoc.apply_transforms program in
     Format.printf "------- Transformed -------\n%a\n\n" Ast.pp_program transformed;
     let rc_program = Rizzoc.ref_count transformed in

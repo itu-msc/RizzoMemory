@@ -60,6 +60,11 @@ type analysis_result = {
   diagnostics: diagnostic list;
 }
 
+type parsed_typed_result = {
+  typed_program: Ast.typed Ast.program;
+  diagnostics: diagnostic list;
+}
+
 module StringMap = Map.Make(String)
 
 type scoped_symbol = {
@@ -252,11 +257,22 @@ let parse_error_details ~(text : string) (loc : Location.t) : (range option * st
        | Some hint -> (None, hint)
        | None -> (None, "Syntax error: unexpected token."))
 
-let parse_with_filename ~(filename : string) (text : string) : (Ast.parsed Ast.program, diagnostic) result =
+let diagnostic_of_type_error ((loc, msg) : Location.t * string) : diagnostic =
+  {
+    range = range_of_location loc;
+    severity = Error;
+    message = msg;
+    source = "rizzoc";
+  }
+
+let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_result, diagnostic) result =
   let lexbuf = Lexing.from_string text in
   lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = filename };
   try
-    Ok (Parser.main Lexer.read lexbuf)
+    let parsed = Parser.main Lexer.read lexbuf in
+    let typed_program, type_errors = Typecheck.typecheck parsed in
+    let diagnostics = List.map diagnostic_of_type_error type_errors in
+    Ok { typed_program; diagnostics }
   with
   | Lexer.Error (loc, msg) ->
       Error
@@ -331,9 +347,11 @@ let top_level_name_range ~(lines : string array) (top_range : range) ~(name : st
            }
        | None -> fallback)
 
-let top_level_declarations ~(text : string) (program : Ast.parsed Ast.program) : (string * symbol_kind * range * range) list =
+let top_level_declarations : type s.
+    text:string -> s Ast.program -> (string * symbol_kind * range * range) list =
+  fun ~text program ->
   let lines = lines_of_text text in
-  let declaration_of_top (top : Ast.parsed Ast.top_expr) =
+  let declaration_of_top : s Ast.top_expr -> (string * symbol_kind * range * range) option = fun top ->
     match top with
     | Ast.TopLet (name, rhs, ann) ->
         let kind =
@@ -347,36 +365,38 @@ let top_level_declarations ~(text : string) (program : Ast.parsed Ast.program) :
   in
   List.filter_map declaration_of_top program
 
-let rec iter_expr (f : Ast.parsed Ast.expr -> unit) (expr : Ast.parsed Ast.expr) : unit =
-  f expr;
-  match expr with
-  | Ast.EConst _ | Ast.EVar _ -> ()
-  | Ast.ECtor (_, args, _) ->
-      List.iter (iter_expr f) args
-  | Ast.ELet (_, e1, e2, _) ->
-      iter_expr f e1;
-      iter_expr f e2
-  | Ast.EFun (_, body, _) -> iter_expr f body
-  | Ast.EApp (fn, args, _) ->
-      iter_expr f fn;
-      List.iter (iter_expr f) args
-  | Ast.EUnary (_, e, _) -> iter_expr f e
-  | Ast.EBinary (_, e1, e2, _) ->
-      iter_expr f e1;
-      iter_expr f e2
-  | Ast.ETuple (e1, e2, _) ->
-      iter_expr f e1;
-      iter_expr f e2
-  | Ast.ECase (scrutinee, branches, _) ->
-      iter_expr f scrutinee;
-      List.iter (fun (_, branch, _) -> iter_expr f branch) branches
-  | Ast.EIfe (c, t, e, _) ->
-      iter_expr f c;
-      iter_expr f t;
-      iter_expr f e
-  | Ast.EAnno (e, _, _) -> iter_expr f e
+    let rec iter_expr : type s. (s Ast.expr -> unit) -> s Ast.expr -> unit =
+      fun f expr ->
+      f expr;
+      match expr with
+      | Ast.EConst _ | Ast.EVar _ -> ()
+      | Ast.ECtor (_, args, _) ->
+        List.iter (iter_expr f) args
+      | Ast.ELet (_, e1, e2, _) ->
+        iter_expr f e1;
+        iter_expr f e2
+      | Ast.EFun (_, body, _) -> iter_expr f body
+      | Ast.EApp (fn, args, _) ->
+        iter_expr f fn;
+        List.iter (iter_expr f) args
+      | Ast.EUnary (_, e, _) -> iter_expr f e
+      | Ast.EBinary (_, e1, e2, _) ->
+        iter_expr f e1;
+        iter_expr f e2
+      | Ast.ETuple (e1, e2, _) ->
+        iter_expr f e1;
+        iter_expr f e2
+      | Ast.ECase (scrutinee, branches, _) ->
+        iter_expr f scrutinee;
+        List.iter (fun (_, branch, _) -> iter_expr f branch) branches
+      | Ast.EIfe (c, t, e, _) ->
+        iter_expr f c;
+        iter_expr f t;
+        iter_expr f e
+      | Ast.EAnno (e, _, _) -> iter_expr f e
 
-let collect_expr_ranges (program : Ast.parsed Ast.program) : (Ast.parsed Ast.expr * range) list =
+    let collect_expr_ranges : type s. s Ast.program -> (s Ast.expr * range) list =
+      fun program ->
   let acc = ref [] in
   let push expr =
     let expr_range = range_of_ann (Ast.expr_get_ann expr) in
@@ -388,51 +408,72 @@ let collect_expr_ranges (program : Ast.parsed Ast.program) : (Ast.parsed Ast.exp
   List.iter visit_top program;
   !acc
 
-let hover_text_for_expr (expr : Ast.parsed Ast.expr) : string =
-  match expr with
-  | Ast.EConst (c, _) -> "constant " ^ (
-    match c with
-    | Ast.CUnit -> "()"
-    | Ast.CNever -> "never"
-    | Ast.CInt n -> string_of_int n
-    | Ast.CBool b -> if b then "true" else "false"
-    | Ast.CString s -> s
-  )
-  | Ast.EVar (name, _) -> "variable " ^ name
-  | Ast.ECtor ((name, _), _, _) -> "constructor " ^ name
-  | Ast.ELet ((name, _), _, _, _) -> "let-binding " ^ name
-  | Ast.EFun (params, _, _) -> "function(" ^ String.concat ", " (List.map fst params) ^ ")"
-  | Ast.EApp _ -> "function application"
-  | Ast.EUnary _ -> "unary expression"
-  | Ast.EBinary _ -> "binary expression"
-  | Ast.ETuple _ -> "tuple expression"
-  | Ast.ECase _ -> "match expression"
-  | Ast.EIfe _ -> "if expression"
-  | Ast.EAnno _ -> "annotated expression"
+let typ_of_ann_opt : type s. s Ast.ann -> Ast.typ option = function
+  | Ast.Ann_typed (_, t) -> Some t
+  | Ast.Ann_parsed _ | Ast.Ann_bound _ -> None
 
-let rec pattern_bound_decls (pat : Ast.parsed Ast.pattern) : (string * range) list =
-  match pat with
-  | Ast.PWildcard | Ast.PConst _ -> []
-  | Ast.PVar ((name, ann)) -> [ (name, range_of_ann ann) ]
-  | Ast.PSigCons (p1, p2, _) ->
-      pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
-  | Ast.PTuple (p1, p2, _) ->
-      pattern_bound_decls p1 @ pattern_bound_decls p2
-  | Ast.PCtor (_, args, _) ->
-      List.flatten (List.map (fun p -> pattern_bound_decls p) args)
+let type_info_block : type s. s Ast.expr -> string =
+  fun expr ->
+    match typ_of_ann_opt (Ast.expr_get_ann expr) with
+    | None -> ""
+    | Some t -> Format.asprintf "\nType: %a" Ast.pp_typ t
 
-let rec pattern_constructor_ranges (pat : Ast.parsed Ast.pattern) : range list =
-  match pat with
-  | Ast.PWildcard | Ast.PConst _ | Ast.PVar _ -> []
-  | Ast.PSigCons (p1, _, _) ->
-      pattern_constructor_ranges p1
-  | Ast.PTuple (p1, p2, _) ->
-      pattern_constructor_ranges p1 @ pattern_constructor_ranges p2
-  | Ast.PCtor (ctor_name, args, _) ->
-      range_of_name ctor_name
-      :: List.flatten (List.map (fun p -> pattern_constructor_ranges p) args)
+let expression_info_block : type s. s Ast.expr -> string =
+  fun expr ->
+    Format.asprintf "\nExpr: %a" Ast.pp_expr expr
 
-let keyword_range_from_expr ~(name : string) (expr : Ast.parsed Ast.expr) : range option =
+let hover_text_for_expr : type s. s Ast.expr -> string =
+  fun expr ->
+    let base =
+      match expr with
+      | Ast.EConst (c, _) ->
+          "constant "
+          ^
+          (match c with
+           | Ast.CUnit -> "()"
+           | Ast.CNever -> "never"
+           | Ast.CInt n -> string_of_int n
+           | Ast.CBool b -> if b then "true" else "false"
+           | Ast.CString s -> s)
+      | Ast.EVar (name, _) -> "variable " ^ name
+      | Ast.ECtor ((name, _), _, _) -> "constructor " ^ name
+      | Ast.ELet ((name, _), _, _, _) -> "let-binding " ^ name
+      | Ast.EFun (params, _, _) -> "function(" ^ String.concat ", " (List.map fst params) ^ ")"
+      | Ast.EApp _ -> "function application"
+      | Ast.EUnary _ -> "unary expression"
+      | Ast.EBinary _ -> "binary expression"
+      | Ast.ETuple _ -> "tuple expression"
+      | Ast.ECase _ -> "match expression"
+      | Ast.EIfe _ -> "if expression"
+      | Ast.EAnno _ -> "annotated expression"
+    in
+    base ^ type_info_block expr ^ expression_info_block expr
+
+let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
+  fun pat ->
+    match pat with
+    | Ast.PWildcard | Ast.PConst _ -> []
+    | Ast.PVar (name, ann) -> [ (name, range_of_ann ann) ]
+    | Ast.PSigCons (p1, p2, _) ->
+        pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
+    | Ast.PTuple (p1, p2, _) ->
+        pattern_bound_decls p1 @ pattern_bound_decls p2
+    | Ast.PCtor (_, args, _) ->
+        List.flatten (List.map pattern_bound_decls args)
+
+let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
+  fun pat ->
+    match pat with
+    | Ast.PWildcard | Ast.PConst _ | Ast.PVar _ -> []
+    | Ast.PSigCons (p1, _, _) ->
+        pattern_constructor_ranges p1
+    | Ast.PTuple (p1, p2, _) ->
+        pattern_constructor_ranges p1 @ pattern_constructor_ranges p2
+    | Ast.PCtor (ctor_name, args, _) ->
+        range_of_name ctor_name :: List.flatten (List.map pattern_constructor_ranges args)
+
+let keyword_range_from_expr : type s. name:string -> s Ast.expr -> range option =
+  fun ~name expr ->
   let expr_range = range_of_ann (Ast.expr_get_ann expr) in
   if expr_range.start_pos.line <> expr_range.end_pos.line then
     None
@@ -468,13 +509,13 @@ let valid_single_line_range (token_range : range) : bool =
 
 let analyze_document ~(uri : string) ~(filename : string option) ~(text : string) : analysis_result =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
-  | Ok _ -> { diagnostics = [] }
+  | Ok { diagnostics; _ } -> { diagnostics }
   | Error diagnostic -> { diagnostics = [diagnostic] }
 
 let document_symbols ~(uri : string) ~(filename : string option) ~(text : string) : document_symbol list =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> []
-  | Ok program ->
+  | Ok { typed_program = program; _ } ->
       top_level_declarations ~text program
       |> List.map (fun (name, kind, top_range, selection_range) ->
              { name; kind; range = top_range; selection_range })
@@ -482,7 +523,7 @@ let document_symbols ~(uri : string) ~(filename : string option) ~(text : string
 let definition_at_position ~(uri : string) ~(filename : string option) ~(text : string) ~(position : position) : definition option =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> None
-  | Ok program ->
+  | Ok { typed_program = program; _ } ->
   let lines = lines_of_text text in
       let top_decls = top_level_declarations ~text program in
       let top_env =
@@ -492,7 +533,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                StringMap.add name { kind = semantic_kind_of_symbol_kind kind; range = selection_range } env)
              StringMap.empty
       in
-      let rec find_in_expr (env : scoped_symbol StringMap.t) (expr : Ast.parsed Ast.expr) : definition option =
+      let rec find_in_expr (env : scoped_symbol StringMap.t) (expr : _ Ast.expr) : definition option =
         match expr with
         | Ast.EConst _ -> None
         | Ast.EVar var_name ->
@@ -609,7 +650,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
 let hover_at_position ~(uri : string) ~(filename : string option) ~(text : string) ~(position : position) : hover_info option =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> None
-  | Ok program ->
+  | Ok { typed_program = program; _ } ->
       collect_expr_ranges program
       |> List.filter (fun (_, range) -> range_contains_position range position)
       |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
@@ -619,7 +660,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
 let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string) : semantic_token list =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> []
-  | Ok program ->
+  | Ok { typed_program = program; _ } ->
       let lines = lines_of_text text in
       let top_decls = top_level_declarations ~text program in
       let tokens : semantic_token list ref = ref [] in
@@ -635,7 +676,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
                StringMap.add name { kind = semantic_kind; range = selection_range } env)
              StringMap.empty
       in
-      let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.parsed Ast.expr) : unit =
+      let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.typed Ast.expr) : unit =
         (match expr with
          | Ast.EConst _ -> ()
          | Ast.EVar var_name ->

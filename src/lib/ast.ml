@@ -280,41 +280,42 @@ let rec pp_typed_program out (p: typed program) =
     p
 and pp_typed_top_expr out =
   function
-  | TopLet (x, e, Ann_typed (_, t)) -> Format.fprintf out "@[<hov 2>let %s : %a =@ %a@]" x pp_typ t pp_typed_expr e
+  | TopLet (x, e, Ann_typed (_, t)) ->
+    Format.fprintf out "@[<hov 2>let %s : %a =@ %a@]" x pp_typ t pp_typed_expr e
 and pp_typed_expr out = 
   let open Format in
   function
   | EConst (c, _) -> Format.fprintf out "%a" pp_const c
   | EVar (x, _) -> Format.fprintf out "%s" x
-  | ECtor (name, args, Ann_typed (_, t)) ->
-    if List.length args = 0 then Format.fprintf out "%s : %a" (fst name) pp_typ t
+  | ECtor (name, args, _) ->
+    if List.length args = 0 then Format.fprintf out "%s" (fst name)
     else
-      Format.fprintf out "%s(%a) : %a" (fst name)
-        (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args pp_typ t
+      Format.fprintf out "%s(@[<hov>%a@])" (fst name)
+        (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args
   | ELet ((x, _), e1, e2, _) ->
-    Format.fprintf out "@[<hov 2>let %s =@ %a@ in@ %a@]" x pp_typed_expr e1 pp_typed_expr e2
+    Format.fprintf out "@[<v 0>let %s =@,%a@,in@,%a@]" x pp_typed_expr e1 pp_typed_expr e2
   | EFun (names, body, Ann_typed (_, t)) ->
     let params = List.map fst names in
-    Format.fprintf out "@[<hov 2>fun (%s) ->@ %a : %a@]" (String.concat ", " params) pp_typed_expr body pp_typ t
-  | EApp (f, args, Ann_typed (_, t)) ->
-    Format.fprintf out "@[<hov 2>%a(@[<hov>%a@]) : %a@]"
+    Format.fprintf out "@[<v 0>fun (%s) : %a ->@,%a@]" (String.concat ", " params) pp_typ t pp_typed_expr body
+  | EApp (f, args, _) ->
+    Format.fprintf out "@[<hov 2>%a(@[<hov>%a@])@]"
       pp_typed_expr f
-      (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args pp_typ t
+      (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args
   | EUnary (op, e, _) -> 
     let op_str = string_of_unary_op op in
     Format.fprintf out "@[<hov 2>%s@ %a@]" op_str pp_typed_expr e
   | EBinary (op, e1, e2, _) ->
     let op_str = string_of_binary_op op in
     Format.fprintf out "@[<hov 2>(%a@ %s@ %a)@]" pp_typed_expr e1 op_str pp_typed_expr e2
-  | ETuple (e1, e2, Ann_typed (_, t)) -> Format.fprintf out "@[<hov>(%a,@ %a) : %a@]" pp_typed_expr e1 pp_typed_expr e2 pp_typ t
-  | EIfe (e1, e2, e3, Ann_typed (_, t)) ->
-    Format.fprintf out "@[<v 2>(if %a@ then@ %a@ else@ %a) : %a@]" pp_typed_expr e1 pp_typed_expr e2 pp_typed_expr e3 pp_typ t
-  | ECase (e, cases, Ann_typed (_, t)) ->
-    Format.fprintf out "@[<v 0>(match %a with@,%a) : %a@]"
+  | ETuple (e1, e2, _) -> Format.fprintf out "@[<hov>(%a,@ %a)@]" pp_typed_expr e1 pp_typed_expr e2
+  | EIfe (e1, e2, e3, _) ->
+    Format.fprintf out "@[<v 0>if %a@,then %a@,else %a@]" pp_typed_expr e1 pp_typed_expr e2 pp_typed_expr e3
+  | ECase (e, cases, _) ->
+    Format.fprintf out "@[<v 0>match %a with@,%a@]"
       pp_typed_expr e
       (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_typed_case_branch)
-      cases pp_typ t
-  | EAnno (e, _, _) -> Format.fprintf out "%a" pp_typed_expr e
-and pp_typed_case_branch out (p, b, Ann_typed (_, t) : _ case_branch) =
+      cases
+  | EAnno (e, typ, _) -> Format.fprintf out "(%a : %a)" pp_typed_expr e pp_typ typ
+and pp_typed_case_branch out (p, b, _ : _ case_branch) =
   let open Format in
-  fprintf out "| %a ->@ %a : %a" pp_pattern p pp_typed_expr b pp_typ t
+  fprintf out "| %a ->@ %a" pp_pattern p pp_typed_expr b
