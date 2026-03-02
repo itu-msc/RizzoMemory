@@ -77,18 +77,20 @@ top_expr:
     LET name=ID te_opt=option(type_annotation) EQ body=expr
     { 
       if Option.is_some effect_dec then Effectful.mark_effectful name;
+      let top_name = (name, mkloc $startpos(name) $endpos(name)) in
       if Option.is_none te_opt 
-      then TopLet (name, body, mkloc $symbolstartpos $endpos(body)) 
-      else TopLet (name, EAnno(body, Option.get te_opt, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
+      then TopLet (top_name, body, mkloc $symbolstartpos $endpos(body)) 
+      else TopLet (top_name, EAnno(body, Option.get te_opt, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
     }
   | effect_dec=option(EFFECTFUL)
     FUN name=ID params=nonempty_id_list te_opt=option(type_annotation) EQ body=expr
     {
       check_unique_params (List.map fst params);
       if Option.is_some effect_dec then Effectful.mark_effectful name;
+      let top_name = (name, mkloc $startpos(name) $endpos(name)) in
       match te_opt with
-      | None -> TopLet (name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $symbolstartpos $endpos(body))
-      | Some te -> TopLet (name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
+      | None -> TopLet (top_name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $symbolstartpos $endpos(body))
+      | Some te -> TopLet (top_name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
     }
 
 nonempty_id_list:

@@ -147,9 +147,9 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
   (* maps  top-level-names to its parameter number *)
   let globals: globals_env = 
     let mapper = function 
-    | TopLet(name, EFun (params, _, _), _) -> (name, Some (List.length params))
-    | TopLet(name, EAnno(EFun (params, _, _), _, _), _) -> (name, Some (List.length params))
-    | TopLet(name, _, _) -> (name, None)
+    | TopLet(name, EFun (params, _, _), _) -> (fst name, Some (List.length params))
+    | TopLet(name, EAnno(EFun (params, _, _), _, _), _) -> (fst name, Some (List.length params))
+    | TopLet(name, _, _) -> (fst name, None)
     in
     let builtins_arity = M.map (fun b -> Some (List.length b)) builtins in
     List.map mapper p |> M.of_list 
@@ -161,4 +161,4 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
     Refcount.Fun (params, expr_to_fn_body globals (LocalsEnv.of_list params) body) 
   | e -> failwith (Format.asprintf "TODO: only top level functions BAD:'%a'" Ast.pp_expr e)
   in
-  List.map (fun (TopLet (name, rhs, _)) -> name, to_fun rhs) p
+  List.map (fun (TopLet (name, rhs, _)) -> fst name, to_fun rhs) p

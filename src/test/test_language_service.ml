@@ -300,4 +300,19 @@ let tests = [
       | None -> Alcotest.fail "expected hover"
       | Some hover ->
           Alcotest.(check bool) "hover has text" true (String.length hover.Language_service.contents > 0));
+  "hover returns top-level name info", `Quick,
+    (fun () ->
+      let text = "let x = 1\n" in
+      match Language_service.hover_at_position
+              ~uri:"file:///test.rizz"
+              ~filename:None
+              ~text
+              ~position:{ Language_service.line = 0; character = 4 }
+      with
+      | None -> Alcotest.fail "expected top-level hover"
+      | Some hover ->
+          Alcotest.(check bool)
+            "hover mentions top-level binding"
+            true
+            (contains_substring ~text:hover.Language_service.contents ~substring:"top-level binding x"));
 ]
