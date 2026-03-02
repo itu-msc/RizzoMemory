@@ -20,32 +20,51 @@ let mono t = forall [] t
 (** Generalises a typ -> used for polymorphic let-bindings *)
 let rec generalize : typ -> scheme Type_env.t = fun t -> 
   let* env_free = free_type_vars_env () in
-  let t_free = free_type_vars_typ t in
+  let* t_free = free_type_vars_typ t in
   let generalized_vars = StringSet.diff t_free env_free in
   return (forall (StringSet.elements generalized_vars) t)
-and free_type_vars_typ : typ -> StringSet.t = function
-  | TError -> StringSet.empty
-  | TVar _ -> StringSet.empty 
-  | TTuple (t1, t2) | TSync (t1, t2) -> StringSet.union (free_type_vars_typ t1) (free_type_vars_typ t2)
+and free_type_vars_typ : typ -> StringSet.t Type_env.t = function
+  | TError -> return StringSet.empty
+  | TVar _ -> return StringSet.empty
+  | TTuple (t1, t2) | TSync (t1, t2) -> 
+    let* t1_free = free_type_vars_typ t1 in
+    let* t2_free = free_type_vars_typ t2 in
+    return (StringSet.union t1_free t2_free)
   | TSignal t | TDelay t | TLater t | TOption t | TChan t -> free_type_vars_typ t
-  | TUnit | TInt | TBool | TString | TName _ -> StringSet.empty
-  | TParam v -> StringSet.singleton v
+  | TUnit | TInt | TBool | TString | TName _ -> return StringSet.empty
+  | TParam v -> return (StringSet.singleton v)
   | TFun (Cons1(front, rest), ret_type) -> 
-    let param_free = List.fold_left (fun acc t -> StringSet.union acc (free_type_vars_typ t)) StringSet.empty (front :: rest) in
-    StringSet.union param_free (free_type_vars_typ ret_type)
-and free_type_vars_scheme : scheme -> StringSet.t = function
+    let* param_free = List.fold_left (fun acc t -> 
+        let* acc = acc in 
+        let* free_in_t = free_type_vars_typ t in
+        return (StringSet.union acc free_in_t)) 
+      (return StringSet.empty) 
+      (front :: rest) in
+    let* ret_free = free_type_vars_typ ret_type in
+    return (StringSet.union param_free ret_free)
+and free_type_vars_scheme : scheme -> StringSet.t Type_env.t = function
   | Forall (vars, t) -> 
-    StringSet.diff (free_type_vars_typ t) (StringSet.of_list vars)
-and free_type_vars_env_scheme: Type_env.scheme_env -> StringSet.t = 
-  fun scheme_env -> StringMap.fold (fun _ scheme acc -> StringSet.union acc (free_type_vars_scheme scheme)) scheme_env StringSet.empty
+    let* free_in_t = free_type_vars_typ t in
+    return (StringSet.diff free_in_t (StringSet.of_list vars))
+and free_type_vars_env_scheme: Type_env.scheme_env -> StringSet.t Type_env.t = 
+  fun scheme_env -> StringMap.fold (
+    fun _ scheme acc -> 
+      let* acc = acc in
+      let* free_in_scheme = free_type_vars_scheme scheme in
+      return (StringSet.union acc free_in_scheme)
+    ) scheme_env (return StringSet.empty)
 and free_type_vars_env : unit -> StringSet.t Type_env.t = fun () ->
   let* env = Type_env.get_state in
-  return (StringSet.union (free_type_vars_env_scheme env.global) (free_type_vars_env_scheme env.local))
+  let* global_free = free_type_vars_env_scheme env.global in
+  let* local_free = free_type_vars_env_scheme env.local in
+  return (StringSet.union global_free local_free)
 
 let rec typecheck : type stage. stage program -> typed program option = fun p -> 
-  let builtins = List.map 
-    (fun ({name; typ; _}:Rizzo_builtins.builtin_info) -> name, forall (free_type_vars_typ typ |> StringSet.to_list) typ) 
-    Rizzo_builtins.builtins 
+  let builtins,_ = Type_env.run @@ Type_env.collect (List.map 
+    (fun ({name; typ; _}:Rizzo_builtins.builtin_info) -> 
+      let* typ_free = free_type_vars_typ typ in
+      return (name, forall (StringSet.to_list typ_free) typ)) 
+    Rizzo_builtins.builtins)
   in
   let checked_program, env  = Type_env.run (typecheck_program p) ~builtins:(Some builtins) in
   let errors = env.errors in
@@ -59,8 +78,19 @@ let rec typecheck : type stage. stage program -> typed program option = fun p ->
 and typecheck_program : type stage. stage program -> typed program Type_env.t = fun p -> 
   let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
     let* acc = acc in
-    let* te = Type_env.with_local_scope (infer e) in 
+    let* te = match e with
+    | EFun (params, _, _) -> 
+      let* param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) params) in
+      let* ret_type = Type_env.fresh_type_var () in
+      let  t = TFun (Cons1(List.hd param_types, List.tl param_types), ret_type) in
+      let* typed_e = Type_env.with_locals [name, mono t] (infer e) in
+      let* inferred_t = get_typ typed_e in
+      let* _ = Type_env.expected_equal ann inferred_t t in
+      return typed_e
+    | _ -> Type_env.with_local_scope (infer e)
+    in
     let* t = get_typ te in
+    let* t = Type_env.generalize_type_vars t in
     let* generalized_type = generalize t in
     let* () = Type_env.add_global name generalized_type in
     let toplet_expr = TopLet (name, te, Ann_typed (get_location ann, t)) in
@@ -80,6 +110,7 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in
+    let* t_rhs = Type_env.generalize_type_vars t_rhs in
     let* t_rhs_generalized = generalize t_rhs in
     let* tbody = Type_env.with_locals [name, t_rhs_generalized] (infer body) in
     let* tbody_type = get_typ tbody in
@@ -118,25 +149,13 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | EBinary (op, e1, e2, ann) -> infer_binary op e1 e2 ann
   | EUnary (op, e, ann) -> infer_unary op e ann
   | EApp (f, args, ann) -> 
-    (*  TFun([fresh_type_var() for each arg in args], fresh_typ_var() ) *)
-    let* fresh_ret_type = Type_env.fresh_type_var () in
-    let* fresh_param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) args) in
-    let expected_fun_type = TFun (Cons1(List.hd fresh_param_types, List.tl fresh_param_types), fresh_ret_type) in
-    let* tf = infer f in 
-    let* tf_type = get_typ tf in
-    let* _ = Type_env.expected_equal ann tf_type expected_fun_type in
-    let* tf_type = Type_env.apply_subst tf_type in
-    (match tf_type, args with
-    | TFun (param_types, ret_type), arg1 :: arg_rest -> 
-      infer_application tf param_types ret_type (Cons1 (arg1, arg_rest)) ann
-    | TFun _, [] -> 
-      let* _ = error ann "Cannot apply a function to no arguments" in
-      return (EApp (tf, [], Ann_typed (get_location ann, TError)))
-    | TError, _ -> return (EApp (tf, [], Ann_typed (get_location ann, TError))) (* stop cascasing erros *)
-    | _ -> 
-      let* _ = error (expr_get_ann f) (Format.asprintf "Cannot apply a non-function type '%a'" Ast.pp_typ tf_type) in
-      return (EApp (tf, [], Ann_typed (get_location ann, TError)))
-    )
+    let* inferred_args = Type_env.collect (List.map infer args) in
+    let* arg_types = Type_env.collect (List.map get_typ inferred_args) in
+    let* ret_type = Type_env.fresh_type_var () in
+    let expected_fun_type = TFun (Cons1(List.hd arg_types, List.tl arg_types), ret_type) in
+    let* tf = check f expected_fun_type in
+    let* ret_type = Type_env.apply_subst ret_type in
+    return (EApp (tf, inferred_args, Ann_typed (get_location ann, ret_type)))
   | ECase (scrutinee, branches, ann) ->
     let* tscrutinee = infer scrutinee in
     let* t_scrutinee = get_typ tscrutinee in
@@ -191,13 +210,15 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t =
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in
+    let* t_rhs = Type_env.generalize_type_vars t_rhs in
     let* rhs_gen = generalize t_rhs in
     let* tbody = Type_env.with_local name rhs_gen (check body expected) in
     let* tbody_type = get_typ tbody in
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
   | EFun (params, body, ann) -> 
-    let* Cons1(p1_type, param_types_rest), ret_type = match expected with
+    let* Cons1(p1_type, param_types_rest), ret_type = 
+      match expected with
       | TFun (param_types, ret_type) when Ast_helpers.list1_length param_types = List.length params -> 
         return (param_types, ret_type)
       | TFun (ps, _) -> 
@@ -305,75 +326,22 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     let* t1 = get_typ te1 in
     let* te2 = infer e2 in 
     let* t2 = get_typ te2 in
-    return (EBinary (BSync, te1, te2, Ann_typed (get_location ann, TSync (t1, t2)))) 
+    return (EBinary (BSync, te1, te2, Ann_typed (get_location ann, TLater (TSync (t1, t2))))) 
   | BOStar ->
-    let* te1 = infer e1 in 
-    let* t1 = get_typ te1 in
-    let* a,b = (match t1 with
-    (* typeof(te1) : TFun ([t1; t2; t3; t4], t5) 
-      which after lying te2 to it should give a function of type TFun ([t2; t3; t4], t5), makes sense I guess *)
-    | TDelay (TFun (Cons1 (a, []), b)) -> return (a,b)
-    | TDelay (TFun (Cons1 (a, a' :: rest), b)) -> return (a, TFun(Cons1(a',rest), b))
-    | _ -> 
-      let* t = get_typ te1 in
-      let* _ = error (expr_get_ann e1) (Format.asprintf "Expected a delayed function - but got '%a'" Ast.pp_typ t) in
-      return (TError, TError)
-    ) in
+    let* a = Type_env.fresh_type_var () in
+    let* b = Type_env.fresh_type_var () in
+    let expected_shape = TDelay (TFun (Cons1(a, []), b)) in
+    let* te1 = check e1 expected_shape in
     let* te2 = check e2 (TDelay a) in
     return (EBinary (BOStar, te1, te2, Ann_typed (get_location ann, TDelay b)))
-  | BLaterApp ->
-    let* te1 = infer e1 in
-    let* t1 = get_typ te1 in
-    let* a,b = (match t1 with
-    | TDelay (TFun (Cons1 (a, []), b)) -> return (a,b)
-    | TDelay (TFun (Cons1 (a, a' :: rest), b)) -> return (a, TFun(Cons1(a',rest), b))
-    | _ -> 
-      let* t = get_typ te1 in
-      let* _ = error (expr_get_ann e1) (Format.asprintf "Expected a delayed function - but got '%a'" Ast.pp_typ t) in
-      return (TError, TError)
-    ) in
+  | BLaterApp -> 
+    let* a = Type_env.fresh_type_var () in
+    let* b = Type_env.fresh_type_var () in
+    let expected_shape = TDelay (TFun (Cons1(a, []), b)) in
+    let* te1 = check e1 expected_shape in
     let* te2 = check e2 (TLater a) in
+    let* b = Type_env.apply_subst b in
     return (EBinary (BLaterApp, te1, te2, Ann_typed (get_location ann, TLater b)))
-
-and infer_application : type s. typed expr -> typ list1 -> typ -> s expr list1 -> s ann -> typed expr Type_env.t =
-  fun typed_function_expr param_types ret_type args ann ->
-  let Cons1(param_type1, param_types_rest) = param_types in
-  let Cons1(arg1, args_rest) = args in
-  if Ast_helpers.list1_length param_types >= Ast_helpers.list1_length args
-  then begin (* either partial or full application *)
-    let rec go p_types arg_types acc = match p_types, arg_types with
-    | [], [] -> return ([], List.rev acc)
-    | param_rest, [] -> return (param_rest, List.rev acc)
-    | t :: ts, arg :: args -> 
-      let check_arg_result = check arg t in
-      go ts args (check_arg_result :: acc)
-    | [], _ -> failwith (Printf.sprintf "(%s, %d) oops - more arguments than parameter types - this is handled separately" __FILE__ __LINE__)
-    in
-    let* remaining_params, go_result = go param_types_rest args_rest [check arg1 param_type1] in
-    let* typed_args = Type_env.collect go_result in
-    let ret_type = match remaining_params with
-    | [] -> ret_type
-    | first :: rest -> TFun (Cons1(first, rest), ret_type) 
-    in
-    let* ret_type = Type_env.apply_subst ret_type in
-    return (EApp (typed_function_expr, typed_args, Ann_typed (get_location ann, ret_type)))
-  end 
-  else (* Overapplied - length(param_types) < length(args) - split into more applications *)  
-    let args_to_take = List.length param_types_rest in
-    let args_for_this_app = List.take args_to_take args_rest in
-    let* checked = 
-      let args_and_expected = (List.combine args_for_this_app param_types_rest) in
-      let checked_results = (check arg1 param_type1) :: List.map (fun (arg, expected_type) -> check arg expected_type) args_and_expected in
-      Type_env.collect checked_results
-    in
-    let args_for_next_app = List.drop args_to_take args_rest in
-    let app = EApp (typed_function_expr, checked, Ann_typed (get_location ann, ret_type)) in
-    match ret_type, args_for_next_app with
-    | TFun (remaining_param_types, final_ret_type), first_arg :: rest_arg-> 
-      infer_application app remaining_param_types final_ret_type (Cons1(first_arg, rest_arg)) ann
-    | _ -> 
-      let* _ = error ann (Format.asprintf "Too many arguments applied to non-function type '%a'" Ast.pp_typ ret_type) in
-      return (dummy ann)
 
 and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env.t = fun op e ann ->
   match op with

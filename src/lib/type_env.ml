@@ -135,11 +135,26 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
     unify ann t1b t2b
   | TFun (ts1, rt1), TFun (ts2, rt2) ->
     if Ast_helpers.list1_length ts1 <> Ast_helpers.list1_length ts2
-    then report_error ann "Cannot unify functions with different numbers of parameters"
+    then
+      (* unify up to length of the shortest one *)
+      let Cons1(ts1_hd, ts1_rest) = ts1 in
+      let Cons1(ts2_hd, ts2_rest) = ts2 in
+      let* () = unify ann ts1_hd ts2_hd in
+      let unify_params shortest shortest_ret_typ longest longest_ret_typ = 
+        let min_length_rest = List.length shortest in
+        let longest_to_unify = List.take min_length_rest longest in
+        let* _ = List.fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) shortest longest_to_unify in
+        let longest_remaining = List.drop min_length_rest longest in
+        let longest_remaining_list1 = Ast_helpers.list1_of_list longest_remaining in
+        unify ann shortest_ret_typ (TFun (longest_remaining_list1, longest_ret_typ))
+      in
+
+      if List.length ts1_rest < List.length ts2_rest 
+      then unify_params ts1_rest rt1 ts2_rest rt2 
+      else unify_params ts2_rest rt2 ts1_rest rt1
     else
       let* () = unify ann rt1 rt2 in
-      Ast_helpers.list1_fold_left2 (fun _ t1 t2 -> unify ann t1 t2) (return ()) ts1 ts2
-  | TVar _, TVar _ -> return () 
+      Ast_helpers.list1_fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) ts1 ts2
   | TVar id, t | t, TVar id -> 
     if occurs_in id t 
     then report_error ann "Occurs check failed: cannot unify type variable with type that contains it"
@@ -214,3 +229,56 @@ let instantiate_scheme : scheme -> typ t = function
 let expected_equal ann expected t = unify ann expected t
 
 let get_type te = bind (find (expr_get_ann te |> ann_get_type)) apply_subst
+
+let flatten_unification_env : unit t =
+  let open Operators in
+  let* {unification_env; _} = get_state in
+  let bindings = IntMap.bindings unification_env in
+  let* flattened_bindings = collect (List.map (fun (id, t) -> let* t' = apply_subst t in return (id, t')) bindings) in
+  let flattened_map = IntMap.of_list flattened_bindings in
+  modify_state (fun env -> { env with unification_env = flattened_map })
+
+let print_unification_env : unit t = 
+  let open Operators in
+  let* {unification_env; _} = get_state in
+  print_endline ("SIZE OF ENV: " ^ string_of_int (IntMap.cardinal unification_env));
+  let bindings = IntMap.bindings unification_env in
+  let binding_strs = List.map (fun (id, t) -> Format.asprintf "T%d -> %a" id Ast.pp_typ t) bindings in
+  let result = String.concat "\n" binding_strs in
+  return (Format.printf "Unification environment:\n%s\n" result)
+
+(* return the typ but every TVar which has not been unified with anything(?) is 
+  lifted to a TParam ('a) ... *)
+let generalize_type_vars typ : typ t = 
+  let open Operators in
+  let id_to_name = ref IntMap.empty in
+  
+  let rec go typ = 
+    let* typ = find typ in
+    match typ with
+    | TError -> return TError
+    | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return typ
+    | TSignal t -> let* t = go t in return (TSignal t)
+    | TLater t  -> let* t = go t in return (TLater t)
+    | TDelay t  -> let* t = go t in return (TDelay t)
+    | TOption t -> let* t = go t in return (TOption t)
+    | TChan t   -> let* t = go t in return (TChan t)
+    | TTuple (t1, t2) ->
+      let* t1 = go t1 in let* t2 = go t2 in return (TTuple (t1, t2))
+    | TSync (t1, t2) ->
+      let* t1 = go t1 in let* t2 = go t2 in return (TSync (t1, t2))
+    | TFun (Cons1(front, rest), ret) ->
+      let* params = collect (List.map go (front :: rest)) in
+      let* ret = go ret in
+      return (TFun (Cons1(List.hd params, List.tl params), ret))
+    | TVar id -> 
+      let* {unification_env; _} = get_state in
+      match IntMap.find_opt id unification_env with
+      | Some t -> go t
+      | None -> match IntMap.find_opt id !id_to_name with
+        | Some name -> return (TParam name)
+        | None -> 
+          let param_name = Utilities.new_name "'inferred" in
+          id_to_name := IntMap.add id param_name !id_to_name;
+          return (TParam param_name)
+  in go typ

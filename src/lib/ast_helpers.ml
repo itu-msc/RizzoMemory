@@ -48,3 +48,8 @@ let list1_fold_left f acc (Cons1 (x, rest)) = List.fold_left f (f acc x) rest
 let list1_fold_left2 f acc (Cons1 (x1, rest1)) (Cons1 (x2, rest2)) = 
   let acc = f acc x1 x2 in
   List.fold_left2 f acc rest1 rest2
+
+let list1_of_list lst = 
+  match lst with
+  | [] -> failwith "Cannot convert empty list to list1"
+  | x :: rest -> Cons1 (x, rest)
