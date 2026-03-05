@@ -128,11 +128,11 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     (* TODO: when we do this look up, record that it either came from scope_global or scope_local *)
     let* env = Type_env.get_state in
     let* var_type = 
-      match StringMap.find_opt name env.global with
+      match StringMap.find_opt name env.local with
       | Some scheme ->
         Type_env.instantiate_scheme scheme
       | None -> (
-        match StringMap.find_opt name env.local with
+        match StringMap.find_opt name env.global with
         | Some scheme -> Type_env.instantiate_scheme scheme
         | None -> 
           let* _ = error ann ("Unbound variable: " ^ name) in

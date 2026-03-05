@@ -66,10 +66,10 @@ This installs the dependencies, builds the project and then installs the extensi
 
 ### Debugging the extension
 
-For development you might want to run the extension in a debug session, which allows you to set breakpoints and inspect variables in the LSP server code. To do this, you can run the debug configuration `Run Rizzo Extension (repo root)` from the repository root. This will launch a new VS Code window with the extension loaded. You can then open any `.rizz` file to see diagnostics, symbols, definitions, and hover information provided by the LSP server.
+For development you might want to run the extension in a debug session, which allows you to set breakpoints and inspect variables in the LSP server code. To do this, you can run the debug configuration `Run Rizzo Extension (repo root)` from the repository root. This will launch a new VS Code window with the extension loaded. You can then open any `.rizz` file to see diagnostics, symbols, definitions, hover information, and completion suggestions provided by the LSP server.
 
 - Run debug config: `Run Rizzo Extension (repo root)`.
-- Then open any `.rizz` file to get diagnostics, symbols, definition, and hover.
+- Then open any `.rizz` file to get diagnostics, symbols, definition, hover, and completions (`Ctrl+Space` and typing-triggered suggestions).
 
 ### Notes
 
