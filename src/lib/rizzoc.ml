@@ -97,7 +97,7 @@ let apply_transforms p =
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
 
-let ref_count p = snd @@ Transformations.auto_ref_count p
+let ref_count p = Transformations.auto_ref_count p
 
 let typecheck = Typecheck.typecheck
 

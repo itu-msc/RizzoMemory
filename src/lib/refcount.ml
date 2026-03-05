@@ -32,6 +32,33 @@ type program = (string * fn) list
 
 let get_cases = List.map snd
 
+type ownership =
+  | Owned
+  | Borrowed
+
+let is_owned = function
+  | Owned -> true 
+  | Borrowed -> false
+
+(** Environment for keeping track of borrow status of local variables.
+    Ullirch & De Moura call it 'βₗ'. *)
+type beta_env = ownership StringMap.t
+let lookup env x = 
+  match StringMap.find_opt x env with
+  | None -> Owned
+  | Some b -> b
+
+(** Mapping of 'borrowing signatures'. For every function it returns a list describing 
+    the ownership it requires for each of its parameters.
+
+    Ullirch & De Moura call it 'β' (beta)
+*)
+type parameter_ownership = ownership list StringMap.t
+let lookup_params (b:parameter_ownership) (c:string) : ownership list =
+  match StringMap.find_opt c b with
+  | Some xs -> xs
+  | None -> failwith (Printf.sprintf "unknown function in beta: '%s'" c)
+
 let pp_primitive out = function
   | Var x -> Format.fprintf out "@{<lightcyan>%s@}" x
   | Const c -> Ast.pp_const out c
@@ -74,14 +101,27 @@ let rec pp_fnbody out = function
   | FnInc (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>inc@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>dec@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
 
-let pp_fn out (name, Fun (params, body)) =
-  Format.fprintf out "@{<magenta>fun@} @{<yellow>%s@}(%a) =@,  @[<v>%a@]" name
+let pp_fn ?ownerships:(own = None) out (name, Fun (params, body)) =
+  let pp_ownership out o = match o with
+    | Owned -> Format.fprintf out "@{<blue>Owned@}"
+    | Borrowed -> Format.fprintf out "@{<orange>Borrowed@}"
+  in
+  let pp_params_with_ownership out (own: parameter_ownership) = 
+    let own_list = StringMap.find_opt name own |> Option.value ~default:(List.map (fun _ -> Owned) params) in
+    let params_with_ownership = List.combine params own_list in
+    Format.fprintf out "%a" 
+      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
+        (fun out (p, o) -> Format.fprintf out "@{<lightcyan>%s@}: %a" p pp_ownership o)) params_with_ownership
+  in
+  Format.fprintf out "%a\n@{<magenta>fun@} @{<yellow>%s@}(%a) =@,  @[<v>%a@]" 
+    (Format.pp_print_option pp_params_with_ownership) own
+    name
     (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
         (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
     pp_fnbody body
 
-let pp_ref_counted_program out (p: program) =
-  Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_fn) p
+let pp_ref_counted_program ?ownerships:(own= None) out (p: program) =
+  Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") (pp_fn ~ownerships:own)) p
 
   
 let rec eq_program (a:program) (b:program) = List.for_all2 eq_fn a b
@@ -166,33 +206,6 @@ and free_vars_fn = function
     |> StringSet.union (List.fold_left (fun acc (_, branch) -> StringSet.union acc (free_vars branch)) StringSet.empty branches)
   | FnInc (v, f) | FnDec (v, f) ->
     StringSet.union (StringSet.singleton v) (free_vars f)
-  
-type ownership =
-  | Owned
-  | Borrowed
-
-let is_owned = function
-  | Owned -> true 
-  | Borrowed -> false
-
-(** Environment for keeping track of borrow status of local variables.
-    Ullirch & De Moura call it 'βₗ'. *)
-type beta_env = ownership StringMap.t
-let lookup env x = 
-  match StringMap.find_opt x env with
-  | None -> Owned
-  | Some b -> b
-
-(** Mapping of 'borrowing signatures'. For every function it returns a list describing 
-    the ownership it requires for each of its parameters.
-
-    Ullirch & De Moura call it 'β' (beta)
-*)
-type parameter_ownership = ownership list StringMap.t
-let lookup_params (b:parameter_ownership) (c:string) : ownership list =
-  match StringMap.find_opt c b with
-  | Some xs -> xs
-  | None -> failwith (Printf.sprintf "unknown function in beta: '%s'" c)
 
 (** Helper function to prepare [x] for use in an owned context. *)
 let insert_inc (x:primitive) v f beta_env = 

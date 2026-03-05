@@ -76,8 +76,8 @@ let () =
 		);
     let transformed = Rizzoc.apply_transforms program in
     print_section "------- Transformed -------" Ast.pp_program transformed;
-    let rc_program = Rizzoc.ref_count transformed in
-		print_section "------- Reference counted -------" RefCount.pp_ref_counted_program rc_program;
+    let rc_env, rc_program = Rizzoc.ref_count transformed in
+		print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
 		Rizzoc.emit rc_program "output.c"
 	with
 	| Rizzoc.Lexer.Error (loc, msg) ->
