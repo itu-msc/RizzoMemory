@@ -15,9 +15,9 @@ typedef struct rz_signal_list {
     rz_signal_t *signals[];
 } rz_signal_list_t;
 static rz_signal_list_t *rz_signal_list_create();
-static void rz_signal_list_add(rz_signal_list_t *list, rz_object_t *signal);
+static void rz_signal_list_add(rz_signal_list_t** list, rz_object_t* signal);
 static void rz_print_registered_outputs();
-static void rz_print_registered_output_head(rz_signal_t *sig, bool force);
+static void rz_print_registered_output_head(rz_signal_t* sig, bool force);
 
 rz_signal_list_t *rz_global_output_signals = NULL;
 
@@ -67,14 +67,14 @@ static rz_box_t rz_start_event_loop() {
 static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args) {
     (void)num_args;
     rz_box_t sig = args[0];
-    if (sig.kind != RZ_BOX_SIGNAL) {
+    if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL) {
         rz_debug_print_box(sig);
-        fprintf(stderr, "Runtime error: rz_register_output_signal got a non-signal value\n");
+        fprintf(stderr, "Runtime error: rz_register_output_signal got a non-signal value (%d)\n", sig.kind);
         exit(1);
     }
     /* we've just read a signal, which has a head value in the current time tick - output that */
     rz_print_registered_output_head((rz_signal_t *)rz_unbox_ptr(sig), true);
-    rz_signal_list_add(rz_global_output_signals, rz_unbox_ptr(sig));
+    rz_signal_list_add(&rz_global_output_signals, rz_unbox_ptr(sig));
     return rz_make_int(0); /* return unit */
 }
 
@@ -104,11 +104,13 @@ static rz_signal_list_t *rz_signal_list_create() {
     return list;
 }
 
-static void rz_signal_list_add(rz_signal_list_t *list, rz_object_t *signal) {
+static void rz_signal_list_add(rz_signal_list_t **list_ref, rz_object_t *signal) {
+    rz_signal_list_t* list = *list_ref;
     if (list->count == list->capacity) {
         size_t new_capacity = list->capacity * 2;
         list = realloc(list, sizeof(rz_signal_list_t) + new_capacity * sizeof(rz_signal_t *));
         list->capacity = new_capacity;
+        *list_ref = list;
     }
     list->signals[list->count++] = (rz_signal_t *)signal;
 }

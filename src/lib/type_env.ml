@@ -181,6 +181,7 @@ and find (t: typ) : typ t =
 let rec apply_subst ?(subst_map = None) (t: typ) : typ t =
   let open Operators in
   let apply_subst = apply_subst ~subst_map in
+  let* t = find t in
   match t with
   | TError -> return t
   | TUnit | TInt | TBool | TString | TName _ -> return t

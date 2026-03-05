@@ -16,16 +16,15 @@
 typedef int32_t rz_refcount_t;
 
 typedef enum rz_object_type {
-    RZ_OBJECT,
-    RZ_STRING,
-    RZ_SIGNAL,
-    RZ_PARTIAL_APP,
+    RZ_OBJECT = 0,
+    RZ_STRING = 1,
+    RZ_SIGNAL = 2,
+    RZ_PARTIAL_APP = 3,
 } rz_object_type_t;
 
 /*TODO: how big should these fields be? */
 typedef struct rz_header {
     uint16_t num_fields;         /* number of fields in constructor, recursively free */
-    uint16_t offset;             /* offset of first field after header - i.e. function should have 1 because of C function pointer */
     uint8_t tag;                 /* tag of constructor for case matching */
     uint8_t obj_type;            /* is this a signal? A regular memory block? A string? for deallocation logic! */
     rz_refcount_t refcount;      /* ref count */
@@ -40,6 +39,10 @@ static inline uint16_t rz_object_tag(rz_object_t* obj) {
     return obj->header.tag;
 }
 
+static inline rz_object_type_t rz_object_get_type(rz_object_t* obj) {
+    return (rz_object_type_t)obj->header.obj_type;
+}
+
 typedef struct rz_box rz_box_t;
 typedef struct rz_function rz_function_t;
 
@@ -52,8 +55,6 @@ typedef enum {
     RZ_BOX_INT,
     RZ_BOX_STRING_LITERAL,
     RZ_BOX_PTR,
-    RZ_BOX_PAP,
-    RZ_BOX_SIGNAL 
 } rz_box_kind_t;
 
 typedef struct rz_box {
@@ -108,7 +109,7 @@ typedef struct rz_object_fields {
 
 /* helper function to get field. Instead of casting to [rz_object_fields_t*] */
 static inline rz_box_t rz_object_get_field(rz_object_t* obj, int16_t idx) {
-    if (idx > obj->header.num_fields) {
+    if (idx >= obj->header.num_fields) {
         printf("Tried to access field '%d' out of '%d'", idx, obj->header.num_fields);
         exit(1);
     }
@@ -121,7 +122,6 @@ rz_object_t *rz_ctor(int16_t tag, int16_t num_fields, rz_box_t* args) {
     obj->_base.header.tag = tag;
     obj->_base.header.num_fields = num_fields;
     obj->_base.header.refcount = 1;
-    obj->_base.header.offset = 0;
     obj->_base.header.obj_type = RZ_OBJECT;
     for (int i = 0; i < num_fields; i++) {
         rz_box_t field = args[i];
@@ -143,30 +143,31 @@ static void rz_free_pap(rz_object_t* obj);
 static inline void rz_refcount_dec(rz_object_t* obj) {
     if (!obj) return;
     rz_refcount_t new_count = --obj->header.refcount;
-    if (0 != new_count) return;
-
-    switch (obj->header.obj_type) {
-        case RZ_SIGNAL: {
-            rz_signal_free(obj);
-        } break;
-        case RZ_STRING: {
-            fprintf(stderr, "TODO STRING FREE");
-            exit(1);
-        }
-        case RZ_PARTIAL_APP: {
-            rz_free_pap(obj);
-        } break;
-        case RZ_OBJECT: {
-            rz_object_fields_t *objf = (rz_object_fields_t*)obj;
-            uint16_t start = obj->header.offset;
-            uint16_t end = obj->header.num_fields + start;
-            for (int i = start; i < end; i++) {
-                rz_box_t field = objf->fields[i];
-                rz_refcount_dec_box(field);
+    
+    if (0 == new_count) {
+        switch (obj->header.obj_type) {
+            case RZ_SIGNAL: {
+                rz_signal_free(obj);
+            } break;
+            case RZ_PARTIAL_APP: {
+                rz_free_pap(obj);
+            } break;
+            case RZ_OBJECT: {
+                rz_object_fields_t *objf = (rz_object_fields_t*)obj;
+                uint16_t end = obj->header.num_fields;
+                for (uint16_t i = 0; i < end; i++) {
+                    rz_box_t field = objf->fields[i];
+                    rz_refcount_dec_box(field);
+                }
+                rz_free(obj);
+            } break;
+            case RZ_STRING: {
+                fprintf(stderr, "TODO STRING FREE");
+                exit(1);
             }
-            rz_free(obj);
-        } break;
+        }
     }
+
 }
 
 static rz_object_t* rz_reset_object(rz_object_t* obj) {
@@ -177,9 +178,8 @@ static rz_object_t* rz_reset_object(rz_object_t* obj) {
     }
     /* reset-unique - assuming refcount == 1*/
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
-    size_t start = objf->_base.header.offset;
-    size_t end = obj->header.num_fields + start;
-    for (size_t i = start; i < end; i++) {
+    size_t end = obj->header.num_fields;
+    for (uint16_t i = 0; i < end; i++) {
         rz_refcount_dec_box(objf->fields[i]);
     }
     return obj;
@@ -194,10 +194,9 @@ static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_f
     obj->header.tag = tag;
     obj->header.num_fields = num_fields;
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
-    size_t start = objf->_base.header.offset;
-    size_t end = obj->header.num_fields + start;
-    for (size_t i = start; i < end; i++) {
-        objf->fields[i] = args[i - start];
+    size_t end = obj->header.num_fields;
+    for (size_t i = 0; i < end; i++) {
+        objf->fields[i] = args[i];
     }
     return obj;
 }
@@ -216,7 +215,7 @@ static inline void rz_refcount_inc_box(rz_box_t box) {
 
 typedef struct rz_function {
     rz_object_t _base;
-    rz_box_t fun;       /* boxed ptr to a C-function - count this a num_fields */
+    rz_fun* fun;       /* pointer to the C-function to call */
     /* free variables, closure */
 } rz_function_t;
 
@@ -242,25 +241,24 @@ static inline rz_function_t *rz_malloc_func(rz_fun *f, int32_t arity, size_t num
     rz_function_t* fun = (rz_function_t*) rz_malloc(sizeof_function_with(num_free_vars));
     fun->_base.header.num_fields = num_free_vars;
     fun->_base.header.refcount = 1;
-    fun->_base.header.offset = 1;
     fun->_base.header.obj_type = RZ_PARTIAL_APP;
-    fun->fun = (rz_box_t){ .kind = RZ_BOX_INT, .as.c_fun_ptr = f };
+    fun->fun = f;
     fun->_base.header.tag = arity; // fun->arity = arity;
     return fun;
 }
 
 static void rz_free_pap(rz_object_t* obj) {
     rz_function_t* fun = (rz_function_t*) obj;
-    rz_box_t* args = ARGS_OF_BOXED(fun);
+    rz_function_args_t* fun_args = ARGS_OF(fun);
     int16_t n = fun->_base.header.num_fields;
     for (size_t i = 0; i < n; i++) {
-        rz_refcount_dec_box(args[i]);
+        rz_refcount_dec_box(fun_args->args[i]);
     }
     rz_free(fun);
 }
 
 static inline rz_box_t rz_make_ptr_fun(rz_function_t* fun) {
-    return (rz_box_t){ .kind = RZ_BOX_PAP, .as.obj = (rz_object_t*) fun };
+    return (rz_box_t){ .kind = RZ_BOX_PTR, .as.obj = (rz_object_t*) fun };
 }
 
 static inline rz_function_t* rz_unbox_fun(rz_box_t box) {
@@ -280,7 +278,7 @@ rz_box_t rz_lift_c_fun(rz_fun* f, int32_t arity, rz_box_t* free_vars, size_t num
 static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
     rz_function_t* fun = (rz_function_t*)fun_obj;
     size_t fun_arity = rz_function_get_arity(fun);
-    rz_fun* function_ptr = fun->fun.as.c_fun_ptr;
+    rz_fun* function_ptr = fun->fun;
     if(fun_arity == fun->_base.header.num_fields + 1) {
         /* var-app-full */
         size_t n = fun->_base.header.num_fields;
@@ -341,22 +339,34 @@ static inline void rz_debug_print_box(rz_box_t box) {
         case RZ_BOX_STRING_LITERAL: {
             printf("%s", rz_unbox_str_lit(box));
         } break;
-        case RZ_BOX_SIGNAL:
         case RZ_BOX_PTR: {
-            rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
-            printf("ctor(%d, ref: %d)", fields->_base.header.tag, fields->_base.header.refcount);
-            if(fields->_base.header.num_fields > 0) {
-                printf("{ ");
-                for (size_t i = fields->_base.header.offset; i < fields->_base.header.num_fields; i++)
-                {
-                    rz_debug_print_box(fields->fields[i]); printf(" ");
+            switch (rz_object_get_type(rz_unbox_ptr(box))) {
+                case RZ_STRING: {
+                    fprintf(stderr, "ALLOCATED STRING TODO");
+                    exit(1);
+                } break;
+                case RZ_SIGNAL: 
+                case RZ_OBJECT: {
+                    rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
+                    printf("ctor(%d, ref: %d)", fields->_base.header.tag, fields->_base.header.refcount);
+                    if(fields->_base.header.num_fields > 0) {
+                        printf("{ ");
+                        for (size_t i = 0; i < fields->_base.header.num_fields; i++)
+                        {
+                            rz_debug_print_box(fields->fields[i]); printf(" ");
+                        }
+                        printf("}");
+                    }
+                }break;
+                case RZ_PARTIAL_APP: {
+                    rz_function_t* fun = (rz_function_t*)box.as.obj;
+                    printf("pap(ref: %d, arity: %d, applied_vars: %d)", fun->_base.header.refcount, fun->_base.header.tag, fun->_base.header.num_fields);
+                } break;
+                default: {
+                    printf("Unknown object type: '%d'", rz_object_get_type(rz_unbox_ptr(box)));
+                    exit(1);
                 }
-                printf("}");
             }
-        } break;
-        case RZ_BOX_PAP: {
-            rz_function_t* fun = (rz_function_t*)box.as.obj;
-            printf("pap(ref: %d, arity: %d, applied_vars: %d)", fun->_base.header.refcount, fun->_base.header.tag, fun->_base.header.num_fields);
         } break;
         default: {
             printf("Unknown box tag: '%d'", box.kind);
