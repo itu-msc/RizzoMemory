@@ -208,8 +208,8 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
   | EConst (CNever, ann) -> 
     let* inner = Type_env.fresh_type_var () in 
     let* _ = Type_env.expected_equal ann expected (TLater inner) in
-    let* t = Type_env.find expected in
-    return (EConst (CNever, Ann_typed (get_location ann, t)))
+    let* t = Type_env.apply_subst inner in
+    return (EConst (CNever, Ann_typed (get_location ann, TLater t)))
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in

@@ -176,7 +176,7 @@ let rec pp_pattern out = function
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
   | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
   | PCtor (name, args, _) -> 
-    if List.length args = 0 then Format.fprintf out "@{<red>%s (notice args are empty!!)@}" (fst name)
+    if List.length args = 0 then Format.fprintf out "@{<green>%s@}" (fst name)
     else Format.fprintf out "@{<green>%s@}(%a)" (fst name) (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_pattern) args
 
 let rec pp_case_branch out (p, b, _ : _ case_branch) =
@@ -189,7 +189,7 @@ and pp_expr out =
   | EConst (c,_) -> pp_const out c
   | EVar (x, _) -> fprintf out "@{<lightcyan>%s@}" x
   | ECtor (name, args, _) ->
-    if List.length args = 0 then fprintf out "{<red>%s (notice args are empty!!)@}" (fst name)
+    if List.length args = 0 then fprintf out "@{<green>%s@}" (fst name)
     else
       fprintf out "%s(%a)" (fst name)
         (pp_print_list ~pp_sep:(fun out () -> fprintf out ",@ ") pp_expr) args
@@ -288,7 +288,7 @@ and pp_typed_expr out =
   | EConst (c, _) -> Format.fprintf out "%a" pp_const c
   | EVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | ECtor (name, args, _) ->
-    if List.length args = 0 then Format.fprintf out "{<red>%s (notice args are empty!!)@}" (fst name)
+    if List.length args = 0 then Format.fprintf out "@{<green>%s@}" (fst name)
     else
       Format.fprintf out "@{<green>%s@}(@[<hov>%a@])" (fst name)
         (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args

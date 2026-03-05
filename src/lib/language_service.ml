@@ -618,13 +618,13 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                 if range_contains_position name_range position then
                   let base =
                     match rhs with
-                    | Ast.EFun _ -> "top-level function " ^ name_text top_name
-                    | _ -> "top-level binding " ^ name_text top_name
+                    | Ast.EFun _ -> "top-level function: " ^ name_text top_name
+                    | _ -> "top-level binding: " ^ name_text top_name
                   in
                   let type_block =
                     match typ_of_ann_opt top_ann with
                     | None -> ""
-                    | Some t -> Format.asprintf "\n```rizzo\nType dsafasdf: %a\n```" Ast.pp_typ t
+                    | Some t -> Format.asprintf "\nType:\n```rizzo\n%a\n```" Ast.pp_typ t
                   in
                   Some { range = name_range; contents = base ^ type_block }
                 else

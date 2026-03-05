@@ -33,47 +33,60 @@ type program = (string * fn) list
 let get_cases = List.map snd
 
 let pp_primitive out = function
-  | Var x -> Format.pp_print_string out x
+  | Var x -> Format.fprintf out "@{<lightcyan>%s@}" x
   | Const c -> Ast.pp_const out c
 
 let pp_rexpr out = 
   let comma_separated pp out = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp out in
   function
   | RConst c -> pp_primitive out (Const c)
-  | RCall (c, ys) -> Format.fprintf out "%s(%a)" c (comma_separated pp_primitive) ys
-  | RPartialApp (c, ys) -> Format.fprintf out "pap %s(%a)" c (comma_separated pp_primitive) ys
-  | RVarApp (x, y) -> Format.fprintf out "%s %a" x pp_primitive y
-  | RCtor Ctor {tag; fields} -> Format.fprintf out "Ctor%d(%a)" tag (comma_separated pp_primitive) fields
-  | RCtor Signal {head; tail} -> Format.fprintf out "Signal(%a, %a)" pp_primitive head pp_primitive tail
-  | RProj (i, x) -> Format.fprintf out "proj_%d %s" i x
-  | RReset x -> Format.fprintf out "reset %s" x
-  | RReuse (x, Ctor {tag; fields}) -> Format.fprintf out "reuse %s in Ctor%d(%a)" x tag (comma_separated pp_primitive) fields
-  | RReuse (x, Signal {head; tail}) -> Format.fprintf out "reuse %s in Signal(%a, %a)" x pp_primitive head pp_primitive tail
+  | RCall (c, ys) ->
+      Format.fprintf out "@{<green>%s@}(%a)" c (comma_separated pp_primitive) ys
+  | RPartialApp (c, ys) ->
+      Format.fprintf out "@{<magenta>pap@} @{<green>%s@}(%a)" c (comma_separated pp_primitive) ys
+  | RVarApp (x, y) ->
+      Format.fprintf out "@{<lightcyan>%s@} %a" x pp_primitive y
+  | RCtor Ctor {tag; fields} ->
+      Format.fprintf out "@{<green>Ctor%d@}(%a)" tag (comma_separated pp_primitive) fields
+  | RCtor Signal {head; tail} ->
+      Format.fprintf out "@{<green>Signal@}(%a, %a)" pp_primitive head pp_primitive tail
+  | RProj (i, x) ->
+      Format.fprintf out "@{<yellow>proj_%d@} @{<lightcyan>%s@}" i x
+  | RReset x ->
+      Format.fprintf out "@{<magenta>reset@} @{<lightcyan>%s@}" x
+  | RReuse (x, Ctor {tag; fields}) ->
+      Format.fprintf out "@{<magenta>reuse@} @{<lightcyan>%s@} @{<magenta>in@} @{<green>Ctor%d@}(%a)"
+        x tag (comma_separated pp_primitive) fields
+  | RReuse (x, Signal {head; tail}) ->
+      Format.fprintf out "@{<magenta>reuse@} @{<lightcyan>%s@} @{<magenta>in@} @{<green>Signal@}(%a, %a)"
+        x pp_primitive head pp_primitive tail
 
 let rec pp_fnbody out = function
-  | FnRet x -> Format.fprintf out "ret %a" pp_primitive x
+  | FnRet x -> Format.fprintf out "@{<magenta>ret@} %a" pp_primitive x
   | FnLet (y, r, f) ->
-        Format.fprintf out "let %s = %a in@ %a" y pp_rexpr r pp_fnbody f
+        Format.fprintf out "@[<v 0>@{<magenta>let@} @{<lightcyan>%s@} = %a @{<magenta>in@}@,%a@]" y pp_rexpr r pp_fnbody f
   | FnCase (x, fs) ->
       let pp_branch out f =
-        Format.fprintf out "@[<hov 2>| %a@]" pp_fnbody f
+        Format.fprintf out "@{<blue>|@} @[<hov 2>%a@]" pp_fnbody f
       in
-      Format.fprintf out "match %s with@,  @[%a@]" x
+      Format.fprintf out "@[<v 0>@{<magenta>match@} @{<lightcyan>%s@} @{<magenta>with@}@,%a@]" x
         (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_branch) (get_cases fs)
-  | FnInc (x, f) -> Format.fprintf out "inc %s;@ %a" x pp_fnbody f
-  | FnDec (x, f) -> Format.fprintf out "dec %s;@ %a" x pp_fnbody f
+  | FnInc (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>inc@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
+  | FnDec (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>dec@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
 
 let pp_ref_counted_program out (p: program) =
   let pp_fn out (name, Fun (params, body)) =
-    Format.fprintf out "fun %s(%a) =@,  @[<v>%a@]" name
-      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) params
+    Format.fprintf out "@{<magenta>fun@} @{<green>%s@}(%a) =@,  @[<v>%a@]" name
+      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
+         (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
       pp_fnbody body
   in
   Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_fn) p
 
 let pp_fn out (name, Fun (params, body)) =
-  Format.fprintf out "fun %s(%a) =@,  @[<v>%a@]" name
-    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") Format.pp_print_string) params
+  Format.fprintf out "@{<magenta>fun@} @{<green>%s@}(%a) =@,  @[<v>%a@]" name
+    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
+       (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
     pp_fnbody body
   
 let rec eq_program (a:program) (b:program) = List.for_all2 eq_fn a b

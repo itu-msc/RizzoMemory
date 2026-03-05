@@ -93,9 +93,9 @@ let apply_transforms p =
   (* |> Transformations.eliminate_patterns *)
   |> Transformations.remove_duplicate_names
   |> Transformations.eliminate_simple_patterns
+  |> Transformations.eliminate_dead_let_program
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
-  |> Transformations.eliminate_dead_let_program
 
 let ref_count p = snd @@ Transformations.auto_ref_count p
 
