@@ -15,11 +15,19 @@
 #endif
 typedef int32_t rz_refcount_t;
 
+typedef enum rz_object_type {
+    RZ_OBJECT,
+    RZ_STRING,
+    RZ_SIGNAL,
+    RZ_PARTIAL_APP,
+} rz_object_type_t;
+
 /*TODO: how big should these fields be? */
 typedef struct rz_header {
     uint16_t num_fields;         /* number of fields in constructor, recursively free */
     uint16_t offset;             /* offset of first field after header - i.e. function should have 1 because of C function pointer */
-    uint16_t tag;                /* tag of constructor for case matching */
+    uint8_t tag;                 /* tag of constructor for case matching */
+    uint8_t obj_type;            /* is this a signal? A regular memory block? A string? for deallocation logic! */
     rz_refcount_t refcount;      /* ref count */
 } rz_header_t;
 
@@ -114,6 +122,7 @@ rz_object_t *rz_ctor(int16_t tag, int16_t num_fields, rz_box_t* args) {
     obj->_base.header.num_fields = num_fields;
     obj->_base.header.refcount = 1;
     obj->_base.header.offset = 0;
+    obj->_base.header.obj_type = RZ_OBJECT;
     for (int i = 0; i < num_fields; i++) {
         rz_box_t field = args[i];
         obj->fields[i] = field;
@@ -127,26 +136,43 @@ static inline void rz_refcount_inc(rz_object_t* obj) {
     if (obj) obj->header.refcount++;
 }
 
+/* forward declare from heap.h */
+static void rz_signal_free(rz_object_t* obj);
 static void rz_refcount_dec_box(rz_box_t box);
-static inline void rz_refcount_dec(rz_object_t* obj, void (*free_func)(void*)) {
+static void rz_free_pap(rz_object_t* obj);
+static inline void rz_refcount_dec(rz_object_t* obj) {
     if (!obj) return;
     rz_refcount_t new_count = --obj->header.refcount;
-    if (0 == new_count) {
-        rz_object_fields_t *objf = (rz_object_fields_t*)obj;
-        uint16_t start = obj->header.offset;
-        uint16_t end = obj->header.num_fields + start;
-        for (int i = start; i < end; i++) {
-            rz_box_t field = objf->fields[i];
-            rz_refcount_dec_box(field);
+    if (0 != new_count) return;
+
+    switch (obj->header.obj_type) {
+        case RZ_SIGNAL: {
+            rz_signal_free(obj);
+        } break;
+        case RZ_STRING: {
+            fprintf(stderr, "TODO STRING FREE");
+            exit(1);
         }
-        free_func(obj);
+        case RZ_PARTIAL_APP: {
+            rz_free_pap(obj);
+        } break;
+        case RZ_OBJECT: {
+            rz_object_fields_t *objf = (rz_object_fields_t*)obj;
+            uint16_t start = obj->header.offset;
+            uint16_t end = obj->header.num_fields + start;
+            for (int i = start; i < end; i++) {
+                rz_box_t field = objf->fields[i];
+                rz_refcount_dec_box(field);
+            }
+            rz_free(obj);
+        } break;
     }
 }
 
 static rz_object_t* rz_reset_object(rz_object_t* obj) {
     /* reset-shared */
     if(obj->header.refcount != 1) {
-        rz_refcount_dec(obj, rz_free);
+        rz_refcount_dec(obj);
         return NULL;
     }
     /* reset-unique - assuming refcount == 1*/
@@ -164,6 +190,7 @@ static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_f
     /* reuse-shared */
     if(obj == NULL) return rz_ctor(tag, num_fields, args);
     /* reuse-unique */
+    obj->header.obj_type = RZ_OBJECT;
     obj->header.tag = tag;
     obj->header.num_fields = num_fields;
     rz_object_fields_t* objf = (rz_object_fields_t*)obj;
@@ -175,16 +202,9 @@ static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_f
     return obj;
 }
 
-/* forward declare from heap.h */
-static void rz_signal_free(rz_object_t* obj);
 static inline void rz_refcount_dec_box(rz_box_t box) {
     if (!rz_is_boxed(box) && box.as.obj) {
-        if (box.kind == RZ_BOX_SIGNAL) {
-            rz_refcount_dec(box.as.obj, (void (*)(void*))rz_signal_free);
-        }
-        else { 
-            rz_refcount_dec(box.as.obj, rz_free);
-        }
+        rz_refcount_dec(box.as.obj);
     }
 }
 
@@ -223,9 +243,20 @@ static inline rz_function_t *rz_malloc_func(rz_fun *f, int32_t arity, size_t num
     fun->_base.header.num_fields = num_free_vars;
     fun->_base.header.refcount = 1;
     fun->_base.header.offset = 1;
+    fun->_base.header.obj_type = RZ_PARTIAL_APP;
     fun->fun = (rz_box_t){ .kind = RZ_BOX_INT, .as.c_fun_ptr = f };
     fun->_base.header.tag = arity; // fun->arity = arity;
     return fun;
+}
+
+static void rz_free_pap(rz_object_t* obj) {
+    rz_function_t* fun = (rz_function_t*) obj;
+    rz_box_t* args = ARGS_OF_BOXED(fun);
+    int16_t n = fun->_base.header.num_fields;
+    for (size_t i = 0; i < n; i++) {
+        rz_refcount_dec_box(args[i]);
+    }
+    rz_free(fun);
 }
 
 static inline rz_box_t rz_make_ptr_fun(rz_function_t* fun) {
@@ -260,7 +291,7 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
             rz_refcount_inc_box(args[i] = fun_free_args->args[i]);
         }
         args[n] = arg;
-        rz_refcount_dec(fun_obj, rz_free);
+        rz_refcount_dec(fun_obj);
         return function_ptr(n + 1, args);
     } else { 
         /* var-app-part */
@@ -274,7 +305,7 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
             rz_box_t arg = copy_free_args->args[i] = fun_free_args->args[i];
             rz_refcount_inc_box(arg);
         }
-        rz_refcount_dec(fun_obj, rz_free);
+        rz_refcount_dec(fun_obj);
         return rz_make_ptr_fun(copy);
     }
 }

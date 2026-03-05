@@ -73,6 +73,7 @@ static rz_object_t* rz_signal_ctor(rz_box_t head, rz_box_t tail) {
     rz_box_t args[5] = {head, tail, rz_make_int(0), rz_make_ptr((rz_object_t*)NULL), rz_make_ptr((rz_object_t*)NULL)};
     rz_signal_t* new_sig = (rz_signal_t*) rz_ctor(0, 5, args);
     new_sig->_base.num_fields = 2; /* only count head and tail as fields for ref counting purposes */
+    new_sig->_base.obj_type = RZ_SIGNAL;
     
     rz_insert_signal_node(new_sig);
     return (rz_object_t*) new_sig;
@@ -100,6 +101,7 @@ static inline rz_object_t* rz_reuse_signal(rz_object_t* obj, rz_box_t head, rz_b
     sig->_base.num_fields = 2; // TODO: Consider if this needs to be 5 or something
     sig->_base.offset = 0;
     sig->_base.tag = 0;
+    sig->_base.obj_type = RZ_SIGNAL;
     sig->head = head;
     sig->tail = tail;
 
