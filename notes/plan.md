@@ -10,7 +10,8 @@
   - [ ] Eta expansion ONLY CONSTRUCTORS
   - [x] Lambda lifting
   - [x] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
-  - [ ] Transform applications on (local) variables to a series of 1 apps. Because variable applications take one argument in the reference counted IR. Or just change the Refcount.VarApp to take a list of primitives ... 
+  - [ ] Transform applications on (local) variables to a series of 1 apps, Or just change the Refcount.VarApp to take a list of primitives.
+    - We currently have variable applications take one argument in the reference counted IR.
   - [x] Dead let-binding (code) elimination
   - [x] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...
   - [x] A-Normalization (ANF, Flanagan et al.). May have to be more aggressive, since we need all arguments to be variables.

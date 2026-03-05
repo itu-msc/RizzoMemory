@@ -128,6 +128,35 @@ let json_of_hover (hover : LS.hover_info) : Yojson.Safe.t =
     ("range", json_of_range hover.range)
   ]
 
+let json_of_completion_item (item : LS.completion_item) : Yojson.Safe.t =
+  let fields =
+    [
+      ("label", `String item.label);
+      ("kind", `Int item.kind);
+    ]
+  in
+  let fields =
+    match item.detail with
+    | Some detail -> fields @ [ ("detail", `String detail) ]
+    | None -> fields
+  in
+  let fields =
+    match item.documentation with
+    | Some documentation -> fields @ [ ("documentation", `String documentation) ]
+    | None -> fields
+  in
+  `Assoc fields
+
+let json_of_completion_list (completion : LS.completion_list) : Yojson.Safe.t =
+  `Assoc [
+    ("isIncomplete", `Bool completion.is_incomplete);
+    ("items", `List (List.map json_of_completion_item completion.items))
+  ]
+
+let completion_trigger_characters : Yojson.Safe.t list =
+  let chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789" in
+  List.init (String.length chars) (fun idx -> `String (String.make 1 chars.[idx]))
+
 let semantic_token_type_index = function
   | LS.SemanticFunction -> 0
   | LS.SemanticVariable -> 1
@@ -267,6 +296,10 @@ let process_request ~method_name ~id ~params =
             ("documentSymbolProvider", `Bool true);
             ("definitionProvider", `Bool true);
             ("hoverProvider", `Bool true);
+            ("completionProvider", `Assoc [
+              ("resolveProvider", `Bool false);
+              ("triggerCharacters", `List completion_trigger_characters)
+            ]);
             ("semanticTokensProvider", `Assoc [
               ("legend", `Assoc [
                 ("tokenTypes", `List [`String "function"; `String "variable"; `String "type"]);
@@ -331,6 +364,30 @@ let process_request ~method_name ~id ~params =
         Some (match hover with Some h -> json_of_hover h | None -> `Null)
       in
       response ~id ~result:(match result with Some value -> value | None -> `Null)
+  | "textDocument/completion" ->
+      let result =
+        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
+        let* uri = text_document |> member "uri" |> to_option to_string in
+        let* text = text_for_uri uri in
+        let* position_json = params |> member "position" |> to_option (fun x -> x) in
+        let* line = position_json |> member "line" |> to_option to_int in
+        let* character = position_json |> member "character" |> to_option to_int in
+        let filename = path_of_uri uri in
+        let completion =
+          LS.completions_at_position
+            ~uri
+            ~filename:(Some filename)
+            ~text
+            ~position:{ LS.line; character }
+        in
+        Some (json_of_completion_list completion)
+      in
+      response
+        ~id
+        ~result:
+          (match result with
+           | Some value -> value
+           | None -> json_of_completion_list LS.completion_empty_list)
   | "textDocument/semanticTokens/full" ->
       let result =
         let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in

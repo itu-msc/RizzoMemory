@@ -2,6 +2,15 @@
 
 This VS Code extension starts the local `rizzolsp` language server for `.rizz` files.
 
+## Features
+
+- Diagnostics and parser or type checker errors
+- Document symbols
+- Go to definition
+- Hover information
+- Semantic tokens
+- Code completion for in-scope names (manual `Ctrl+Space` and typing-triggered suggestions)
+
 ## Development
 
 - Install deps: `npm install`

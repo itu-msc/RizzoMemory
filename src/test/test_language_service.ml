@@ -90,6 +90,103 @@ let has_semantic_token ~(tokens : Language_service.semantic_token list) ~(line :
       && Language_service.semantic_token_is_declaration token = declaration)
     tokens
 
+let completion_labels ~(text : string) ~(position : Language_service.position) : string list =
+  let completion =
+    Language_service.completions_at_position
+      ~uri:"file:///test.rizz"
+      ~filename:None
+      ~text
+      ~position
+  in
+  List.map (fun (item : Language_service.completion_item) -> item.label) completion.items
+
+let completion_has_label ~(labels : string list) ~(name : string) : bool =
+  List.exists (fun label -> String.equal label name) labels
+
+let starts_with ~(prefix : string) (s : string) : bool =
+  let n = String.length prefix in
+  String.length s >= n && String.sub s 0 n = prefix
+
+let test_completions_include_local_scope_and_top_level () =
+  let text =
+    "fun addOne x =\n"
+    ^ "  let y = x in\n"
+    ^ "  y\n"
+  in
+  let labels =
+    completion_labels
+      ~text
+      ~position:{ Language_service.line = 2; character = 2 }
+  in
+  Alcotest.(check bool)
+    "includes function parameter"
+    true
+    (completion_has_label ~labels ~name:"x");
+  Alcotest.(check bool)
+    "includes local let binding"
+    true
+    (completion_has_label ~labels ~name:"y");
+  Alcotest.(check bool)
+    "includes top-level function"
+    true
+    (completion_has_label ~labels ~name:"addOne")
+
+let test_completions_respect_case_branch_scope () =
+  let text =
+    "fun pick s =\n"
+    ^ "  match s with\n"
+    ^ "  | Left (x) -> x\n"
+    ^ "  | Right (y) -> y\n"
+  in
+  let labels =
+    completion_labels
+      ~text
+      ~position:{ Language_service.line = 2; character = 16 }
+  in
+  Alcotest.(check bool)
+    "includes first-branch binding"
+    true
+    (completion_has_label ~labels ~name:"x");
+  Alcotest.(check bool)
+    "does not include second-branch binding"
+    false
+    (completion_has_label ~labels ~name:"y")
+
+let test_completions_include_builtins_and_constructors () =
+  let text =
+    "fun main x =\n"
+    ^ "  x\n"
+  in
+  let labels =
+    completion_labels
+      ~text
+      ~position:{ Language_service.line = 1; character = 2 }
+  in
+  Alcotest.(check bool)
+    "includes builtin function"
+    true
+    (completion_has_label ~labels ~name:"add");
+  Alcotest.(check bool)
+    "includes constructor"
+    true
+    (completion_has_label ~labels ~name:"Just")
+
+let test_completions_filter_by_prefix () =
+  let text = "fun main x = st\n" in
+  let labels =
+    completion_labels
+      ~text
+      ~position:{ Language_service.line = 0; character = 15 }
+  in
+  Alcotest.(check bool)
+    "contains matching builtin"
+    true
+    (completion_has_label ~labels ~name:"start_event_loop");
+  Alcotest.(check bool)
+    "all completions share prefix"
+    true
+    (List.for_all (starts_with ~prefix:"st") labels)
+
 let test_semantic_tokens_mvp () =
   let text =
     "fun id x = x\n"
@@ -263,6 +360,10 @@ let tests = [
   "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
   "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
   "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
+  "completion local and top-level scope", `Quick, test_completions_include_local_scope_and_top_level;
+  "completion case branch scope", `Quick, test_completions_respect_case_branch_scope;
+  "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
+  "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
   "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in
