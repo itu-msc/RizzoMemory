@@ -1,5 +1,13 @@
 # Project Plan and progress for Rizzo
 
+## Priority order of activities
+
+1. Read the new paper
+2. Fix the runtime?
+3. Start on writing the paper
+4. Make some example programs that we can analyse the memory management of, and use them in the paper.
+5. Based on findings, consider next steps
+
 ## Counting immutable beans paper (Ullrich & de Moura)
 
 - [x] Implement basic increment and decrement functions
@@ -10,7 +18,7 @@
   - [ ] Eta expansion ONLY CONSTRUCTORS
   - [x] Lambda lifting
   - [x] Copy propagation (to eliminate trivial bindings of the shape `let x = y in ...`)
-  - [x] Transform applications on (local) variables to a series of 1 apps, Or just change the Refcount.VarApp to take a list of primitives.
+  - [x] Transform applications on (local) variables to a series of 1 apps, Or just change the `Refcount.VarApp` to take a list of primitives.
     - We currently have variable applications take one argument in the reference counted IR.
   - [x] Dead let-binding (code) elimination
   - [x] All parameter- and let-names must be unique in a scope. To allow shadowing or not ...
@@ -18,12 +26,15 @@
   - [x] Add consecutive lambda elimination (lowers nested lambdas to a single function with multiple parameters, e.g. `fun x -> fun y -> e` becomes `fun (x, y) -> e`)
   - [ ] Implement the suggestion in section "Preserving tail calls" on page 8 of Ullrich & de Moura.
 - [x] Allow constant types and ensure they are not reference counted (e.g. `int`, `string`, `bool`)
+- [ ] Read and consider the findings from the paper "Reference Counting with Frame Limited Reuse"
 
 ## Adapting immutable beans for Rizzo expressions(?)
 
 - [x] How do we represent necessary Rizzo constructors (delayed, later, signal, sum + tuples(?)) => as ctors
 - [x] Do we keep around the distinction between `fn_body` and `(r)expr`? => yes, limit how much we change the actual inc/dec code.
 - [ ] How do the semantics of Rizzo constructions change the inc/dec rules?
+- [ ] Push down tail instructions as far down the AST as possible, to allow more reuse opportunities.
+- [ ] Ensure that `delay` calls are lazy evaluated
 
 ## Perceus paper
 
@@ -41,6 +52,15 @@
 - [ ] Design syntax for Rizzo
 - [ ] Make code examples
 - [ ] Add pattern matching in function parameters (if time permits)
+- [ ] Consider Recursion based on Rizzo language rules (if time permits)
+
+## Implement Rizzo Runtime (Transpiler)
+
+- [x] Implement an initial transpiler from Rizzo to C
+- [ ] Ensure the transpiler correctly handles the memory management system (reference counting, reuse, etc.)
+- [ ] Add a pointer representation of signals (Important in the advance semantics)
+  - [ ] `head` needs to be a function application
+  - [ ] `tail` and `watch` needs to dereference the pointer to get the function of the real signals tail.
 
 ## Rizzo type checking
 
@@ -53,9 +73,9 @@
 
 - [x] Set up basic LSP server
 - [x] Add syntax highlighting
-- [ ] Add error reporting
+- [x] Add error reporting
 - [ ] Add code completion
-- [ ] Add go-to-definition
+- [x] Add go-to-definition
 - [ ] Add other features as time permits
 
 ## Write up Rizzo paper
