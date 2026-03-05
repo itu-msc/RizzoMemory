@@ -13,7 +13,7 @@ let mk name ?(ownership = None) ?(proj_idx = None) (t: Ast.typ) () : builtin_inf
   param_ownership = ownership;
   projection_index = proj_idx;
   typ = t;
-} 
+}
 
 let builtins = [
   mk "start_event_loop" ~ownership:(Some [Refcount.Borrowed]) (TFun(Cons1(Ast.TUnit, []), TUnit)) ();
@@ -29,10 +29,10 @@ let builtins = [
   mk "head" ~proj_idx:(Some 0) (TFun (Cons1(TSignal (TParam "'a"), []), TParam "'a")) ();
   mk "fst" ~proj_idx: (Some 0) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'a")) ();
   mk "snd" ~proj_idx: (Some 1) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'b")) ();
-  mk "left_elim"      ~proj_idx:(Some 0)  TError (); (* TODO: revisit these*)
-  mk "right_elim"     ~proj_idx:(Some 0)  TError ();
-  mk "both_elim_fst"  ~proj_idx:(Some 0)  TError ();
-  mk "both_elim_snd"  ~proj_idx:(Some 1)  TError ();
+  mk "left_elim"      ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'a")) (); 
+  mk "right_elim"     ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'b")) ();
+  mk "both_elim_fst"  ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'a")) ();
+  mk "both_elim_snd"  ~proj_idx:(Some 1)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'b")) ();
 
   mk "console" (TChan TInt) ()
 ]

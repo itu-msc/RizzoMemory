@@ -82,20 +82,7 @@ let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr =
     )
   | EApp (EVar (f, _), [x], _) when LocalsEnv.mem f locals -> Refcount.RVarApp (f, get_name x)
   | EApp (EVar (f, _), _,_) when LocalsEnv.mem f locals -> 
-    failwith "expr_to_rexpr failed: variable application has more than one argument - not supported in refcount IR"
-    (* f x1 x2 x3 -> (((f x1) x2) x3)
-      =>
-      let fx1 = f x1 in
-      let fx2 = fx1 x2 in
-      let fx3 = fx2 x3 in
-      fx3
-    *)
-    (* let fx1 = Refcount.RVarApp (f, get_name x) in
-    List.fold_left (fun acc arg ->
-      let intermediate_var = Utilities.new_var () in
-      let binding  = Refcount.FnLet (intermediate_var, acc, rest_rexpr) in
-      Refcount.RVarApp (intermediate_var, get_name arg)
-    ) fx1 xs *)
+    failwith (Printf.sprintf "expr_to_rexpr failed: variable application has more than one argument - if this case was hit, we did something wrong in %s" __FILE__)
   | EApp (EVar (f, _), xs, _) -> 
     (match M.find_opt f globals with
     | Some Some arity when arity = List.length xs -> RCall (f, List.map get_name xs)
@@ -117,12 +104,29 @@ let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr =
   | EAnno (e, _, _) -> expr_to_rexpr globals locals e
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
 
+and convert_var_apps f args x body : Refcount.fn_body =  
+  let rec aux prev_name = function
+      | [] -> body
+      | [arg] -> Refcount.FnLet (x, Refcount.RVarApp (prev_name, get_name arg), body)
+      | arg :: args ->
+        let intermediate_var = Utilities.new_name f in
+        Refcount.FnLet (intermediate_var, Refcount.RVarApp (prev_name, get_name arg), aux intermediate_var args)
+  in
+  aux f args 
+
 and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
   let expr_to_fn_body = expr_to_fn_body globals in
   let expr_to_rexpr = expr_to_rexpr globals in
   match e with
   | EVar (x, _) -> FnRet (Var x)
   | EConst (c, _) -> FnRet (Const c)
+  (* TODO: couldn't we just move this elsewhere? shouldn't we just add this sort of logic to anf? *)
+  | EApp (EVar (f, _), args, _) when LocalsEnv.mem f locals -> 
+    let final_name = Utilities.new_var () in 
+    convert_var_apps f args final_name (FnRet (Refcount.Var final_name))
+  | ELet ((x,_), EApp(EVar (f, _), args, _), body, _) when LocalsEnv.mem f locals ->
+    let body = expr_to_fn_body (LocalsEnv.add x locals) body in
+    convert_var_apps f args x body
   | ELet ((x, _), rhs, e', _) ->
     FnLet(x, expr_to_rexpr locals rhs, expr_to_fn_body (LocalsEnv.add x locals) e')
   | ECase (EVar (x,_), cases, _) -> 
