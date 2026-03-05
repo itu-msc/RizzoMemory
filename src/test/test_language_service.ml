@@ -314,5 +314,5 @@ let tests = [
           Alcotest.(check bool)
             "hover mentions top-level binding"
             true
-            (contains_substring ~text:hover.Language_service.contents ~substring:"top-level binding x"));
+            (contains_substring ~text:hover.Language_service.contents ~substring:"top-level binding: x"));
 ]

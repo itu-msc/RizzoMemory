@@ -43,7 +43,7 @@ let pp_rexpr out =
   | RCall (c, ys) ->
       Format.fprintf out "@{<green>%s@}(%a)" c (comma_separated pp_primitive) ys
   | RPartialApp (c, ys) ->
-      Format.fprintf out "@{<magenta>pap@} @{<green>%s@}(%a)" c (comma_separated pp_primitive) ys
+      Format.fprintf out "@{<magenta>pap@} @{<yellow>%s@}(%a)" c (comma_separated pp_primitive) ys
   | RVarApp (x, y) ->
       Format.fprintf out "@{<lightcyan>%s@} %a" x pp_primitive y
   | RCtor Ctor {tag; fields} ->
@@ -74,20 +74,15 @@ let rec pp_fnbody out = function
   | FnInc (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>inc@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>dec@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
 
+let pp_fn out (name, Fun (params, body)) =
+  Format.fprintf out "@{<magenta>fun@} @{<yellow>%s@}(%a) =@,  @[<v>%a@]" name
+    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
+        (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
+    pp_fnbody body
+
 let pp_ref_counted_program out (p: program) =
-  let pp_fn out (name, Fun (params, body)) =
-    Format.fprintf out "@{<magenta>fun@} @{<green>%s@}(%a) =@,  @[<v>%a@]" name
-      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
-         (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
-      pp_fnbody body
-  in
   Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_fn) p
 
-let pp_fn out (name, Fun (params, body)) =
-  Format.fprintf out "@{<magenta>fun@} @{<green>%s@}(%a) =@,  @[<v>%a@]" name
-    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ")
-       (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
-    pp_fnbody body
   
 let rec eq_program (a:program) (b:program) = List.for_all2 eq_fn a b
 and eq_fn (n1, Fun (p1, b1)) (n2, Fun (p2, b2)) = 
