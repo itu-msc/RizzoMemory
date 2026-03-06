@@ -161,10 +161,16 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
     List.map mapper p |> M.of_list 
     |> M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate global name %s" key)) builtins_arity
   in
-  let to_fun = function
-  | EFun (names, body, _) | EAnno(EFun (names, body,_), _ ,_ )-> 
+  let to_fun names body =
     let params = List.map fst names in
-    Refcount.Fun (params, expr_to_fn_body globals (LocalsEnv.of_list params) body) 
-  | e -> failwith (Format.asprintf "TODO: only top level functions BAD:'%a'" Ast.pp_expr e)
+    Refcount.Fun (params, expr_to_fn_body globals (LocalsEnv.of_list params) body)
   in
-  List.map (fun (TopLet (name, rhs, _)) -> fst name, to_fun rhs) p
+  let (functions, globals) = List.fold_right (fun (TopLet (name, rhs, _)) (func, glob) -> 
+    match rhs with
+    | EFun (names, body, _) | EAnno(EFun (names, body,_), _ ,_ ) ->
+      ((fst name, to_fun names body) :: func, glob)
+    | _ -> 
+      (func, (fst name, expr_to_fn_body globals (LocalsEnv.empty) rhs) :: glob)
+  ) p ([], [])
+  in
+  Refcount.RefProg { functions; globals }

@@ -1,10 +1,12 @@
 open Refcount
 
+let standard_indent = 4
+
 let make_fun_decl ?ending:(e = " {\n") name  = 
-  Printf.sprintf "rz_box_t %s(size_t num_args, rz_box_t* args)%s" name e
+  Printf.sprintf "rz_box_t %s(size_t _, rz_box_t* args)%s" name e (* TODO: see if we can remove the num_args (the first param) from the method signature *)
 
 
-let rec collect_string_consts (p: Refcount.program) = 
+let rec collect_string_consts (p: (_ * rc_fun) list) = 
   List.concat_map (fun (_, (Fun (_, b))) -> collect_string_consts_fn b) p
 and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
   | FnRet x -> collect_primitive_string_const x 
@@ -32,79 +34,94 @@ and collect_primitive_string_const p = match p with
   | _ -> None
 
 
-let emit_c_code (p:program) (filename:string) =
+let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
   let module M = Map.Make(String) in
-  let arity_map = M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) p) in
+  let arity_map = M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) functions) in
   let out_file = open_out filename in
-  let write = output_string out_file in
+  let write ?(indent = 0) out = output_string out_file ((String.make indent ' ') ^ out) in
 
-  let string_consts = Utilities.new_name_reset (); collect_string_consts p in
+  let string_consts = Utilities.new_name_reset (); collect_string_consts functions in
 
-  let rec emit_program (p: program) : unit = 
+  let rec emit_program (RefProg{functions; globals}:program) : unit = 
     write "#include \"rizzo.h\"\n";
     write "\n";
 
-    write "static int16_t console = RZ_CHANNEL_CONSOLE_IN;\n";
+    write "static rz_channel_t console = RZ_CHANNEL_CONSOLE_IN;\n";
 
     string_consts 
     |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
     write "\n";
 
-    (* forward functions *)
-    List.iter (fun (name, _) -> write @@ make_fun_decl ~ending:";\n" name) p;
+    (* forward declare functions *)
+    List.iter (fun (name, _) -> write @@ make_fun_decl ~ending:";\n" name) functions;
     write "\n";
 
-    List.iter emit_fn p;
-    match List.assoc_opt "entry" p with
+    let needs_init = declare_globals globals in
+    if List.length needs_init > 0 then write ~indent:standard_indent "\n";
+
+    List.iter emit_fn functions;
+    match List.assoc_opt "entry" functions with
     | Some _ -> write ("int main() {\n"
-                ^ "    rz_init_rizzo();\n"
-                ^ "    rz_box_t res = rz_call(entry, 1, (rz_box_t[]){rz_make_int(42)});\n"
+                ^ "    rz_init_rizzo();\n");
+                init_globals needs_init;
+                write (
+                  "    rz_box_t res = rz_call(entry, 1, (rz_box_t[]){rz_make_int(0)});\n" (* TODO: notice, should we have this line here?*)
                 ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
                 ^ "    return 0;\n}\n")
     | None -> failwith "No entry point found"
+  and declare_globals (globals: (string * Refcount.fn_body) list) = 
+    List.filter_map (fun (name, body) -> 
+      match body with
+      | FnRet p -> write (Printf.sprintf "static rz_box_t %s = %s;\n" name (emit_primitive p)); None
+      | _ -> write (Printf.sprintf "static rz_box_t %s;\n" name); Some (name, body)
+    ) globals
+  and init_globals (globals: (string* Refcount.fn_body) list) : unit = 
+    List.iter (fun (name, body) -> 
+      emit_fn_body ~return_to:(Some name) 4 body; write "\n"
+    ) globals
   and emit_fn (name, Fun (params, body)) : unit = 
     write (make_fun_decl name);
-    write ("(void)num_args;\n");
-    List.iteri (fun i param -> 
-      write (Printf.sprintf "rz_box_t %s = args[%d];\n" param i)
+    List.iteri (fun i param ->
+      write ~indent:standard_indent (Printf.sprintf "rz_box_t %s = args[%d];\n" param i)
     ) params;
-    emit_fn_body body;
+    emit_fn_body standard_indent body;
     write "}\n\n"
-  and emit_fn_body fn = match fn with
-    | FnRet x -> write (Printf.sprintf "return %s;\n" (emit_primitive x))
-    | FnLet (var, e, body) -> 
-      write (Printf.sprintf "rz_box_t %s = " var); emit_rexpr e; write ";\n";
-      emit_fn_body body
+  and emit_fn_body ?return_to:(return_to = None) indent fn = 
+    let emit_fn_body = emit_fn_body ~return_to in
+    match fn with
+    | FnRet x -> 
+      (match return_to with
+      | None -> write ~indent (Printf.sprintf "return %s;\n" (emit_primitive x))
+      | Some var -> write ~indent (Printf.sprintf "%s = %s;\n" var (emit_primitive x)))
+    | FnLet (var, e, body) ->
+      write ~indent (Printf.sprintf "rz_box_t %s = " var); emit_rexpr e; write ";\n";
+      emit_fn_body indent body
     | FnCase (scrutinee, branches) ->
-      write (Printf.sprintf "switch (rz_object_tag(rz_unbox_ptr(%s))) {\n" scrutinee);
+      write ~indent (Printf.sprintf "switch (rz_object_tag(rz_unbox_ptr(%s))) {\n" scrutinee);
+      let indent_inner = indent + standard_indent in
       List.map snd branches 
       |> List.iteri (fun tag branch_fn -> 
-        write (Printf.sprintf "case %d: {\n" tag);
-        emit_fn_body branch_fn;
-        write "break;\n}\n";
+        write ~indent (Printf.sprintf "case %d: {\n" tag);
+        emit_fn_body indent_inner branch_fn;
+        write ~indent:indent_inner "break;\n";
+        write ~indent "}\n";
       );
-      write "default: {\n";
-      write "fprintf(stderr, \"Rizzo Runtime error at (%s, %d): unexpected tag %d\", __FILE__, __LINE__,";
+      write ~indent "default: {\n";
+      write ~indent:indent_inner "fprintf(stderr, \"Rizzo Runtime error at (%s, %d): unexpected tag %d\", __FILE__, __LINE__,";
       write (Printf.sprintf "rz_object_tag(rz_unbox_ptr(%s)));\n" scrutinee);
-      write "exit(1);\n}\n";
-      write "}\n"
+      write ~indent:indent_inner "exit(1);\n";
+      write ~indent "}}\n"
     | FnDec (x, f) -> 
       if Option.is_none (int_of_string_opt x) then
-        write (Printf.sprintf "rz_refcount_dec_box(%s);\n" x);
-      emit_fn_body f
+        write ~indent (Printf.sprintf "rz_refcount_dec_box(%s);\n" x);
+      emit_fn_body indent f
     | FnInc (x,f) -> 
       if Option.is_none (int_of_string_opt x) then
-        write (Printf.sprintf "rz_refcount_inc_box(%s);\n" x);
-      emit_fn_body f
+        write ~indent (Printf.sprintf "rz_refcount_inc_box(%s);\n" x);
+      emit_fn_body indent f
   and emit_rexpr e = 
     (* it may be that we are referencing a 'constant'/'global' function, then we have to emit a lift *)
-    let mk_args_string args = args 
-      |> List.map (function | Const _ as e -> emit_primitive e
-        | Var arg -> match M.find_opt arg arity_map with
-          | None -> arg
-          | Some arity -> Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){}, 0)" arg arity) 
-      |> String.concat ", "
-    in
+    
     let s = match e with
     | RConst c -> emit_primitive (Const c)
     | RCall ("eq", [p1; p2]) -> Printf.sprintf "rz_eq(%s, %s)" (emit_primitive p1) (emit_primitive p2)
@@ -135,13 +152,31 @@ let emit_c_code (p:program) (filename:string) =
       Printf.sprintf "rz_make_ptr_sig(rz_reuse_signal(rz_unbox_ptr(%s), %s, %s))" n (emit_primitive head) (emit_primitive tail)
     in write s
   and emit_primitive = function
-    | Var x -> x
+    | Var x -> as_possible_function_access x []
     | Const CInt i   -> Printf.sprintf "rz_make_int(%d)" i
-    | Const CBool b  -> Printf.sprintf "rz_make_ptr(rz_bool_ctor(%b))" b
+    | Const CBool true  -> "rz_make_ptr(RZ_BOOL_TRUE)"
+    | Const CBool false -> "rz_make_ptr(RZ_BOOL_FALSE)"
     | Const CNever   -> "RZ_NEVER"
     | Const (CString _ as c) -> 
       let (_, var_name) = List.assoc c string_consts in
       Printf.sprintf "rz_make_str_lit(%s)" var_name
     | Const Ast.CUnit -> Printf.sprintf "rz_make_int(0)"
+  and as_possible_function_access name args =
+    match M.find_opt name arity_map with
+    | None -> name  (* was just a regular name - output as such *)
+    | Some arity -> (* was the name of a function - output as such? *)
+      match args with
+      | [] -> Printf.sprintf "rz_lift_c_fun(%s, %d, NULL, 0)" name arity
+      | _ ->
+        let num_args = List.length args in
+        let args = mk_args_string args in
+        Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" name arity args num_args
+  and mk_args_string args = 
+    args
+    |> List.map (function 
+        | Const _ as e -> emit_primitive e
+        | Var arg -> as_possible_function_access arg [])
+    |> String.concat ", "
+      
   in emit_program p
   

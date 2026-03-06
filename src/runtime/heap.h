@@ -95,7 +95,7 @@ static inline rz_object_t* rz_reuse_signal(rz_object_t* obj, rz_box_t head, rz_b
     rz_remove_signal_node(sig);
 
     sig->updated.as.i32 = 0;
-    sig->_base.num_fields = 5; // TODO: Consider if this needs to be 5 or something
+    sig->_base.num_fields = 5;
     sig->_base.tag = 0;
     sig->_base.obj_type = RZ_SIGNAL;
     sig->head = head;
@@ -122,6 +122,13 @@ static void rz_debug_print_heap() {
         const char* updated_str = rz_unbox_int(cursor->updated) ? "true" : "false";
         printf(", U: %s, prev: %p, next: %p);\n", updated_str, rz_unbox_ptr(cursor->prev), rz_unbox_ptr(cursor->next));
     }
+}
+
+static void rz_debug_print_signal(rz_box_t box) {
+    rz_signal_t* signal = (rz_signal_t*)box.as.obj;
+    printf("signal(ref: %d, head: ", signal->_base.refcount); rz_debug_print_box(signal->head); 
+    printf(", tail: "); rz_debug_print_box(signal->tail);
+    printf(", updated: %d)", signal->updated.as.i32); 
 }
 
 /*   |------------------------------|

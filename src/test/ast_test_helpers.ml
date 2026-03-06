@@ -55,9 +55,9 @@ let expr_testable : parsed expr Alcotest.testable =
 let fnbody_testable : RefCount.fn_body Alcotest.testable =
   Alcotest.testable RefCount.pp_fnbody RefCount.eq_fnbody
 
-let fn_testable : RefCount.fn Alcotest.testable =
+let fn_testable : RefCount.rc_fun Alcotest.testable =
   Alcotest.testable
-    (fun fmt fn -> RefCount.pp_fn fmt ("", fn))
+    (fun fmt fn -> RefCount.pp_rcfun fmt ("", fn))
     (fun fn1 fn2 -> RefCount.eq_fn ("", fn1) ("", fn2))
 
 let ref_counted_program_testable : RefCount.program Alcotest.testable =

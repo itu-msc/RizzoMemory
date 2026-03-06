@@ -26,9 +26,10 @@ type fn_body =
   | FnInc of string * fn_body
   | FnDec of string * fn_body
 
-type fn = Fun of string list * fn_body
+type rc_fun = Fun of string list * fn_body
 
-type program = (string * fn) list
+type program = 
+  | RefProg of { functions: (string * rc_fun) list; globals: (string * fn_body) list } 
 
 let get_cases = List.map snd
 
@@ -101,7 +102,7 @@ let rec pp_fnbody out = function
   | FnInc (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>inc@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>dec@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
 
-let pp_fn ?ownerships:(own = None) out (name, Fun (params, body)) =
+let pp_rcfun ?ownerships:(own = None) out (name, Fun (params, body)) =
   let pp_ownership out o = match o with
     | Owned -> Format.fprintf out "@{<blue>Owned@}"
     | Borrowed -> Format.fprintf out "@{<orange>Borrowed@}"
@@ -120,11 +121,18 @@ let pp_fn ?ownerships:(own = None) out (name, Fun (params, body)) =
         (fun out p -> Format.fprintf out "@{<lightcyan>%s@}" p)) params
     pp_fnbody body
 
-let pp_ref_counted_program ?ownerships:(own= None) out (p: program) =
-  Format.fprintf out "%a" (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") (pp_fn ~ownerships:own)) p
+let pp_ref_counted_program ?ownerships:(own= None) out (RefProg { functions; globals }: program) =
+  let pp_named_fnbody out (name, body) = Format.fprintf out "@{<magenta>let@} @{<lightcyan>%s@} = %a" name pp_fnbody body in
+  Format.fprintf out "%a%a"
+    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") pp_named_fnbody) globals
+    (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@\n\n") (pp_rcfun ~ownerships:own)) functions
 
-  
-let rec eq_program (a:program) (b:program) = List.for_all2 eq_fn a b
+
+let rec eq_program (RefProg { functions = f1; globals = g1 }:program) (RefProg { functions = f2; globals = g2 }:program) = 
+  List.length f1 = List.length f2
+  && List.length g1 = List.length g2
+  && List.for_all2 eq_fn f1 f2
+  && List.for_all2 (fun (n1, b1) (n2, b2) -> n1 = n2 && eq_fnbody b1 b2) g1 g2
 and eq_fn (n1, Fun (p1, b1)) (n2, Fun (p2, b2)) = 
   n1 = n2 
   && List.for_all2 String.equal p1 p2 
@@ -154,9 +162,6 @@ and eq_rexpr_ctor a b = match a, b with
   | Ctor { tag = t1; fields = f1 }, Ctor { tag = t2; fields = f2 } -> t1 = t2 && f1 = f2
   | Signal { head = h1; tail = t1 }, Signal { head = h2; tail = t2 } -> h1 = h2 && t1 = t2
   | _ -> false
-
-(* The parameter list *)
-let delta (p:program) (x:string) = List.assoc_opt x p
 
 let add_if_member (p:primitive) (env: StringSet.t) : StringSet.t =
   match p with
@@ -328,11 +333,11 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
       | true -> StringSet.add x fcol
       | false -> fcol
 
-let infer_all_simple (p:program) : parameter_ownership =
+let infer_all_simple (RefProg{functions; _}:program) : parameter_ownership =
   let func_ownership = ref StringMap.empty in
   List.iter (fun (c, Fun (params, _)) ->
     func_ownership := StringMap.add c (List.map (fun _ -> Borrowed) params) !func_ownership
-  ) p;
+  ) functions;
 
   let changed = ref true in
   while !changed do
@@ -351,13 +356,13 @@ let infer_all_simple (p:program) : parameter_ownership =
         changed := true;
         func_ownership := StringMap.add fun_name new_sig !func_ownership
       )
-    ) p
+    ) functions
   done;
   !func_ownership
 
 
 (* callers_of[g] = set of functions that call g *)
-let build_callers (p:program) : StringSet.t StringMap.t =
+let build_callers functions : StringSet.t StringMap.t =
   let add_caller callers ~callee ~caller =
     let s = Option.value (StringMap.find_opt callee callers) ~default:StringSet.empty in
     StringMap.add callee (StringSet.add caller s) callers
@@ -378,21 +383,21 @@ let build_callers (p:program) : StringSet.t StringMap.t =
   in
   List.fold_left
     (fun callers (f_name, Fun (_params, body)) -> scan_body f_name callers body)
-    StringMap.empty p
+    StringMap.empty functions
 
-let infer_all ?(builtins:parameter_ownership = StringMap.empty) (p:program) : parameter_ownership =
-  let callers = build_callers p in
+let infer_all ?(builtins:parameter_ownership = StringMap.empty) (RefProg{functions;_}:program) : parameter_ownership =
+  let callers = build_callers functions in
 
   (* init: all Borrowed *)
   let beta0 =
     List.fold_left
       (fun b (name, Fun (params, _body)) ->
         StringMap.add name (List.map (fun _ -> Borrowed) params) b)
-      builtins p
+      builtins functions
   in
 
   let prog_map =
-    List.fold_left (fun m (n, fn) -> StringMap.add n fn m) StringMap.empty p
+    List.fold_left (fun m (n, fn) -> StringMap.add n fn m) StringMap.empty functions
   in
 
   let beta = ref beta0 in
@@ -407,7 +412,7 @@ let infer_all ?(builtins:parameter_ownership = StringMap.empty) (p:program) : pa
   in
 
   (* seed queue with all functions *)
-  List.iter (fun (n, _) -> enqueue n) p;
+  List.iter (fun (n, _) -> enqueue n) functions;
 
   while not (Queue.is_empty q) do
     let f_name = Queue.take q in
@@ -445,8 +450,10 @@ let infer_all ?(builtins:parameter_ownership = StringMap.empty) (p:program) : pa
 (** Inserts reset/reuse pairs into all global functions of a program [p] 
     This transformation should be performed before calling [insert_rc]
 *)
-let rec insert_reset_and_reuse_pairs_program (p: program) : program =
-  List.map (fun (name, Fun(params, body)) -> name, (Fun(params, insert_reset_and_reuse_pairs_fn body))) p
+let rec insert_reset_and_reuse_pairs_program (RefProg{functions; globals}: program) : program =
+  let globals' = List.map (fun (name, body) -> name, insert_reset_and_reuse_pairs_fn body) globals in
+  let functions' = List.map (fun (name, Fun(params, body)) -> name, (Fun(params, insert_reset_and_reuse_pairs_fn body))) functions
+  in RefProg { functions = functions'; globals = globals' }
 
 (** Inserts reset/reuse pairs into [body]. Ullrich & De Moura call it 'R' *)
 and insert_reset_and_reuse_pairs_fn body = match body with
@@ -489,15 +496,24 @@ and insert_reuse w num_fields fn_body: fn_body =
   | FnLet (x, e, f) -> FnLet (x, e, insert_reuse w num_fields f)
   | FnInc _ | FnDec _ -> failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
 
-let reference_count_program builtins (p: program) =
-  global_names := StringSet.of_list (List.map fst p @ (StringMap.to_list builtins |> List.map fst));
-  let reset_reuse_program = insert_reset_and_reuse_pairs_program p in
+let reference_count_program builtins (RefProg{globals; functions} as p:program) =
+  global_names := StringSet.of_list (List.map fst globals @ List.map fst functions @ (StringMap.to_list builtins |> List.map fst));
+  let RefProg{globals = g; functions = f} as reset_reuse_program = insert_reset_and_reuse_pairs_program p in
   let func_ownerships = infer_all ~builtins:builtins reset_reuse_program in
 
-  reset_reuse_program 
-  |> List.map (fun (c_name, Fun (params, c_body)) -> 
+  (* make all global variables borrowed ?*)
+  let globals_env = List.fold_left (fun env (name, _) -> StringMap.add name Borrowed env) StringMap.empty globals in
+
+  let functions' = f
+  |> List.map (fun (c_name, Fun (params, c_body)) ->
       let params_ownership = lookup_params func_ownerships c_name in
-      let var_env = StringMap.of_list @@ List.combine params params_ownership in
+      let var_env = List.fold_left2 (fun env param ownership -> StringMap.add param ownership env) globals_env params params_ownership in
       let ref_counted_body = insert_rc c_body var_env func_ownerships in
       (c_name, Fun (params, insert_dec_many (List.map (fun s -> Var s) params) ref_counted_body var_env)))
-  |> fun p -> (func_ownerships, p)
+  in
+
+  (* USE BEFORE DECLARATION on globals should have been caught by type checker, we assume good-to-go
+    let y = x + 5
+    let x = 5 *)
+  let globals' = List.map (fun (name, body) -> name, insert_rc body globals_env func_ownerships) g in
+  (func_ownerships, RefProg { functions = functions'; globals = globals' })

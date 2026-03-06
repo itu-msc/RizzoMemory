@@ -1,28 +1,27 @@
 fun customFunc x = x :: never
 
-// This is a commentsdafasdfsd
+// This file is kept intentionally simple so it compiles end-to-end.
 /*
-sdfasdfasdf
-asdf
-asdf
-asdf
+It still demonstrates comments,
+top-level lets, options,
+signals, and tuples.
 */
 
+let x = 
+    let inner = fun y -> y in
+    inner 5
+
 let z = 5
-let y = z :: never
-let x = Just (y)
+let y = z :: never // rz_signal_ctor(z, never) 
+let maybeY = Just (y)
 
 fun nestedFunc x = 
-    let inner = fun y -> fun z -> x :: (wait z) in
-    inner :: never
+    let inner = fun y -> fun z -> x in
+    inner
 
-fun main x = 
-    let mysync = sync 2 4 in 
-    let thing = mysync :: customFunc 4 in
-    let conditional = (if (thing == 3) then (thing :: mysync) else thing) in
-    let t = match thing with
-            | 4 -> (thing, wait mysync)
-            | 6 -> (wait mysync, "thing thing \n", "sdafdsaf")
-    in
-    conditional :: nestedFunc 5 :: t_but_not_really
+fun entry x = 
+    let thing = customFunc 4 in
+    let f = output_int_signal thing in
+    let tupled = (x, nestedFunc 5, maybeY) in
+    (thing, tupled)
 

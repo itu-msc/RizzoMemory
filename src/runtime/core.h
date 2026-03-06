@@ -71,25 +71,19 @@ bool rz_is_boxed(rz_box_t box) {
     return box.kind == RZ_BOX_INT || box.kind == RZ_BOX_STRING_LITERAL;
 }
 
-static inline rz_box_t rz_make_int(int32_t v) {
-    return (rz_box_t){ .kind = RZ_BOX_INT, .as.i32 = v };
-}
+#define rz_make_int(v) ((rz_box_t){ .kind = RZ_BOX_INT, .as.i32 = (v) })
 
 static inline int32_t rz_unbox_int(rz_box_t box) {
     return (int32_t)box.as.i32;
 }
 
-static inline rz_box_t rz_make_ptr(rz_object_t* obj) {
-    return (rz_box_t){ .kind = RZ_BOX_PTR, .as.obj = obj };
-}
+#define rz_make_ptr(target) ((rz_box_t){ .kind = RZ_BOX_PTR, .as.obj = (target) })
 
 static inline rz_object_t* rz_unbox_ptr(rz_box_t box) {
     return box.as.obj;
 }
 
-static inline rz_box_t rz_make_str_lit(char* str) {
-    return (rz_box_t){.kind = RZ_BOX_STRING_LITERAL, .as.str = str };
-}
+#define rz_make_str_lit(target) ((rz_box_t){ .kind = RZ_BOX_STRING_LITERAL, .as.str = (target) })
 
 static inline char* rz_unbox_str_lit(rz_box_t box) {
     return box.as.str;
@@ -331,6 +325,7 @@ static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
     }
 }
 
+static void rz_debug_print_signal(rz_box_t box);
 static inline void rz_debug_print_box(rz_box_t box) {
     switch (box.kind) {
         case RZ_BOX_INT: {
@@ -345,7 +340,7 @@ static inline void rz_debug_print_box(rz_box_t box) {
                     fprintf(stderr, "ALLOCATED STRING TODO");
                     exit(1);
                 } break;
-                case RZ_SIGNAL: 
+                case RZ_SIGNAL: { rz_debug_print_signal(box); } break;
                 case RZ_OBJECT: {
                     rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
                     printf("ctor(%d, ref: %d)", fields->_base.header.tag, fields->_base.header.refcount);
@@ -353,7 +348,7 @@ static inline void rz_debug_print_box(rz_box_t box) {
                         printf("{ ");
                         for (size_t i = 0; i < fields->_base.header.num_fields; i++)
                         {
-                            rz_debug_print_box(fields->fields[i]); printf(" ");
+                            rz_debug_print_box(fields->fields[i]); printf(", ");
                         }
                         printf("}");
                     }

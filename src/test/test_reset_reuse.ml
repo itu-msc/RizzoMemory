@@ -1,7 +1,7 @@
 open! Rizzoc.RefCount
 open Ast_test_helpers
 
-let swap : fn = 
+let swap : rc_fun = 
   (* xs: cons(hd, tl)*)
   Fun(["xs"],  FnCase ("xs", [
     (0, FnRet (Var "xs"));
@@ -75,7 +75,8 @@ let test_paper_goforward () =
   in
 
   let p_own = StringMap.empty in
-  let newOwned, go_forward' = Rizzoc.RefCount.reference_count_program p_own ["go_forward", go_forward] in
+  let prog = RefProg { functions = [("go_forward", go_forward)]; globals = []} in
+  let newOwned, go_forward' = Rizzoc.RefCount.reference_count_program p_own prog in
 
   (* ensure p is owned *)
   let p_ownership = StringMap.find "go_forward" newOwned |> List.hd in
@@ -103,8 +104,10 @@ let test_paper_goforward () =
     )])
   ))]
   in
+  let go_forward_expected_prog = RefProg { functions = go_forward_expected; globals = []} in
 
-  Alcotest.(check ref_counted_program_testable) "go forward case is preserved" go_forward_expected go_forward'
+  (* should not crash and should not change the function *)
+  Alcotest.(check ref_counted_program_testable) "go forward case is preserved" go_forward_expected_prog go_forward'
 
 let test_tuple_swap () = 
   Rizzoc.Utilities.new_name_reset ();
@@ -132,8 +135,79 @@ let test_tuple_swap () =
 
   Alcotest.(check fnbody_testable) "tuple swap case is preserved" expected sut
 
+let test_globals_are_borrowed () =
+  let globals = [
+    ("pair",
+      FnLet ("pair0", RCtor (Ctor { tag = 2; fields = [Const (Rizzoc.Ast.CInt 1); Const (Rizzoc.Ast.CInt 2)] }),
+      FnRet (Var "pair0")));
+    ("swapped",
+      FnLet ("a", RProj (1, "pair"),
+      FnLet ("b", RProj (2, "pair"),
+      FnLet ("r", RCtor (Ctor { tag = 2; fields = [Var "b"; Var "a"] }),
+      FnRet (Var "r")))))
+  ] in
+
+  let prog = RefProg { functions = []; globals } in
+  let _, actual = Rizzoc.RefCount.reference_count_program StringMap.empty prog in
+
+  let expected = RefProg {
+    functions = [];
+    globals = [
+      ("pair",
+        FnLet ("pair0", RCtor (Ctor { tag = 2; fields = [Const (Rizzoc.Ast.CInt 1); Const (Rizzoc.Ast.CInt 2)] }),
+        FnRet (Var "pair0")));
+      ("swapped",
+        FnLet ("a", RProj (1, "pair"),
+        FnLet ("b", RProj (2, "pair"),
+        FnInc ("b",
+        FnInc ("a",
+        FnLet ("r", RCtor (Ctor { tag = 2; fields = [Var "b"; Var "a"] }),
+        FnRet (Var "r")))))))
+    ]
+  } in
+
+  Alcotest.(check ref_counted_program_testable) "globals are treated as borrowed values" expected actual
+
+let test_function_can_use_global_without_dec () =
+  let globals = [
+    ("pair",
+      FnLet ("pair0", RCtor (Ctor { tag = 2; fields = [Const (Rizzoc.Ast.CInt 1); Const (Rizzoc.Ast.CInt 2)] }),
+      FnRet (Var "pair0")))
+  ] in
+  let functions = [
+    ("swap_global", Fun ([],
+      FnLet ("a", RProj (1, "pair"),
+      FnLet ("b", RProj (2, "pair"),
+      FnLet ("r", RCtor (Ctor { tag = 2; fields = [Var "b"; Var "a"] }),
+      FnRet (Var "r"))))))
+  ] in
+
+  let prog = RefProg { functions; globals } in
+  let _, actual = Rizzoc.RefCount.reference_count_program StringMap.empty prog in
+
+  let expected = RefProg {
+    functions = [
+      ("swap_global", Fun ([],
+        FnLet ("a", RProj (1, "pair"),
+        FnLet ("b", RProj (2, "pair"),
+        FnInc ("b",
+        FnInc ("a",
+        FnLet ("r", RCtor (Ctor { tag = 2; fields = [Var "b"; Var "a"] }),
+        FnRet (Var "r"))))))))
+    ];
+    globals = [
+      ("pair",
+        FnLet ("pair0", RCtor (Ctor { tag = 2; fields = [Const (Rizzoc.Ast.CInt 1); Const (Rizzoc.Ast.CInt 2)] }),
+        FnRet (Var "pair0")))
+    ]
+  } in
+
+  Alcotest.(check ref_counted_program_testable) "functions can use globals without decrementing them" expected actual
+
 let reset_reuse_tests = [
 	"Ullrich & De Moura - Swap function with case", `Quick, test_swap_case;
   "Ullrich & De Moura - go forward example", `Quick, test_paper_goforward;
   "Tuple swap example", `Quick, test_tuple_swap;
+  "Globals are treated as borrowed values", `Quick, test_globals_are_borrowed;
+  "Functions can use globals", `Quick, test_function_can_use_global_without_dec;
 ]
