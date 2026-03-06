@@ -109,12 +109,21 @@ async function restartLanguageServer(): Promise<void> {
  * Resolves the path to the C runtime headers bundled with the extension.
  * When running from source (dev mode) falls back to ../../src/runtime.
  */
-function getRuntimePath(context: vscode.ExtensionContext): string {
+async function getRuntimePath(context: vscode.ExtensionContext): Promise<string> {
+    const workspaceFolder = await getValidWorkspaceFolder(vscode.workspace.getConfiguration("rizzoLsp")) ?? "";
+    const localRuntime = path.join(workspaceFolder, "src", "runtime");
+    if (fs.existsSync(localRuntime)) {
+        return localRuntime;
+    }
+    
     const bundled = path.join(context.extensionPath, "runtime");
     if (fs.existsSync(bundled)) {
         return bundled;
     }
-    return path.join(context.extensionPath, "..", "src", "runtime");
+
+    await vscode.window.showErrorMessage(
+        "Rizzo LSP: C runtime headers not found in either the workspace or the extension.");
+    return "";
 }
 
 /**
@@ -179,7 +188,7 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = await getValidWorkspaceFolder(vscode.workspace.getConfiguration("rizzoLsp"));
 
     const rizzoc = getRizzocCommand(workspaceFolder);
-    const runtimePath = getRuntimePath(context);
+    const runtimePath = await getRuntimePath(context);
     const isWindows = process.platform === "win32";
 
     // Build the rizzoc invocation.
@@ -213,7 +222,6 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
 
     const pwdVar = isWindows ? "$PREV_PWD = $PWD" : "PREV_PWD=$(pwd)";
     //TODO: Dont change dirs if the user use the opam installed rizzoc instead of a local build.
-    //TODO: Use the c library files from the local workspace if not using the opam rizzoc installation.
     terminal.sendText(`${pwdVar}; cd "${workspaceFolder}" && ${rizzocCmd} && ${ccCmd} && echo "" && ${runCmd}; cd $PREV_PWD`);
 }
 
