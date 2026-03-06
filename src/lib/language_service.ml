@@ -752,6 +752,24 @@ let completion_add_shadowing
     (env : completion_symbol StringMap.t) : completion_symbol StringMap.t =
   StringMap.add name symbol env
 
+let builtin_scoped_symbols : scoped_symbol StringMap.t =
+  List.fold_left
+    (fun env ({ name; typ; _ } : Rizzo_builtins.builtin_info) ->
+      let kind =
+        match typ with
+        | Ast.TFun _ -> SemanticFunction
+        | _ -> SemanticVariable
+      in
+      let empty_range =
+        {
+          start_pos = { line = 0; character = 0 };
+          end_pos = { line = 0; character = 0 };
+        }
+      in
+      StringMap.add name { kind; range = empty_range } env)
+    StringMap.empty
+    Rizzo_builtins.builtins
+
 let builtin_completion_symbols : completion_symbol StringMap.t =
   let empty_range =
     {
@@ -1065,7 +1083,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
                let semantic_kind = semantic_kind_of_symbol_kind kind in
                push_token ~kind:semantic_kind ~range:selection_range;
                StringMap.add name { kind = semantic_kind; range = selection_range } env)
-             StringMap.empty
+             builtin_scoped_symbols
       in
       let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.typed Ast.expr) : unit =
         (match expr with

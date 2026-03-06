@@ -284,6 +284,22 @@ let test_semantic_tokens_include_builtin_operators () =
        ~kind:Language_service.SemanticFunction
        ~declaration:false)
 
+let test_semantic_tokens_include_builtin_function_references () =
+  let text =
+    "fun main s =\n"
+    ^ "  output_int_signal s\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "builtin function reference token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:2
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false)
+
 let test_semantic_tokens_include_function_parameters () =
   let text = "fun const x = x :: never\n" in
   let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
@@ -357,6 +373,7 @@ let tests = [
   "semantic tokens MVP", `Quick, test_semantic_tokens_mvp;
   "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
   "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
+  "semantic tokens builtin function references", `Quick, test_semantic_tokens_include_builtin_function_references;
   "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
   "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
   "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
