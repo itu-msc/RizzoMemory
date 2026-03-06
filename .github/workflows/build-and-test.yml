@@ -1,0 +1,89 @@
+name: Build and Test
+
+on:
+    push:
+        paths:
+            - "src/**"
+            - dune-project
+            - rizzoc.opam
+            - package.json
+            - "vscode-rizzo-lsp/**"
+        branches:
+            - main
+    pull_request:
+        paths:
+            - "src/**"
+            - "vscode-rizzo-lsp/**"
+        branches:
+            - main
+
+jobs:
+    changes:
+        name: Detect changed areas
+        runs-on: ubuntu-latest
+        outputs:
+            src: ${{ steps.filter.outputs.src }}
+            extension: ${{ steps.filter.outputs.extension }}
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v6
+
+            - name: Filter changed paths
+              id: filter
+              uses: dorny/paths-filter@v3
+              with:
+                  filters: |
+                      src:
+                        - 'src/**'
+                      extension:
+                        - 'vscode-rizzo-lsp/**'
+
+    build-and-test:
+        name: Build and test compiler
+        runs-on: ubuntu-latest
+        needs: changes
+        if: ${{ needs.changes.outputs.src == 'true' }}
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v6
+
+            - name: Set up OCaml
+              uses: ocaml/setup-ocaml@v3
+              with:
+                  ocaml-compiler: 5
+
+            - name: Install OCaml dependencies
+              run: opam install . --deps-only --with-test --yes
+
+            - name: Build
+              run: opam exec -- dune build
+
+            - name: Test
+              run: opam exec -- dune test
+
+    build-extension:
+        name: Build VS Code extension
+        runs-on: ubuntu-latest
+        needs: changes
+        if: ${{ needs.changes.outputs.extension == 'true' }}
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v6
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 22
+                  cache: npm
+                  cache-dependency-path: vscode-rizzo-lsp/package-lock.json
+
+            - name: Install extension dependencies
+              working-directory: vscode-rizzo-lsp
+              run: npm ci
+
+            - name: Build extension
+              working-directory: vscode-rizzo-lsp
+              run: npm run compile
