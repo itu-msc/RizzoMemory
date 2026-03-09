@@ -85,3 +85,33 @@
   - [ ] Describe the Ullrich & De Moura work (?)
 - [ ] Explain the implementation details
   - [ ] Memory management
+
+### paper structure
+
+- Introduction
+  - Motivation for the project
+  - Goal of the project
+- What is FRP and why is it useful?
+  - Overview of Rizzo
+- Counting Immutable Beans
+  - Explanation of the paper by Ullrich & De Moura
+  - Examples
+  - Important AST transformations we need
+- Rizzo lang
+  - Syntax and semantics of Rizzo
+    - very short reference to the grammar
+  - Types
+  - Memory model (heap)
+- Inserting reference count instructions in Rizzo (RC IR)
+  - Assumptions (refreshing the readers memory)
+  - pure AST transformations (to satisfy the beans paper assumptions)
+  - How we adapted the memory model for Rizzo (e.g. delayed, later, signal, sync ...)
+- (Transpiler ?)
+- Evaluation
+  - Running a Rizzo program (maybe different section), we need to show we it means to execute. What does the heap look like etc.
+  - Performance goals
+  - Results
+- Limitations
+  - Combinators don't allow for full reuse -> show `map`. And show a case where it does reuse, `stop`.
+- Literature review
+- Conclusion and future work

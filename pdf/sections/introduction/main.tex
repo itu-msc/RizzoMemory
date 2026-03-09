@@ -1,2 +1,19 @@
 
 \section{Introduction}
+
+% Motivation
+
+Functional reactive programming (FRP) is a programming paradigm for building \textit{reactive} programs in a declarative and functional style. FRP languages model time-varying values as first class values. 
+In the FRP language Rizzo \cite{rizzo_modal_2025}, such values are captured by \textit{signals}. 
+Rizzo maintains a global heap of signals, which are all (potentially) updated whenever input is received from the environment. 
+To avoid superfluous work, it is important that signals are erased in a timely manner and so memory management is particularly important for Rizzo.
+
+% Goals of the thesis
+In this thesis we introduce a compiler for Rizzo that automatically inserts the necessary reference-counting instructions. The compiler produces C code which includes a \textit{library for the reactive semantics of Rizzo}.
+We base our implementation on the work of \citeauthor{ullrich_counting_2021} \cite{ullrich_counting_2021} which presents a technique for reference counting traditional functional with memory reuse for \textit{functional-but-in-place} programming.
+
+The results of our thesis show \dots
+
+% In this thesis we introduce a compiler from Rizzo code to a reference counted intermediate representation. We then include a transpiler from this intermediate representation to C code, with a library for the advance and update semantics of Rizzo.
+% \dots
+% We have based the reference counted intermediate representation on the \citetitle{ullrich_counting_2021} by \citename{ullrich_counting_2021}{author} \cite{ullrich_counting_2021}, which is a technique for reference counting in functional languages. We have adapted this technique to work with the semantics of Rizzo, \dots we describe the details of this in 

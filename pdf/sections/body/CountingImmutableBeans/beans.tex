@@ -1,0 +1,39 @@
+\section{Reference Counting}
+
+% what is it
+\citename{ullrich_counting_2021}{author} \cite{ullrich_counting_2021} proposes a reference counting technique for functional languages, that efficiently reclaims memory used by nonshared values. Thought the technique is less useful for signals in Rizzo, the general reference counting technique is still simple and fits our needs for immediate signal reclamation {TODO}. In this section we will give a brief overview of the ideas introduced in \citetitle{ullrich_counting_2021} with examples and then list the transformations we need to apply to adapt the technique to Rizzo.
+
+\subsection{What is reference counting}
+% what does it mean to reference count
+Early work on reference counting like in \citetitle{collins_method_1960} \cite{collins_method_1960} 
+%and \citetitle{bacon_computing_2001} \cite{bacon_computing_2001} 
+introduced the idea of reference counting as a way to manage memory in programming languages. The basic idea is that each object in memory has a counter that keeps track of how many references point to it. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
+These early implementations were implemented in the runtime system of the programming language. This is was a common approach, but prevents the compiler from optimizing reference counting operations, which can lead to performance issues. In contrast, newer techniques like the one proposed by \citetitle{ullrich_counting_2021}, is designed to be implemented in the compiler, allowing for more efficient memory management and better performance.
+
+% circular references? bacon papers solution to this? we don't have this problem in Rizzo because of mutable heads, but maybe we can still talk about it?
+
+\subsection{Ownership}
+% what does it mean?
+% compare to rust?
+\citetitle{ullrich_counting_2021} combine the power of static analysis with the power of compile time optimizations to achieve efficient reference counting. The key idea is to use ownership types to track which parts of the program are responsible for managing the memory of each object. This allows the compiler to determine when an object can be safely deallocated, and to optimize reference counting operations accordingly.
+
+% when is something owned? when is it shared? 
+
+
+\subsection{Inc, Dec, Reset and Reuse}
+% how it works
+% In general, variables should be incremented prior to being used  in an owned context that consumes an RC token. Variables used  in any other (borrowed) context do not need to be incremented.  Owned references should be decremented after their last use. ...
+
+
+\subsection{examples}
+% when is it useful (examples?)
+
+
+\subsection{AST structure requirements}
+% transformations that we need
+
+
+% how we are going to use it and what we use and don't use from the paper
+% for example we don't (need to) fully apply constructors? move this somewhere later?
+
+
