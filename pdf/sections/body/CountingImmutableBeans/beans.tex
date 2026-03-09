@@ -19,6 +19,8 @@ These early implementations were implemented in the runtime system of the progra
 
 % when is something owned? when is it shared? 
 
+% We say a parameter x should be owned if x or one of its projections is used in a reset, or is passed  to a function that takes an owned reference. The latter condition is  a heuristic and is not required for correctness.
+% we can easily mark a scope as borrowing an object if they only use it in a read only way. which is all other instances than when marked owned.
 
 \subsection{Inc, Dec, Reset and Reuse}
 % how it works
@@ -32,6 +34,16 @@ These early implementations were implemented in the runtime system of the progra
 \subsection{AST structure requirements}
 % transformations that we need
 
+% (1) Inserting reset/reuse pairs (Section 5.1)  (2) Inferring borrowed parameters (Section 5.2)  (3) Inserting inc/dec instructions (Section 5.3)
+
+% We assume that
+% • all constructor applications are fully applied by eta-expanding  them. ?? not needed till we add custom types and constructors?
+% • no constant applications are over-applied by splitting them  into two applications where necessary.
+% • all variable applications take only one argument, again by  splitting them where necessary. While this simplification  can introduce additional allocations of intermediary partial  applications, it greatly simplifies the presentation of our operational semantics. All presented program transformations can be readily extended to a system with n-ary variable applications, which are handled analogously to n-ary constant  applications.
+% • every function abstraction has been lambda-lifted to a toplevel constant c.
+% • trivial bindings let x = y have been eliminated through  copy propagation.
+% • all dead let bindings have been removed.
+% • all parameter and let names of a function are mutually  distinct. Thus we do not have to worry about name capture.
 
 % how we are going to use it and what we use and don't use from the paper
 % for example we don't (need to) fully apply constructors? move this somewhere later?
