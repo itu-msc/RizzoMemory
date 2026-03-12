@@ -36,7 +36,19 @@ and collect_primitive_string_const p = match p with
 
 let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
   let module M = Map.Make(String) in
-  let arity_map = M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) functions) in
+  let builtin_arity_map =
+    Rizzo_builtins.builtins
+    |> List.filter_map (fun ({ name; param_ownership; _ } : Rizzo_builtins.builtin_info) ->
+        Option.map (fun ownerships -> (name, List.length ownerships)) param_ownership)
+    |> M.of_list
+  in
+  let arity_map =
+    M.of_list (List.map (fun (name, Fun (params, _)) -> (name, List.length params)) functions)
+    |> M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate function name %s" key)) builtin_arity_map
+  in
+  let builtin_c_name name =
+    if M.mem name builtin_arity_map then Printf.sprintf "rz_builtin_%s" name else name
+  in
   let out_file = open_out filename in
   let write ?(indent = 0) out = output_string out_file ((String.make indent ' ') ^ out) in
 
@@ -46,7 +58,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     write "#include \"rizzo.h\"\n";
     write "\n";
 
-    write "static rz_channel_t console = RZ_CHANNEL_CONSOLE_IN;\n";
+    write "static rz_box_t console = rz_make_int(RZ_CHANNEL_CONSOLE_IN);\n";
 
     string_consts 
     |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
@@ -129,7 +141,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | RCall ("output_int_signal", [signal]) -> 
       Printf.sprintf "rz_call(rz_register_output_signal, 1, (rz_box_t[]){%s})" (emit_primitive signal)
     | RCall (f, args) -> 
-      Printf.sprintf "rz_call(%s, %d, (rz_box_t[]){%s})" f (List.length args) (mk_args_string args)
+      Printf.sprintf "rz_call(%s, %d, (rz_box_t[]){%s})" (builtin_c_name f) (List.length args) (mk_args_string args)
     | RCtor Ctor { tag; fields = [] } -> 
       Printf.sprintf "rz_make_ptr(rz_ctor_var(%d, %d))" tag 0
     | RCtor Ctor { tag; fields } -> 
@@ -141,7 +153,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
         | Some arity -> 
           let num_args = List.length args in
           let args = mk_args_string args in
-          Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" f arity args num_args
+          Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" (builtin_c_name f) arity args num_args
       )
     | RProj (i, x) -> Printf.sprintf "rz_object_get_field(rz_unbox_ptr(%s), %d)" x i
     | RCtor Signal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
@@ -166,11 +178,11 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | None -> name  (* was just a regular name - output as such *)
     | Some arity -> (* was the name of a function - output as such? *)
       match args with
-      | [] -> Printf.sprintf "rz_lift_c_fun(%s, %d, NULL, 0)" name arity
+      | [] -> Printf.sprintf "rz_lift_c_fun(%s, %d, NULL, 0)" (builtin_c_name name) arity
       | _ ->
         let num_args = List.length args in
         let args = mk_args_string args in
-        Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" name arity args num_args
+        Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" (builtin_c_name name) arity args num_args
   and mk_args_string args = 
     args
     |> List.map (function 

@@ -7,6 +7,7 @@
 #include "heap.h"
 #include "later.h"
 #include "channel.h"
+#include "builtins.h"
 #include "os.h"
 #include "stdlib.h"
 
