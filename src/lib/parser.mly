@@ -46,7 +46,7 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %token EFFECTFUL
 %token EQ CONS COMMA LPAREN RPAREN BAR
 %token IF THEN ELSE
-%token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ
+%token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ PLUS
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY
 %token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION
 %token <string> ID
@@ -110,7 +110,7 @@ expr:
     { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
   | FUN params=nonempty_id_list ARROW body=expr
     { check_unique_params (List.map fst params); EFun (params, body, mkloc $startpos $endpos) }
-  | e=pipe_and_cmp_op
+  | e=pipe_expr
       { e }
 
 opt_leading_bar:
@@ -126,12 +126,22 @@ match_case_tail:
   | BAR c=match_case rest=match_case_tail
       { c :: rest }
 
-pipe_and_cmp_op:
-  | left=pipe_and_cmp_op PIPE_GT right=cons_expr
+pipe_expr:
+  | left=pipe_expr PIPE_GT right=eq_expr
     { (* creates laterapp (delay left) right*)
       EBinary (BLaterApp, EUnary (UDelay, left, mkloc $startpos(left) $endpos(left)), right, mkloc $startpos $endpos) }
-  | left=pipe_and_cmp_op EQEQ right=cons_expr
+  | e=eq_expr
+      { e }
+
+eq_expr:
+  | left=eq_expr EQEQ right=add_expr
     { EBinary (Eq, left, right, mkloc $startpos $endpos) }
+  | e=add_expr
+      { e }
+
+add_expr:
+  | left=add_expr PLUS right=cons_expr
+    { EBinary (Add, left, right, mkloc $startpos $endpos) }
   | e=cons_expr
       { e }
 

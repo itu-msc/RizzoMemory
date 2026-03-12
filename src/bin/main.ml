@@ -73,8 +73,9 @@ let () =
 				match err with
 				| (loc, msg) -> Location.show_error_context loc msg
 			) errors;
+			exit 1
 		);
-    let transformed = Rizzoc.apply_transforms program in
+    let transformed = Rizzoc.apply_typed_transforms typed in
     print_section "------- Transformed -------" Ast.pp_program transformed;
     let rc_env, rc_program = Rizzoc.ref_count transformed in
 		print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;

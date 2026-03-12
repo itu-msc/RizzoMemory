@@ -67,6 +67,8 @@ and subst_pattern (replacement_of : string StringMap.t) (p : 's pattern) : 's pa
     (* assume whoever called this checked bound vars before - 
        so replacement_of already contains new name if necessary*)
     PSigCons (subst_pattern replacement_of p1, (y, y_ann), ann)
+  | PStringCons (p1, (y, y_ann), ann) ->
+    PStringCons (subst_pattern replacement_of p1, (y, y_ann), ann)
   | PTuple (p1, p2, ann) ->
     let p1' = subst_pattern replacement_of p1 in
     let p2' = subst_pattern replacement_of p2 in

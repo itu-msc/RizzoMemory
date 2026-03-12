@@ -38,6 +38,8 @@ and compile_pattern p scrutinee good bad =
       p, ELet (hd_name, hd_proj, compile_pattern hd (EVar hd_name) 
       (fun _ -> ELet (tl, EUnary (UTail, scrutinee, tl_ann), good (EVar tl), ann))
       bad, ann), ann)], ann)
+  | PStringCons _ ->
+    failwith "String patterns should be lowered by Simple_patterns.transform_patterns"
   | PCtor (_ctor_name, ps, ann) as pat ->
     let proj_of_i i = EUnary (UProj i, scrutinee, ann) in
     let names_and_projs = List.mapi (fun i _ -> (Utilities.new_name "p", ann), proj_of_i i) ps in

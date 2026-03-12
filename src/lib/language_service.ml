@@ -451,7 +451,7 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
     match pat with
     | Ast.PWildcard | Ast.PConst _ -> []
     | Ast.PVar (name, ann) -> [ (name, range_of_ann ann) ]
-    | Ast.PSigCons (p1, p2, _) ->
+  | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
         pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
     | Ast.PTuple (p1, p2, _) ->
         pattern_bound_decls p1 @ pattern_bound_decls p2
@@ -472,7 +472,7 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
               source = CompletionLocal;
             } );
         ]
-    | Ast.PSigCons (p1, p2, _) ->
+    | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
         pattern_bound_symbols p1
         @ [
             ( fst p2,
@@ -492,7 +492,7 @@ let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
   fun pat ->
     match pat with
     | Ast.PWildcard | Ast.PConst _ | Ast.PVar _ -> []
-    | Ast.PSigCons (p1, _, _) ->
+  | Ast.PSigCons (p1, _, _) | Ast.PStringCons (p1, _, _) ->
         pattern_constructor_ranges p1
     | Ast.PTuple (p1, p2, _) ->
         pattern_constructor_ranges p1 @ pattern_constructor_ranges p2
@@ -768,7 +768,7 @@ let builtin_scoped_symbols : scoped_symbol StringMap.t =
       in
       StringMap.add name { kind; range = empty_range } env)
     StringMap.empty
-    Rizzo_builtins.builtins
+    Rizzo_builtins.public_builtins
 
 let builtin_completion_symbols : completion_symbol StringMap.t =
   let empty_range =
@@ -794,7 +794,7 @@ let builtin_completion_symbols : completion_symbol StringMap.t =
         }
         env)
     StringMap.empty
-    Rizzo_builtins.builtins
+      Rizzo_builtins.public_builtins
 
 let constructor_completion_specs : (string * Ast.typ) list =
   [

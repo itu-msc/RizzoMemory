@@ -4,7 +4,8 @@ fun _const x : 'a -> Signal 'a = x :: never
 fun mk_sig later = 
     (fun a -> a :: mk_sig later) |> later
 
-fun map f s = match s with
+fun map f s = 
+    match s with
     | x :: xs -> f x :: (map f |> xs)
     /*  let x = head s in
         inc x;

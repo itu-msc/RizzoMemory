@@ -72,6 +72,36 @@ let rec typecheck : type stage. stage program -> typed program * ((Location.t * 
   let errors = List.map (function | Type_env.Typing_error (loc, err) -> (loc, err)) env.errors in
   (checked_program, errors)
 
+and run_type_env_from_state (state : Type_env.typing_state) (m : 'a Type_env.t) =
+  let Type_env.Env run = m in
+  run state
+
+and probe_string_case_on_unresolved_scrutinee
+    : type stage.
+      stage ann ->
+      typ ->
+      stage case_branch list ->
+      bool Type_env.t =
+  fun ann unresolved_scrutinee branches ->
+  let* state = Type_env.get_state in
+  let base_error_count = List.length state.errors in
+  let probe : unit Type_env.t =
+    let* _ = Type_env.expected_equal ann unresolved_scrutinee TString in
+    let* probe_scrutinee = Type_env.apply_subst unresolved_scrutinee in
+    let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t =
+      fun (pattern, branch, _) -> check_pattern_and_infer_branch pattern branch probe_scrutinee
+    in
+    let* typed_branches = Type_env.collect (List.map branch_mapper branches) in
+    let* branch_types = Type_env.collect (List.map (fun (_, branch) -> get_typ branch) typed_branches) in
+    match branch_types with
+    | [] -> return ()
+    | branch_type :: _ ->
+      let* _ = Type_env.collect (List.map (fun other_type -> Type_env.expected_equal ann branch_type other_type) branch_types) in
+      return ()
+  in
+  let _, probe_state = run_type_env_from_state state probe in
+  return (List.length probe_state.errors = base_error_count)
+
 and typecheck_program : type stage. stage program -> typed program Type_env.t = fun p -> 
   let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
     let* acc = acc in
@@ -158,6 +188,30 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | ECase (scrutinee, branches, ann) ->
     let* tscrutinee = infer scrutinee in
     let* t_scrutinee = get_typ tscrutinee in
+    let has_sigcons_pattern =
+      List.exists (fun (pattern, _, _) ->
+        match pattern with
+        | PSigCons _ -> true
+        | _ -> false) branches
+    in
+    let* t_scrutinee =
+      if has_sigcons_pattern then (
+        let* t_scrutinee = Type_env.apply_subst t_scrutinee in
+        match t_scrutinee with
+        | TVar _ ->
+          let* prefers_string = probe_string_case_on_unresolved_scrutinee ann t_scrutinee branches in
+          if prefers_string then (
+            let* _ = Type_env.expected_equal ann t_scrutinee TString in
+            Type_env.apply_subst t_scrutinee
+          ) else (
+            let* elem_t = Type_env.fresh_type_var () in
+            let* _ = Type_env.expected_equal ann t_scrutinee (TSignal elem_t) in
+            Type_env.apply_subst t_scrutinee
+          )
+        | _ -> return t_scrutinee
+      ) else
+        return t_scrutinee
+    in
     let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t = 
       fun (pattern, branch, _) -> check_pattern_and_infer_branch pattern branch t_scrutinee in
     let* tbranches = Type_env.collect (List.map branch_mapper branches) in
@@ -303,15 +357,28 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
     let pattern_type = TTuple (t1, t2) in
     return (PTuple (typed_p1, typed_p2, Ann_typed (get_location ann, pattern_type)), bindings_1 @ bindings_2)
   | PSigCons (hd_pattern, (tail_name, tail_ann), ann) ->
-    let* a = Type_env.fresh_type_var () in
-    let* _ = Type_env.expected_equal ann expected_type (TSignal a) in
-    let* a = Type_env.apply_subst a in
-    let* typed_hd, hd_bindings = check_pattern hd_pattern a in
-    let tail_type = TLater (TSignal a) in
-    let tail_binding = (tail_name, mono tail_type) in
-    let typed_tail = (tail_name, Ann_typed (get_location tail_ann, tail_type)) in
-    let pattern_type = TSignal a in
-    return (PSigCons (typed_hd, typed_tail, Ann_typed (get_location ann, pattern_type)), hd_bindings @ [tail_binding])
+    let* expected_type = Type_env.apply_subst expected_type in
+    (match expected_type with
+    | TSignal a ->
+      let* a = Type_env.apply_subst a in
+      let* typed_hd, hd_bindings = check_pattern hd_pattern a in
+      let tail_type = TLater (TSignal a) in
+      let tail_binding = (tail_name, mono tail_type) in
+      let typed_tail = (tail_name, Ann_typed (get_location tail_ann, tail_type)) in
+      let pattern_type = TSignal a in
+      return (PSigCons (typed_hd, typed_tail, Ann_typed (get_location ann, pattern_type)), hd_bindings @ [tail_binding])
+    | TString ->
+      let* typed_hd, hd_bindings = check_pattern hd_pattern TString in
+      let tail_binding = (tail_name, mono TString) in
+      let typed_tail = (tail_name, Ann_typed (get_location tail_ann, TString)) in
+      return (PStringCons (typed_hd, typed_tail, Ann_typed (get_location ann, TString)), hd_bindings @ [tail_binding])
+    | _ ->
+      let* _ = error ann (Format.asprintf "Expected a signal or string for '::' pattern, got '%a'" Ast.pp_typ expected_type) in
+      let typed_tail = (tail_name, Ann_typed (get_location tail_ann, TError)) in
+      return (PStringCons (PWildcard, typed_tail, Ann_typed (get_location ann, TError)), []))
+  | PStringCons (_, _, ann) ->
+    let* _ = error ann "Internal error: string-cons pattern should not appear before typed lowering" in
+    return (PWildcard, [])
   | PCtor ((ctor_name, ctor_ann), args, ann) ->
     let* param_types, ctor_result = get_constructor_signature ctor_name ctor_ann in
     let* _ = Type_env.expected_equal ann expected_type ctor_result in
@@ -360,7 +427,19 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     let* te1 = check e1 TInt in
     let* te2 = check e2 TInt in
     return (EBinary (op, te1, te2, Ann_typed (get_location ann, TBool)))
-  | Add | Mul | Sub | Div ->
+  | Add ->
+    let* te1 = infer e1 in
+    let* t1 = get_typ te1 in
+    let* te2 = infer e2 in
+    let* t2 = get_typ te2 in
+    let* _ = Type_env.expected_equal ann t1 t2 in
+    let* t = Type_env.apply_subst t1 in
+    (match t with
+    | TInt | TString -> return (EBinary (op, te1, te2, Ann_typed (get_location ann, t)))
+    | _ ->
+      let* _ = error ann (Format.asprintf "Operator '+' expects Int or String operands, got '%a'" Ast.pp_typ t) in
+      return (EBinary (op, te1, te2, Ann_typed (get_location ann, TError))))
+  | Mul | Sub | Div ->
     let* te1 = check e1 TInt in
     let* te2 = check e2 TInt in
     return (EBinary (op, te1, te2, Ann_typed (get_location ann, TInt)))

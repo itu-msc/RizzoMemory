@@ -24,6 +24,14 @@ static inline int32_t rz_builtin_expect_int(const char *name, size_t index, rz_b
 	return rz_unbox_int(arg);
 }
 
+static inline rz_box_t rz_builtin_expect_string(const char *name, size_t index, rz_box_t arg) {
+	if (!rz_box_is_string(arg)) {
+		fprintf(stderr, "Runtime error: builtin '%s' expected string for argument %zu, got box kind %d\n", name, index + 1, arg.kind);
+		exit(1);
+	}
+	return arg;
+}
+
 static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *args) {
 	rz_builtin_expect_arity("start_event_loop", 1, num_args);
 	(void)args;
@@ -96,4 +104,75 @@ static inline rz_box_t rz_builtin_div(size_t num_args, rz_box_t *args) {
 		exit(1);
 	}
 	return rz_make_int(lhs / rhs);
+}
+
+static inline rz_box_t rz_builtin_string_concat(size_t num_args, rz_box_t *args) {
+	rz_builtin_expect_arity("string_concat", 2, num_args);
+	size_t left_len = rz_string_byte_length(rz_builtin_expect_string("string_concat", 0, args[0]));
+	size_t right_len = rz_string_byte_length(rz_builtin_expect_string("string_concat", 1, args[1]));
+	size_t total_len = left_len + right_len;
+	rz_string_t* result = rz_alloc_string(total_len);
+	memcpy(result->bytes, rz_string_data(args[0]), left_len);
+	memcpy(result->bytes + left_len, rz_string_data(args[1]), right_len);
+	return rz_make_ptr((rz_object_t*)result);
+}
+
+static inline rz_box_t rz_builtin_string_eq(size_t num_args, rz_box_t *args) {
+	rz_builtin_expect_arity("string_eq", 2, num_args);
+	rz_builtin_expect_string("string_eq", 0, args[0]);
+	rz_builtin_expect_string("string_eq", 1, args[1]);
+	return rz_make_ptr(rz_bool_ctor(rz_string_eq_content(args[0], args[1])));
+}
+
+static inline rz_box_t rz_builtin_string_is_empty(size_t num_args, rz_box_t *args) {
+	rz_builtin_expect_arity("string_is_empty", 1, num_args);
+	rz_builtin_expect_string("string_is_empty", 0, args[0]);
+	return rz_make_ptr(rz_bool_ctor(rz_string_byte_length(args[0]) == 0));
+}
+
+static inline rz_box_t rz_builtin_string_head(size_t num_args, rz_box_t *args) {
+	const char* bytes;
+	size_t byte_length;
+	size_t width;
+	rz_builtin_expect_arity("string_head", 1, num_args);
+	rz_builtin_expect_string("string_head", 0, args[0]);
+	bytes = rz_string_data(args[0]);
+	byte_length = rz_string_byte_length(args[0]);
+	if (byte_length == 0) {
+		fprintf(stderr, "Runtime error: string_head on empty string\n");
+		exit(1);
+	}
+	width = rz_utf8_codepoint_width((unsigned char)bytes[0]);
+	if (byte_length < width) {
+		fprintf(stderr, "Runtime error: truncated UTF-8 sequence\n");
+		exit(1);
+	}
+	return rz_make_string_len(bytes, width);
+}
+
+static inline rz_box_t rz_builtin_string_tail(size_t num_args, rz_box_t *args) {
+	const char* bytes;
+	size_t byte_length;
+	size_t width;
+	rz_builtin_expect_arity("string_tail", 1, num_args);
+	rz_builtin_expect_string("string_tail", 0, args[0]);
+	bytes = rz_string_data(args[0]);
+	byte_length = rz_string_byte_length(args[0]);
+	if (byte_length == 0) {
+		fprintf(stderr, "Runtime error: string_tail on empty string\n");
+		exit(1);
+	}
+	width = rz_utf8_codepoint_width((unsigned char)bytes[0]);
+	if (byte_length < width) {
+		fprintf(stderr, "Runtime error: truncated UTF-8 sequence\n");
+		exit(1);
+	}
+	return rz_make_string_len(bytes + width, byte_length - width);
+}
+
+static inline rz_box_t rz_builtin_match_fail(size_t num_args, rz_box_t *args) {
+	rz_builtin_expect_arity("match_fail", 1, num_args);
+	rz_builtin_expect_string("match_fail", 0, args[0]);
+	fprintf(stderr, "Runtime error: %s\n", rz_string_data(args[0]));
+	exit(1);
 }
