@@ -25,6 +25,7 @@ let pctor (ctor_name : parsed name) (args : parsed pattern list) : parsed patter
 let var (s : string) : parsed expr = EVar (name s)
 let ctor (name' : string) (args : parsed expr list) : parsed expr = ECtor (name name', args, ann)
 let int (i : int) : parsed expr = EConst (CInt i, ann)
+let str (s : string) : parsed expr = EConst (CString s, ann)
 let bool (b : bool) : parsed expr = EConst (CBool b, ann)
 let const (c : const) : parsed expr = EConst (c, ann)
 

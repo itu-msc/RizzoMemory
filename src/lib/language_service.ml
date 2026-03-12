@@ -768,7 +768,7 @@ let builtin_scoped_symbols : scoped_symbol StringMap.t =
       in
       StringMap.add name { kind; range = empty_range } env)
     StringMap.empty
-    Rizzo_builtins.builtins
+    Rizzo_builtins.public_builtins
 
 let builtin_completion_symbols : completion_symbol StringMap.t =
   let empty_range =
@@ -794,7 +794,7 @@ let builtin_completion_symbols : completion_symbol StringMap.t =
         }
         env)
     StringMap.empty
-    Rizzo_builtins.builtins
+    Rizzo_builtins.public_builtins
 
 let constructor_completion_specs : (string * Ast.typ) list =
   [

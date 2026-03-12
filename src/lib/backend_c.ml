@@ -5,9 +5,30 @@ let standard_indent = 4
 let make_fun_decl ?ending:(e = " {\n") name  = 
   Printf.sprintf "rz_box_t %s(size_t _, rz_box_t* args)%s" name e (* TODO: see if we can remove the num_args (the first param) from the method signature *)
 
+let emit_c_string_literal (s : string) : string =
+  let buf = Buffer.create (String.length s + 8) in
+  let add_hex_escape c =
+    Buffer.add_string buf (Printf.sprintf "\\x%02X" (Char.code c));
+    Buffer.add_string buf "\"\""
+  in
+  Buffer.add_char buf '"';
+  String.iter (fun c ->
+    match c with
+    | '"' -> Buffer.add_string buf "\\\""
+    | '\\' -> Buffer.add_string buf "\\\\"
+    | '\n' -> Buffer.add_string buf "\\n"
+    | '\r' -> Buffer.add_string buf "\\r"
+    | '\t' -> Buffer.add_string buf "\\t"
+    | c when Char.code c >= 0x20 && Char.code c <= 0x7E -> Buffer.add_char buf c
+    | c -> add_hex_escape c
+  ) s;
+  Buffer.add_char buf '"';
+  Buffer.contents buf
 
-let rec collect_string_consts (p: (_ * rc_fun) list) = 
-  List.concat_map (fun (_, (Fun (_, b))) -> collect_string_consts_fn b) p
+
+let rec collect_string_consts (RefProg{functions; globals}: program) = 
+  List.concat_map (fun (_, (Fun (_, b))) -> collect_string_consts_fn b) functions
+  @ List.concat_map (fun (_, body) -> collect_string_consts_fn body) globals
 and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
   | FnRet x -> collect_primitive_string_const x 
     |> Option.map (fun a -> [a])
@@ -40,7 +61,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
   let out_file = open_out filename in
   let write ?(indent = 0) out = output_string out_file ((String.make indent ' ') ^ out) in
 
-  let string_consts = Utilities.new_name_reset (); collect_string_consts functions in
+  let string_consts = Utilities.new_name_reset (); collect_string_consts p in
 
   let rec emit_program (RefProg{functions; globals}:program) : unit = 
     write "#include \"rizzo.h\"\n";
@@ -49,7 +70,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     write "static rz_channel_t console = RZ_CHANNEL_CONSOLE_IN;\n";
 
     string_consts 
-    |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
+    |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %s;\n" name (emit_c_string_literal str_lit));
     write "\n";
 
     (* forward declare functions *)
@@ -154,8 +175,8 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
   and emit_primitive = function
     | Var x -> as_possible_function_access x []
     | Const CInt i   -> Printf.sprintf "rz_make_int(%d)" i
-    | Const CBool true  -> "rz_make_ptr(RZ_BOOL_TRUE)"
-    | Const CBool false -> "rz_make_ptr(RZ_BOOL_FALSE)"
+    | Const CBool true  -> "rz_make_ptr(rz_bool_ctor(true))"
+    | Const CBool false -> "rz_make_ptr(rz_bool_ctor(false))"
     | Const CNever   -> "RZ_NEVER"
     | Const (CString _ as c) -> 
       let (_, var_name) = List.assoc c string_consts in

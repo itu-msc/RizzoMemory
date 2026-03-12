@@ -1,9 +1,21 @@
+let concatting = "Hello " + "world!"
+
+fun stringMatching s =
+    match s with
+    | "Hello world!" -> "Matched!"
+    | s :: ss -> "Matched with head: " + s
+    | _ -> "Not matched."
+
 fun entry x =
     let _bool = true in
     let _int = 42 in
-    let _string = "Hello world!" in
+    let _string = concatting in
     let _tuple = (_string, _int) in
-    _bool
+    let matched = stringMatching _string in
+    if _bool then
+        matched
+    else
+        "Boolean was false."
 
 @effectful
 fun _const x : 'a -> Signal 'a = x :: never

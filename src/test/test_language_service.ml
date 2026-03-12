@@ -167,9 +167,17 @@ let test_completions_include_builtins_and_constructors () =
     true
     (completion_has_label ~labels ~name:"add");
   Alcotest.(check bool)
+    "includes substring builtin"
+    true
+    (completion_has_label ~labels ~name:"substring");
+  Alcotest.(check bool)
     "includes constructor"
     true
-    (completion_has_label ~labels ~name:"Just")
+    (completion_has_label ~labels ~name:"Just");
+  Alcotest.(check bool)
+    "does not include internal string intrinsic"
+    false
+    (completion_has_label ~labels ~name:"string_concat")
 
 let test_completions_filter_by_prefix () =
   let text = "fun main x = st\n" in

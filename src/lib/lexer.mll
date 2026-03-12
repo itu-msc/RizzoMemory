@@ -54,6 +54,7 @@ rule read = parse
   | "->" { ARROW }
   | "::" { CONS }
   | ":" { COLON }
+  | "+" { PLUS }
   | "*" { STAR }
   | "=" { EQ }
   | "==" { EQEQ }
