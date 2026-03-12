@@ -1,34 +1,52 @@
 \section{Reference Counting}
 
-% what is it
-\citename{ullrich_counting_2021}{author} \cite{ullrich_counting_2021} proposes a reference counting technique for functional languages, that efficiently reclaims memory used by nonshared values. Thought the technique is less useful for signals in Rizzo, the general reference counting technique is still simple and fits our needs for immediate signal reclamation {TODO}. In this section we will give a brief overview of the ideas introduced in \citetitle{ullrich_counting_2021} with examples and then list the transformations we need to apply to adapt the technique to Rizzo.
+In Rizzo signal combinators create new signals as an intermediate step in the computation. These intermediate signals are often only used for a short period of time, to copy over the new computed value to the head of the original signal. Given the intermediate nature of these signals, it is important to reclaim the memory used by them as soon as they are no longer needed, otherwise they will also be triggered alongside the original signal. The retrigger of the signals will lead to performance issues, memory leaks and unexpected side effects \todo{We will get back to why this is important in section XXX where we describe the structure of the heap}. To address the issue, we need a way to efficiently manage the memory used by these intermediate signals and ensure that it is reclaimed as soon as it is no longer needed.
+
+One way to achieve this is through reference counting, which is a technique for managing memory in programming languages. In this section, we will discuss the reference counting technique proposed by \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} and how we can adapt it to Rizzo to efficiently manage the memory used by intermediate signals.
 
 \subsection{What is reference counting}
 % what does it mean to reference count
-Early work on reference counting like in \citetitle{collins_method_1960} \cite{collins_method_1960} 
+Early work on reference counting like in \citetitle{collins_method_1960} \cite{collins_method_1960}
 %and \citetitle{bacon_computing_2001} \cite{bacon_computing_2001} 
-introduced the idea of reference counting as a way to manage memory in programming languages. The basic idea is that each object in memory has a counter that keeps track of how many references point to it. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
-These early implementations were implemented in the runtime system of the programming language. This is was a common approach, but prevents the compiler from optimizing reference counting operations, which can lead to performance issues. In contrast, newer techniques like the one proposed by \citetitle{ullrich_counting_2021}, is designed to be implemented in the compiler, allowing for more efficient memory management and better performance.
+introduced the idea of reference counting as opposed to other memory management methods like tracing garbage collection. The basic idea of reference counting is to attach a counter to each object in memory, that keeps track of how many references point to the object. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
+
+These early implementations were implemented in the runtime system of the programming language. This is was a common approach, but is hard to optimize.
+Newer techniques, like the one proposed by \citetitle{ullrich_counting_2021}, are designed to be implemented in the compiler, allowing for more efficient memory management and better performance. By using ownership types to track which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
+
+We will be using the term RC token (Reference Counting token) to refer to the reference one instance of a reference to an object. We say that when a new reference is created, an RC token is created and when a reference is destroyed, an RC token is consumed.
 
 % circular references? bacon papers solution to this? we don't have this problem in Rizzo because of mutable heads, but maybe we can still talk about it?
 
 \subsection{Ownership}
 % what does it mean?
 % compare to rust?
-\citetitle{ullrich_counting_2021} combine the power of static analysis with the power of compile time optimizations to achieve efficient reference counting. The key idea is to use ownership types to track which parts of the program are responsible for managing the memory of each object. This allows the compiler to determine when an object can be safely deallocated, and to optimize reference counting operations accordingly.
+\citetitle{ullrich_counting_2021} combine the power of static analysis with the power of compile time optimizations to achieve efficient reference counting. The key idea is to use ownership types to track which parts of the program are responsible for managing the memory of each object. This allows the compiler to determine when an object can be safely deallocated, and to optimize reference counting operations accordingly. 
 
-% when is something owned? when is it shared? 
+The ownership system is based on the idea of `owned' and `borrowed' references, where if a function takes an owned reference, it expects it can consume an RC token. In practical terms, this means that the function will decrement the reference count of the object when it is done using it, and the caller is responsible for ensuring that the reference count is properly managed (incremented) before calling the function.
+A borrowed reference, on the other hand, does not consume an RC token, making the caller responsible for ensuring that the object is not deallocated while it is being used. This allows for more efficient memory management, by not requiring the caller to increment the reference count for borrowed references.
 
-% We say a parameter x should be owned if x or one of its projections is used in a reset, or is passed  to a function that takes an owned reference. The latter condition is  a heuristic and is not required for correctness.
+
+
+% when is something owned? when is it shared?
+
+
+% We say a parameter x should be owned if x or one of its projections is used in a reset, or is passed to a function that takes an owned reference. The latter condition is a heuristic and is not required for correctness.
 % we can easily mark a scope as borrowing an object if they only use it in a read only way. which is all other instances than when marked owned.
 
 \subsection{Inc, Dec, Reset and Reuse}
 % how it works
-% In general, variables should be incremented prior to being used  in an owned context that consumes an RC token. Variables used  in any other (borrowed) context do not need to be incremented.  Owned references should be decremented after their last use. ...
-
+% In general, variables should be incremented prior to being used in an owned context that consumes an RC token. Variables used in any other (borrowed) context do not need to be incremented. Owned references should be decremented after their last use. ...
 
 \subsection{examples}
 % when is it useful (examples?)
+% A Simple example
+
+
+% A more complex example
+
+
+% An example with everything marked owned
+% It is "safe" to mark everything owned, but it is not efficient. We can show this with the same example as before, but mark everything owned and show how many more inc/dec instructions we need to add.
 
 
 \subsection{AST structure requirements}
