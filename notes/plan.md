@@ -52,6 +52,7 @@
 - [ ] Design syntax for Rizzo
 - [ ] Make code examples
 - [ ] Add pattern matching in function parameters (if time permits)
+  - Would help make functions able to take unit as an input, which is useful for writing functions that are only executed for their side effects (e.g. `print`).
 - [ ] Consider Recursion based on Rizzo language rules (if time permits)
 
 ## Implement Rizzo Runtime (Transpiler)

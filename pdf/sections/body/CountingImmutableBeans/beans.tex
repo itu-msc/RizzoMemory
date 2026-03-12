@@ -11,59 +11,157 @@ Early work on reference counting like in \citetitle{collins_method_1960} \cite{c
 introduced the idea of reference counting as opposed to other memory management methods like tracing garbage collection. The basic idea of reference counting is to attach a counter to each object in memory, that keeps track of how many references point to the object. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
 
 These early implementations were implemented in the runtime system of the programming language. This is was a common approach, but is hard to optimize.
-Newer techniques, like the one proposed by \citetitle{ullrich_counting_2021}, are designed to be implemented in the compiler, allowing for more efficient memory management and better performance. By using ownership types to track which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
+Newer techniques, like the one proposed by \citetitle{ullrich_counting_2021}, are designed to be implemented in the compiler, allowing for more efficient memory management and better performance. 
 
-We will be using the term RC token (Reference Counting token) to refer to the reference one instance of a reference to an object. We say that when a new reference is created, an RC token is created and when a reference is destroyed, an RC token is consumed.
+By using new `reset' and `reuse' instructions in combination, with ownership types that track 
+
+to track which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
+
+In this section, we will be using the term `RC token' (Reference Counting token) to refer to the reference one instance of a reference to an object. We say that when a new reference is created, an RC token is created and when a reference is destroyed, an RC token is consumed.
 
 % circular references? bacon papers solution to this? we don't have this problem in Rizzo because of mutable heads, but maybe we can still talk about it?
 
-\subsection{Ownership}
+\subsection{The Ullrich Et al. paper}
+
+\citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} gains their performance improvements by using a combination of ownership types and new `reset' and `reuse' instructions.
+The ownership types lets the compiler track which parts of the program are responsible for managing the memory of each object. This knowledge allows the compiler to determine when an object needs to be incremented or decremented, which reduces the number of reference counting operations that need to be performed. 
+On the other hand, the new `reset' and `reuse' instructions allows the compiler to optimize memory allocations of new objects, by reusing memory from old objects that are no longer needed, instead of always allocating new memory for each object. This leads to performance improvements, especially in cases where many short-lived objects are created and destroyed.
+
+The paper defines three main steps for implementing their reference counting technique, where each step depends on the previous one:
+
+\begin{itemize}
+    \item Inserting reset/reuse pairs
+    \item Inferring borrowed parameters
+    \item Inserting inc/dec instructions
+\end{itemize}
+
+% (1) Inserting reset/reuse pairs (Section 5.1)  
+% (2) Inferring borrowed parameters (Section 5.2)  
+% (3) Inserting inc/dec instructions (Section 5.3)
+
+
+
+
+
+% \subsection{Ownership}
 % what does it mean?
 % compare to rust?
-\citetitle{ullrich_counting_2021} combine the power of static analysis with the power of compile time optimizations to achieve efficient reference counting. The key idea is to use ownership types to track which parts of the program are responsible for managing the memory of each object. This allows the compiler to determine when an object can be safely deallocated, and to optimize reference counting operations accordingly. 
+% \citetitle{ullrich_counting_2021} combine the power of static analysis with the power of compile time optimizations to achieve efficient reference counting. The key idea is to use ownership types to track which parts of the program are responsible for managing the memory of each object. This allows the compiler to determine when an object can be safely deallocated, and to optimize reference counting operations accordingly. 
 
-The ownership system is based on the idea of `owned' and `borrowed' references, where if a function takes an owned reference, it expects it can consume an RC token. In practical terms, this means that the function will decrement the reference count of the object when it is done using it, and the caller is responsible for ensuring that the reference count is properly managed (incremented) before calling the function.
-A borrowed reference, on the other hand, does not consume an RC token, making the caller responsible for ensuring that the object is not deallocated while it is being used. This allows for more efficient memory management, by not requiring the caller to increment the reference count for borrowed references.
+% The ownership system is based on the idea of `owned' and `borrowed' references, where if a function takes an owned reference, it expects it can consume an RC token. In practical terms, this means that the function will decrement the reference count of the object when it is done using it, and the caller is responsible for ensuring that the reference count is properly managed (incremented) before calling the function.
+% A borrowed reference, on the other hand, does not consume an RC token, making the caller responsible for ensuring that the object is not deallocated while it is being used. This allows for more efficient memory management, by not requiring the caller to increment the reference count for borrowed references.
 
 
 
 % when is something owned? when is it shared?
 
+% \citeauthor*{ullrich_counting_2021} says in their paper that "a parameter x should be owned if x or one of its projections is used in a reset, or is passed to a function that takes an owned reference". The first condition is straightforward, as it directly indicates that the parameter is being used in a context where it will be consumed. The second condition is a heuristic, as it is not strictly required for correctness, but it can help to identify cases where ownership should be transferred to ensure efficient memory management.
 
 % We say a parameter x should be owned if x or one of its projections is used in a reset, or is passed to a function that takes an owned reference. The latter condition is a heuristic and is not required for correctness.
 % we can easily mark a scope as borrowing an object if they only use it in a read only way. which is all other instances than when marked owned.
 
-\subsection{Inc, Dec, Reset and Reuse}
+% \subsection{Inc, Dec, Reset and Reuse}
 % how it works
 % In general, variables should be incremented prior to being used in an owned context that consumes an RC token. Variables used in any other (borrowed) context do not need to be incremented. Owned references should be decremented after their last use. ...
 
 \subsection{examples}
-% when is it useful (examples?)
-% A Simple example
+The following examples use a small notation close to the reference counted intermediate language generated by the compiler. The instructions `inc' and `dec' increment and decrement the reference count of a variable, while `reset' and `reuse' are used to reclaim and recycle storage.
 
+As a first example, consider the expression below where the same variable is passed twice to a function:
 
-% A more complex example
+\begin{verbatim}
+let z = c y y in
+ret z
+\end{verbatim}
 
+Assume that both parameters of `c' are owned. The call therefore consumes two RC tokens, but the variable `y' initially contributes only one. The compiler must insert an `inc' before the call to make the second owned use valid:
 
-% An example with everything marked owned
-% It is "safe" to mark everything owned, but it is not efficient. We can show this with the same example as before, but mark everything owned and show how many more inc/dec instructions we need to add.
+\begin{verbatim}
+let y = 5 in
+inc y;
+let z = c y y in
+ret z
+\end{verbatim}
+
+No matching `dec' is needed afterwards, since both RC tokens are consumed by the call itself. This is the safe but \todo{conservative} behaviour we get when both arguments are treated as owned.
+
+Borrowing removes some of this overhead. If the first parameter of `c' is borrowed and the second is owned, then only one of the two uses of `y' consumes an RC token. The borrowed use still requires the object to stay alive for the duration of the call, so the compiler inserts a temporary increment before the call and a matching decrement afterwards:
+
+\begin{verbatim}
+let y = 5 in
+inc y;
+let z = c y y in
+dec y;
+ret z
+\end{verbatim}
+
+Compared to the previous example, this makes the ownership discipline more precise: one occurrence of `y' is only observed, while the other is actually consumed. The compiler can therefore avoid treating both arguments as fully owned.
+
+The more interesting optimisation in \citetitle{ullrich_counting_2021} is the combination of `reset' and `reuse'. In Rizzo this matters when a combinator stops using an input signal and immediately constructs a replacement signal. Consider the function below:
+\todo{Update this to not use the forced if then else.}
+\begin{verbatim}
+fun stop f s =
+    if f (head s)
+    then match s with
+             | x :: xs -> x :: never
+    else match s with
+             | x :: xs -> x :: (jump (fun a -> Just (a :: xs)) |> xs)
+\end{verbatim}
+
+In the `then' branch, the old signal `s' is dead immediately after the match. This makes it possible to reset the old signal cell and reuse its storage for the new signal:
+
+\begin{verbatim}
+match s with
+| x :: xs ->
+    let r = reset s in
+    let s' = reuse r in Signal(x, never) in
+    ret s'
+\end{verbatim}
+
+This avoids allocating a fresh signal object and immediately disconnects the old intermediate signal from the heap.
+
+Not every signal combinator admits this optimisation. For a function such as `map', the input signal must remain alive because its tail is needed to produce future values:
+
+\begin{verbatim}
+fun map f s = 
+    match s with
+    | x :: xs -> f x :: (map f |> xs)
+\end{verbatim}
+
+Here the delayed computation still depends on `xs', so reusing the storage of `s' would destroy data that is needed later. This illustrates why reuse opportunities for signals in Rizzo are limited: they mainly arise in combinators that terminate, switch, or otherwise stop forwarding the original signal.
 
 
 \subsection{AST structure requirements}
 % transformations that we need
 
-% (1) Inserting reset/reuse pairs (Section 5.1)  (2) Inferring borrowed parameters (Section 5.2)  (3) Inserting inc/dec instructions (Section 5.3)
+% (1) Inserting reset/reuse pairs (Section 5.1)  
+% (2) Inferring borrowed parameters (Section 5.2)  
+% (3) Inserting inc/dec instructions (Section 5.3)
 
 % We assume that
-% • all constructor applications are fully applied by eta-expanding  them. ?? not needed till we add custom types and constructors?
-% • no constant applications are over-applied by splitting them  into two applications where necessary.
-% • all variable applications take only one argument, again by  splitting them where necessary. While this simplification  can introduce additional allocations of intermediary partial  applications, it greatly simplifies the presentation of our operational semantics. All presented program transformations can be readily extended to a system with n-ary variable applications, which are handled analogously to n-ary constant  applications.
+% • all constructor applications are fully applied by eta-expanding them. ?? not needed till we add custom types and constructors?
+% • no constant applications are over-applied by splitting them into two applications where necessary.
+% • all variable applications take only one argument, again by splitting them where necessary. While this simplification can introduce additional allocations of intermediary partial applications, it greatly simplifies the presentation of our operational semantics. All presented program transformations can be readily extended to a system with n-ary variable applications, which are handled analogously to n-ary constant applications.
 % • every function abstraction has been lambda-lifted to a toplevel constant c.
-% • trivial bindings let x = y have been eliminated through  copy propagation.
+% • trivial bindings let x = y have been eliminated through copy propagation.
 % • all dead let bindings have been removed.
-% • all parameter and let names of a function are mutually  distinct. Thus we do not have to worry about name capture.
+% • all parameter and let names of a function are mutually distinct. Thus we do not have to worry about name capture.
 
 % how we are going to use it and what we use and don't use from the paper
 % for example we don't (need to) fully apply constructors? move this somewhere later?
 
+To implement the reference counting technique proposed by \citetitle{ullrich_counting_2021}, the paper states that we need to perform a series of transformations on the abstract syntax tree (AST) of our program. These transformations are necessary to ensure that the AST is in a form that allows us to insert the appropriate `reset', `reuse', `inc', and `dec' instructions, as well as to infer ownership types for function parameters. The transformations we need to perform include:
 
+\begin{itemize}
+    \item Eta-expanding constructor applications to ensure that all constructors are fully applied.
+    \item Splitting over-applied constant applications into multiple applications to ensure that all constant applications are fully applied.
+    \item Splitting variable applications into multiple applications to ensure that all variable applications take only one argument.
+    \item Lambda-lifting all function abstractions to the top level to ensure that all functions are defined at the top level of the program.
+    \item Eliminating trivial bindings of the form `let x = y' through copy propagation, to simplify the AST and reduce unnecessary bindings.
+    \item Removing all dead let bindings to clean up the AST and remove unused variables.
+    \item Ensuring that all parameter and let names of a function are mutually distinct to avoid name capture issues during transformations.
+\end{itemize}
+
+We have implemented each transformation as a separate pass over the AST, allowing us to modularly apply these transformations in the correct order.
+
+\todo{something about us not having eta expandsions "yet"??}
