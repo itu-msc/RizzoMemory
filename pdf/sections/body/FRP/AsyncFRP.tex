@@ -4,28 +4,64 @@ Reactive programs are interactive programs that communicate with the environment
 
 Functional Reactive Programming (FRP) is a programming paradigm that combines functional programming with reactive programming. It allows developers to create programs that can react to changes in data over time, making it easier to handle asynchronous events and manage state in a declarative way. 
 
-The main abstraction of FRP is the \textit{signal}, which models time-varying values. Conceptually, a signal can be thought of as a sequence of values produced by interacting with the environment. This allows signals to be transformed, combined and manipulated using familiar functional techniques.
-
+The main abstraction of FRP is the \textit{signal}, which models time-varying values. Conceptually, a signal can be thought of as a sequence of values produced by interacting with the environment. Signals can be transformed, combined and manipulated using familiar functional techniques.
 
 %inputs/outputs depend on each other
 
-
-%Modal FRP is a family of languages [3, 24, 25] where modal types are used to ensure  several key properties: causality, productivity, and absence of space leaks. In the literature, these modal types are presented as the modal type constructors ○ (later), which  refers to values that are available at a later global timestep, which refers to values that are always available; and a guarded fixed point operator with the type  (○ A → A) → A, which allows guarded recursion.
-
+%Modal FRP is a family of languages [3, 24, 25] where modal types are used to ensure  several key properties: causality, productivity, and absence of space leaks. In the literature, these modal types are presented as the modal type constructors ○ (later), which  refers to values that are available at a later global time step, which refers to values that are always available; and a guarded fixed point operator with the type  (○ A → A) → A, which allows guarded recursion.
 
 \subsection{Basics of Rizzo} % title work in progress
 
-Rizzo \cite{rizzo_modal_2025} is an FRP language but Rizzo takes a slightly different approach to signals when compared to earlier works \cite{neel_krishnaswami_2013,bahr_asynchronous_2023}. In particular, a signal in Rizzo is modelled as a mutable reference to a tuple of two elements: 
+%Rizzo is an mutable FRP language with the special twist that signals have a mutable head value, meaning old values are overwritten, making space leaks impossible. So any reference to a signal will always refer to the most recent value of that signal. 
 
-\[type \text{ Signal }a = \text{Ref }(a \times \text{Later (Signal }a))\] 
+Rizzo~\cite{rizzo_modal_2025} is an FRP language that takes a slightly different approach to signals when compared to earlier works~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023}. 
+In particular, a signal in Rizzo is modelled as a mutable reference to a tuple of two elements: 
 
-The first element is the \textit{head} which is the most recent value produced by the signal. The second element is the \textit{tail} which is a delayed computation used to produce the next value. This delayed computation is used in the reactive semantics to update the signal (in place) whenever a relevant value is produced by the environment.
+\[type \text{ Signal }a = \text{Ref }(a \times \text{Later }(\text{Signal }a))\] 
 
-The $\text{Later}$ is type, referred to as the later modality (noted with a $\bigcirc$) in literature. Rizzo belongs to a group of FRP languages \cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} that use modal types to guarantee certain properties: \textit{causality}, \textit{productivity}, and \textit{free of space leaks}. The details of these are not relevant for this paper but the modal types are nonetheless useful for understanding Rizzo. Rizzo differentiates between two types of delayed computations: 1) the $\text{Later } a$ which describes a value of type $a$ becoming available at some (existential) time step; 2) the $\text{Delay }a$ which describe a value of type $a$ that is available at all (universally quantified) future time steps. \todo{This universally quantified delay is then used to guard recursive calls in order to gurantee productivity. While this guarantee is a great theoretical achievement it is quite inconvienient to use, so for the remainder of the paper we assume general recursion.}
+The first element is the \textit{head} which holds the most recent value produced by the signal. 
+The second element is the \textit{tail} which is a delayed computation used to produce the next signal value. This delayed computation is used in the reactive semantics \todo{ref} to update the signal (in place) whenever a relevant value is produced by the environment.
+We can construct signals with the infix operator: 
+\[\_ :: \_ : a \rightarrow \text{Later }\text{Signal }a \rightarrow \text{Signal }a\]
 
-\todo{Knyt et par ord om diverse later constructors. Især later app, så vi kan definiere en map funktion. Det burde give en ide om, hvordan man bruger Rizzo.}
+The $\text{Later}$ type marks a delayed computation. It is referred to as the later modality in literature \cite{bahr_asynchronous_2023,rizzo_modal_2025} and written as $\bigcirc a$. Rizzo belongs to a group of FRP languages~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} that use modal types to guarantee certain properties: \textit{causality}, \textit{productivity}, and \textit{free of space leaks}. The details of these are not relevant for this paper but the modal types are nonetheless useful for understanding Rizzo. 
+Rizzo differentiates between two types of delayed computations. 
+There is the $\text{Later } a$ which describes a value of type $a$ becoming available at some (existential) time step. 
+And then there is the $\text{Delay }a$ which describe a value of type $a$ that is available at all (universally quantified) future time steps.
 
+\todo{This delay type is how Rizzo and similar languages guarantee \textit{productivity} over recursive definitions. They guard recursion behind a delay, ensuring that it cannot happen until a future time step is produced. This is useful in the formal model but a functional language without general recursion is inconvienient to work with and so going forward we assume general recursion.}
 
-\todo{Nedenunder er semantics? Skal vi flytter til semantics del?}
-Rizzo is an mutable FRP language with the special twist that signals have a mutable head value, meaning old values are overwritten, making space leaks impossible. So any reference to a signal will always refer to the most recent value of that signal. 
+Rizzo has a number of constructors for working with delayed computations~\cite{rizzo_modal_2025}. 
+We shall present some of them here but for a full overview \todo{see section?}. 
+Starting with the delay type, its main constructor is $\text{delay} : a \rightarrow \text{Delay }a$ which simply pushes any value into the future. 
+Then for the later type, we may use the constructor $\text{wait} : \text{Chan }a \rightarrow \text{Later }a$, which is used to wait for the environment to produce input on a particular channel. One can think of a channel ($\text{Chan}$ type) as an opening through which the environment can pass values to Rizzo programs.
+Another later constructor is the $\text{tail} : \text{Signal }a \rightarrow \text{Later }(\text{Signal }a)$, which let us access the future value of a signal. 
+However, probably the most useful of all is the applicative action on $\text{Later}$ computations:
+
+\[f \triangleright x : \text{Delay }(a \rightarrow b) \rightarrow \text{Later }a \rightarrow \text{Later }b\]
+
+This allows us to apply functions to values that only become available later. The actual application happens in a future time step when the argument $x$ becomes available.
+
+\todo{Figure with later modality types?}
+
+With these constructors we already have the necessary tools to define some signal combinators of our own! 
+The $mk\_sig$ function allows us to create signals from any delayed computation:
+
+\[ \text{mk\_sig} \; later = (\lambda x. x :: \text{mk\_sig }later) \; \triangle \; later \]
+
+Assuming there exists a channel $console : \text{Chan String}$ that reads from the console, we can define signals that react to console input. An example of such a signal is $\text{""} :: \text{mk\_sig} \; (\text{wait} \; console)$, which produces a string of whatever was read from the console.
+
+We can take it one step further and define the $\text{map} : (a \rightarrow b) \rightarrow \text{Signal }a \rightarrow \text{Signal }b$ function:
+
+\[ \text{map} \; f \; (x :: xs) = f \; x :: (delay \; (map \; f)) \triangleright xs \]
+
+The definition of map makes use of pattern matching on signals. Alternatively, we could have used explicit $\text{head}$ and $\text{tail}$ to extract $x$ and $xs$ respectively.
+
+Rizzo is an asynchronous FRP language which means different signals are not necessarily updated at the same time.\todo{Example? Sample combinator?}
+
+\subsection{Rizzo heap}
+
+\todo{Skal man introducere lynhurtig signal-heap?}
+
 Without going too much in detail, the way signals are stored in Rizzo is through a double linked list of signal nodes, where each node contains the current value of the signal and a pointer to the next node. When a signal is updated, a new node is created with the new value and the value is copied back to the initial signal node, so references don't have to be updated. This means that the memory management of Rizzo must be able to immediately identify signals that are no longer needed, otherwise these lead to unnecessary work being done. One solution to this is a reference counted memory management system. With reference counting, each object holds a counter with the number of references that exist for that object. The count then makes it possible to immediately know when a signal is not needed and can be safely discarded.
+
