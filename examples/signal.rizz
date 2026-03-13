@@ -4,6 +4,12 @@ fun _const x : 'a -> Signal 'a = x :: never
 fun mk_sig later = 
     (fun a -> a :: mk_sig later) |> later
 
+fun mk_sig_of_channel c =
+    mk_sig (wait c)
+
+fun init_signal c x =
+    x :: mk_sig_of_channel c
+
 fun map f s = 
     match s with
     | x :: xs -> f x :: (map f |> xs)
@@ -21,7 +27,29 @@ fun map f s =
         r
     */
 
-fun sample xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b)= map (fun x -> (x, head ys)) xs
+fun map_l f s =
+    (map f) |> s
+
+fun sample xs ys = map (fun x -> (x, head ys)) xs
+
+fun sample_l xs ys =
+    (fun xs_ -> sample xs_ ys) |> xs
+
+fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
+    let cont = fun mysync -> match mysync with
+        | Left (xs_)      -> zip xs_ ys
+        | Right (ys_)     -> zip xs ys_
+        | Both (xs_, ys_) -> zip xs_ ys_
+    in
+    (head xs, head ys) :: (cont |> sync (tail xs) (tail ys))
+
+fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =
+    let cont = fun mysync -> match mysync with
+        | Left (xs_)      -> map2 f xs_ ys
+        | Right (ys_)     -> map2 f xs ys_
+        | Both (xs_, ys_) -> map2 f xs_ ys_
+    in
+    f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))
 
 fun _switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
     | x :: xs -> 
@@ -33,10 +61,83 @@ fun _switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
         let tl  = sync xs d in
         x :: (cont |> sync xs d)
 
+fun switch_s s d : Signal 'a -> Later ('a -> Signal 'a) -> Signal 'a = 
+    match s with
+    | x :: xs ->
+        let cont = fun mysync -> 
+            match mysync with
+            | Left (xs_)    -> switch_s xs_ d
+            | Right (f)     -> f x
+            | Both (_, f)   -> f x
+        in
+        x :: (cont |> sync xs d)
+
+fun switchS s d =
+    switch_s s d
+
+fun switch_r s d =
+    let d_ = (fun s_ -> fun x -> switch_r ((head s_) x) (tail s_)) |> d in
+    switch_s s d_
+
+fun scan f b s : ('b -> 'a -> 'b) -> 'b -> Signal 'a -> Signal 'b = match s with
+    | x :: xs ->
+        let b_ = f b x in
+        b_ :: (scan f b_ |> xs)
+
+fun scan_l f b s =
+    (scan f b) |> s
+
+fun interleave_from f current xs ys =
+    let cont = fun mysync -> 
+        match mysync with
+        | Left (xs_)      -> interleave_from f (head xs_) xs_ ys
+        | Right (ys_)     -> interleave_from f (head ys_) xs ys_
+        | Both (xs_, ys_) -> interleave_from f (f (head xs_) (head ys_)) xs_ ys_
+    in
+    current :: (cont |> sync (tail xs) (tail ys))
+
+fun interleave f xs ys =
+    interleave_from f (f (head xs) (head ys)) xs ys
+
 fun filter_map p s : ('a -> (Option 'b)) -> Signal 'a -> Later (Signal 'b) = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
 
 fun filter p s : ('a -> Bool) -> Signal 'a -> Later (Signal 'a) = filter_map (fun x -> if p x then Just (x) else Nothing) s
+
+fun filter_map_l p s =
+    mk_sig (watch (Nothing :: (map p |> s)))
+
+fun filter_mapL p s =
+    filter_map_l p s
+
+fun filter_l p s =
+    filter_map_l (fun x -> if p x then Just (x) else Nothing) s
+
+fun filterL p s =
+    filter_l p s
+
+fun jump f s : ('a -> Option (Signal 'a)) -> Signal 'a -> Signal 'a =
+    match s with
+    | x :: xs ->
+        let cont = fun s_ -> 
+            match f (head s_) with
+            | Just (y) -> y
+            | Nothing  -> jump f s_
+        in
+        x :: (cont |> xs)
+
+fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
+  match s with
+  | x :: xs ->
+    if f x
+    then x :: never
+    else x :: (jump (fun a -> Just (a :: xs)) |> xs)
+
+fun trigger f s1 s2 =
+    map (fun p -> match p with | (a, b) -> f a b) (sample s1 s2)
+
+fun trigger_l f s1 s2 =
+    (fun s1' -> trigger f s1' s2) |> s1
 
 fun mytail s = match s with
     | x :: xs -> let x_delayed = delay x in xs

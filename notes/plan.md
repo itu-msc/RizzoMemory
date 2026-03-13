@@ -64,6 +64,12 @@
   - [ ] `tail` and `watch` needs to dereference the pointer to get the function of the real signals tail.
 - [ ] Optimize type guard checks in the transpiler (e.g. for `signal` and `later`), to avoid unnecessary checks at runtime.
 
+## Optimizations
+
+- [ ] If the same function is called multiple times with the same arguments in the same scope, we can reuse the result of the first call.
+  - AST optimization
+  - Make sure that we don't remove calls to functions that are marked @effectful
+
 ## Rizzo type checking
 
 - [x] We could do bidirectional typing
