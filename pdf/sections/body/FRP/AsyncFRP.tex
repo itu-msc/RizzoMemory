@@ -43,7 +43,7 @@ This allows later values to be applied to delayed functions but the application 
 With these constructors we already have the necessary tools to define some signal combinators! 
 The $mk\_sig$ function allows us to create signals from any delayed computation:
 
-\[ \text{mk\_sig} \; later = (\lambda x. x :: \text{mk\_sig }later) \; \triangleright \; later \]
+\[ \text{mk\_sig} \; later = (delay \; (\lambda x. x :: \text{mk\_sig }later)) \; \triangleright \; later \]
 
 Assuming there exists a channel $console : \text{Chan String}$ that reads from the console, we can define signals that react to console input. An example of such a signal is $(\text{""} :: \text{mk\_sig} \; (\text{wait} \; console))$, which echoes strings read from the console.
 
