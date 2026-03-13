@@ -79,6 +79,7 @@
 - [ ] Add code completion
 - [x] Add go-to-definition
 - [ ] Add other features as time permits
+- [ ] Substitute inferred (and weak) type parameters for better names
 
 ## Write up Rizzo paper
 

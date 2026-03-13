@@ -38,6 +38,36 @@ let is_string_case cases =
   in
   has_string_discriminator && List.for_all (fun (pattern, _, _) -> is_string_case_pattern pattern) cases
 
+let rec sink_until_first_use name proj ann e = 
+  let (var_name, _) = name in
+  let used_in e = Ast_helpers.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals e) in
+  match e with
+  | EVar (n1,_) when var_name = n1 -> ELet(name, proj, e, ann)
+  | EVar _ | EConst _ -> e
+  | ELet (name', rhs, e2, ann') -> 
+    if used_in rhs then ELet(name, proj, e, ann)
+    else ELet (name', rhs, sink_until_first_use name proj ann e2, ann')
+  | EApp (f, args, _) when List.exists used_in args || used_in f -> ELet(name, proj, e, ann)
+  | EBinary (_, e1, e2, _) when used_in e1 || used_in e2 -> ELet(name, proj, e, ann)
+  | EUnary (op, e, ann') -> 
+    EUnary (op, sink_until_first_use name proj ann e, ann')
+  | ECtor (_, args, _) when List.exists used_in args -> ELet(name, proj, e, ann)
+  | EAnno (e, t, ann') -> EAnno (sink_until_first_use name proj ann e, t, ann')
+  | ETuple (e1, e2, _) when used_in e1 || used_in e2 -> ELet(name, proj, e, ann)
+  | EFun (_, body, _) when used_in body -> ELet(name, proj, e, ann)
+  | EIfe (cond, e1, e2, ann') -> 
+    if used_in cond then ELet(name, proj, e, ann)
+    else
+      let e1' = if used_in e1 then sink_until_first_use name proj ann e1 else e1 in
+      let e2' = if used_in e2 then sink_until_first_use name proj ann e2 else e2 in
+      EIfe (cond, e1', e2', ann')
+  | ECase (scrutinee, branches, ann') -> 
+    if used_in scrutinee then ELet(name, proj, e, ann)
+    else
+      let cases = List.map (fun (pat, branch, ann') -> (pat, sink_until_first_use name proj ann branch, ann')) branches in
+      ECase (sink_until_first_use name proj ann scrutinee, cases, ann')
+  | _ -> e
+
 let rec transform_patterns (p: 's Ast.program) = 
   List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) p
   
@@ -68,10 +98,12 @@ and compile_simple_pattern scrutinee case_body = function
   | PSigCons (PVar (head, head_ann), tail, ann) ->
     let hd_proj = EApp (EVar (head_elim, ann), [scrutinee], ann) in
     let tl_proj = EUnary (UTail, scrutinee, ann) in
-    Some (ELet ((head, head_ann), hd_proj, ELet (tail, tl_proj, case_body (), ann), ann))
+    let body = sink_until_first_use tail tl_proj ann (case_body ()) in
+    Some (ELet ((head, head_ann), hd_proj, body, ann))
   | PSigCons (PWildcard, tail, ann) ->
     let tl_proj = EUnary (UTail, scrutinee, ann) in
-    Some (ELet (tail, tl_proj, case_body (), ann))
+    let body = sink_until_first_use tail tl_proj ann (case_body ()) in
+    Some (body)
   | _ -> failwith "Only simple patterns - variables !"
 
 and compile_string_case scrutinee cases ann =

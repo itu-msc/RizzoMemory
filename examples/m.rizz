@@ -1,0 +1,36 @@
+
+fun jump f s = 
+  let cont = fun s -> match f (head s) with
+  | Just (y) -> y
+  | Nothing -> jump f s
+  in
+  head s :: (cont |> tail s)
+
+// fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =  
+//   if f (head s)
+//   then 
+//     match s with | x :: xs -> x :: never
+//   else 
+//     match s with
+//     | x :: xs -> x :: (jump (fun a -> Just (a :: xs)) |> xs)
+
+fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =  
+  match s with
+  | x :: xs ->
+    if f x
+    then x :: never
+    else 
+    let cont = fun a -> Just (a :: xs) in
+    x :: (jump cont |> xs)
+
+// fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =  
+//   match s with
+//   | x :: xs ->
+//     if f x
+//     then x :: never
+//     else 
+//       let tl = tail s in
+//       x :: (jump (fun a -> Just (a :: tl)) |> tl)
+
+fun entry x = 
+  ()
