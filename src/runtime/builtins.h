@@ -1,5 +1,6 @@
 #pragma once
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -32,6 +33,14 @@ static inline rz_box_t rz_builtin_expect_string(const char *name, size_t index, 
 	return arg;
 }
 
+static inline rz_box_t rz_builtin_make_nothing(void) {
+	return rz_make_ptr(rz_ctor_var(0, 0));
+}
+
+static inline rz_box_t rz_builtin_make_just(rz_box_t value) {
+	return rz_make_ptr(rz_ctor_var(1, 1, value));
+}
+
 static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *args) {
 	rz_builtin_expect_arity("start_event_loop", 1, num_args);
 	(void)args;
@@ -41,6 +50,20 @@ static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *ar
 static inline rz_box_t rz_builtin_output_int_signal(size_t num_args, rz_box_t *args) {
 	rz_builtin_expect_arity("output_int_signal", 1, num_args);
 	return rz_register_output_signal(num_args, args);
+}
+
+static inline rz_box_t rz_builtin_parse_int(size_t num_args, rz_box_t *args) {
+	const char *source;
+	char *end;
+	long converted;
+	rz_builtin_expect_arity("parse_int", 1, num_args);
+	source = rz_string_data(rz_builtin_expect_string("parse_int", 0, args[0]));
+	errno = 0;
+	converted = strtol(source, &end, 10);
+	if (source == end || *end != '\0' || errno == ERANGE || converted > INT32_MAX || converted < INT32_MIN) {
+		return rz_builtin_make_nothing();
+	}
+	return rz_builtin_make_just(rz_make_int((int32_t)converted));
 }
 
 static inline rz_box_t rz_builtin_eq(size_t num_args, rz_box_t *args) {

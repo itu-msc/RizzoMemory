@@ -1,0 +1,16 @@
+fun map f s = 
+    match s with
+    | x :: xs -> x
+
+@effectful fun entry x = 
+    let my_sig = 5 :: never in
+    let string_sig = "Hello" :: never in
+    let xx = output_int_signal my_sig in 
+    let synced = sync (tail my_sig) never in
+    let x = (fun s -> 
+        match s with
+        | Left (x) -> x
+        | Right (_) -> 0 :: never
+        | Both (x, y) -> y) |> synced
+    in 
+    start_event_loop ()

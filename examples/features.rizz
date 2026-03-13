@@ -2,8 +2,8 @@ let greeting = "Hello" + ", " + "world!"
 
 fun describeText s =
     match s with
-    // | "" -> "The string is empty."
-    // | "H" :: rest -> "Starts with H, tail = " + rest
+    | "" -> "The string is empty."
+    | "H" :: rest -> "Starts with H, tail = " + rest
     | first :: _rest -> "Starts with " + first
 
 fun entry x =

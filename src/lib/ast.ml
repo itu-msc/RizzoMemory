@@ -161,7 +161,11 @@ and eq_typ a b = match a,b with
   | TFun (Cons1 (p1, p_rest1), r1), TFun (Cons1 (p2, p_rest2), r2) ->
     eq_typ p1 p2 && eq_typ r1 r2 && List.length p_rest1 = List.length p_rest2 && List.for_all2 eq_typ p_rest1 p_rest2
   | TTuple (a1, b1), TTuple (a2, b2) | TSync(a1, b1), TSync(a2,b2) -> eq_typ a1 a2 && eq_typ b1 b2
-  | TSignal t1, TSignal t2 | TLater t1, TLater t2 | TDelay t1, TDelay t2 -> eq_typ t1 t2
+  | TSignal t1, TSignal t2
+  | TLater t1, TLater t2
+  | TDelay t1, TDelay t2
+  | TOption t1, TOption t2
+  | TChan t1, TChan t2 -> eq_typ t1 t2
   | _ -> false
 
 let pp_const out = function

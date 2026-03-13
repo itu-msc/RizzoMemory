@@ -20,6 +20,7 @@ let mk name ?(ownership = None) ?(proj_idx = None) ?(public = true) (t: Ast.typ)
 let builtins = [
   mk "start_event_loop" ~ownership:(Some [Refcount.Borrowed]) (TFun(Cons1(Ast.TUnit, []), TUnit)) ();
   mk "output_int_signal" ~ownership:(Some [Refcount.Owned]) (TFun (Cons1(TSignal TInt, []), TUnit)) ();
+  mk "parse_int" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TOption TInt)) ();
   mk "eq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TParam "'a", [TParam "'a"]), TBool)) ();
   mk "lt" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TBool))  ();
   mk "leq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TBool)) ();
@@ -42,7 +43,7 @@ let builtins = [
   mk "both_elim_fst"  ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'a")) ();
   mk "both_elim_snd"  ~proj_idx:(Some 1)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'b")) ();
 
-  mk "console" (TChan TInt) ()
+  mk "console" (TChan TString) ()
 ]
 
 let builtins_map = List.map (fun b -> b.name, b) builtins |> M.of_list

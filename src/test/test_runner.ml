@@ -2,6 +2,7 @@
 let () =
   Alcotest.run "Rizzo Location Tests" [
     "location tracking", Test_rizzo.location_tests;
+    "BUILTIN TESTS", Test_builtins.builtin_tests;
     "PARSER/LEXER TESTS", Test_parser.parser_tests;
     "STRING TESTS", Test_strings.string_tests;
     "LANGUAGE SERVICE TESTS", Test_language_service.tests;

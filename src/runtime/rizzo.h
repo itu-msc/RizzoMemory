@@ -3,6 +3,10 @@
 // use the -D flag to enable debug info, printing at runtime `gcc ... -D__RZ_DEBUG_INFO`
 // #define __RZ_DEBUG_INFO
 
+#ifndef __RZ_INPUT_BUFFER_SIZE
+#define __RZ_INPUT_BUFFER_SIZE 512
+#endif
+
 #include "core.h"
 #include "heap.h"
 #include "later.h"
@@ -38,19 +42,11 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v) {
    - Listens to input on channels (currently only console input)
    - Then produces a time step by calling `rz_step` (which updates the heap) */
 static rz_box_t rz_start_event_loop() {
-    char buffer[256];
+    char buffer[__RZ_INPUT_BUFFER_SIZE];
     while (true) {
         rz_os_result_t status = rz_readline(buffer, sizeof(buffer));
         if (status == RZ_OK) {
-            char *p;
-            long converted = strtol(buffer, &p, 10);
-            if (p == buffer)
-                continue;
-            if (*p != '\0' || converted > INT32_MAX || converted < INT32_MIN) {
-                printf("Invalid input, only 32-bit integers\n");
-                continue;
-            }
-            rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_int((int32_t)converted));
+            rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_string_len(buffer, strlen(buffer)));
 #ifdef __RZ_DEBUG_INFO
             printf("AFTER STEP\n");
             rz_debug_print_heap();
