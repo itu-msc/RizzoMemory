@@ -15,6 +15,11 @@ let check_unique_params params =
 
 let mkloc start_pos end_pos = Ann_parsed (Location.mk start_pos end_pos)
 
+let binary_ann left right =
+  let left_loc = get_location (expr_get_ann left) in
+  let right_loc = get_location (expr_get_ann right) in
+  mkloc left_loc.start_pos right_loc.end_pos
+
 let rec tuple_expr_of_list start_pos end_pos = function
   | [] | [_] -> failwith "Tuple must contain at least 2 elements"
   | [a; b] -> ETuple (a, b, mkloc start_pos end_pos)
@@ -46,8 +51,8 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %token EFFECTFUL
 %token EQ CONS COMMA LPAREN RPAREN BAR
 %token IF THEN ELSE
-%token PIPE_GT ARROW COLON STAR UNDERSCORE EQEQ PLUS
-%token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY
+%token PIPE_GT ARROW COLON STAR SLASH UNDERSCORE EQEQ PLUS MINUS LT GT LEQ GEQ BANG
+%token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY //NOT
 %token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION
 %token <string> ID
 %token <string> TYPE_ID
@@ -60,6 +65,8 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %start <Ast.parsed Ast.program> main
 
 %nonassoc BELOW_BAR
+%nonassoc BELOW_CTOR_ARGS
+%nonassoc LPAREN
 %nonassoc BAR
 // %left PIPE_GT EQEQ
 
@@ -134,16 +141,38 @@ pipe_expr:
       { e }
 
 eq_expr:
-  | left=eq_expr EQEQ right=add_expr
-    { EBinary (Eq, left, right, mkloc $startpos $endpos) }
+  | left=compare_expr EQEQ right=compare_expr
+    { EBinary (Eq, left, right, binary_ann left right) }
+  | e=compare_expr
+    { e }
+
+compare_expr:
+  | left=add_expr LT right=add_expr
+    { EBinary (Lt, left, right, binary_ann left right) }
+  | left=add_expr LEQ right=add_expr
+    { EBinary (Leq, left, right, binary_ann left right) }
+  | left=add_expr GT right=add_expr
+    { EBinary (Gt, left, right, binary_ann left right) }
+  | left=add_expr GEQ right=add_expr
+    { EBinary (Geq, left, right, binary_ann left right) }
   | e=add_expr
-      { e }
+    { e }
 
 add_expr:
-  | left=add_expr PLUS right=cons_expr
-    { EBinary (Add, left, right, mkloc $startpos $endpos) }
+  | left=add_expr PLUS right=mul_expr
+    { EBinary (Add, left, right, binary_ann left right) }
+  | left=add_expr MINUS right=mul_expr
+    { EBinary (Sub, left, right, binary_ann left right) }
+  | e=mul_expr
+    { e }
+
+mul_expr:
+  | left=mul_expr STAR right=cons_expr
+    { EBinary (Mul, left, right, binary_ann left right) }
+  | left=mul_expr SLASH right=cons_expr
+    { EBinary (Div, left, right, binary_ann left right) }
   | e=cons_expr
-      { e }
+    { e }
 
 cons_expr:
   | left=app_expr CONS right=cons_expr
@@ -152,6 +181,8 @@ cons_expr:
       { e }
 
 app_expr:
+  // | NOT e1=atom { EUnary(UNot, e1, mkloc $startpos $endpos) }
+  | BANG e1=atom { EUnary(UNot, e1, mkloc $startpos $endpos) }
   | WAIT e1=atom { EUnary(UWait, e1, mkloc $startpos $endpos) }
   | TAIL e1=atom { EUnary(UTail, e1, mkloc $startpos $endpos) }
   | SYNC e1=atom e2=atom { EBinary(BSync, e1, e2, mkloc $startpos $endpos) }
@@ -168,9 +199,13 @@ app_head:
   | LPAREN e=expr RPAREN { e }
 
 atom:
-  | name=TYPE_ID { ECtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }
-  | name=TYPE_ID LPAREN fields=separated_nonempty_list(COMMA, expr) RPAREN
-    { ECtor ((name, mkloc $startpos(name) $endpos(name)), fields, mkloc $startpos $endpos) }
+  | name=TYPE_ID fields=ctor_fields_opt
+    {
+      ECtor
+        ( (name, mkloc $startpos(name) $endpos(name)),
+          fields,
+          mkloc $startpos $endpos )
+    }
   | x=ID { EVar (x, mkloc $startpos $endpos) }
   | i=INT { EConst (CInt i, mkloc $startpos $endpos) }
   | s=STRING { EConst (CString s, mkloc $startpos $endpos) }
@@ -182,6 +217,12 @@ atom:
   | LPAREN e=expr COLON ann=type_expr RPAREN { EAnno (e, ann, mkloc $startpos $endpos) }
   | LPAREN e=expr RPAREN { e }
 
+ctor_fields_opt:
+  | LPAREN fields=separated_nonempty_list(COMMA, expr) RPAREN
+    { fields }
+  | %prec BELOW_CTOR_ARGS
+    { [] }
+
 tuple_expr_list:
   | e1=expr COMMA e2=expr rest=tuple_expr_list_tail
       { e1 :: e2 :: rest }
@@ -192,14 +233,17 @@ tuple_expr_list_tail:
       { e :: rest }
 
 pattern:
-  | name=TYPE_ID LPAREN ps=ctor_pattern_args RPAREN
+  | name=TYPE_ID ps=ctor_pattern_args_opt
     { PCtor ((name, mkloc $startpos(name) $endpos(name)), ps, mkloc $startpos $endpos) }
-  | name=TYPE_ID
-    { PCtor ((name, mkloc $startpos(name) $endpos(name)), [], mkloc $startpos $endpos) }
   | p=pattern_atom CONS rest=ID
       { PSigCons (p, (rest, mkloc $startpos(rest) $endpos(rest)), mkloc $startpos $endpos) }
   | p=pattern_atom
       { p }
+
+ctor_pattern_args_opt:
+  | LPAREN ps=ctor_pattern_args RPAREN
+    { ps }
+  | { [] }
 
 ctor_pattern_args:
   | p=pattern rest=comma_separated_patterns

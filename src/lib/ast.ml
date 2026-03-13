@@ -9,14 +9,14 @@ type const =
   | CBool of bool
 
 type unary_op =
-  | UWait | UWatch | UTail | UDelay
+  | UWait | UWatch | UTail | UDelay | UNot
   | UProj of int (* proj_i for internal use *)
   (* | Inl | Inr *) (* constructors for sum type *)
 
 type binary_op =
   | SigCons
   | BSync | BOStar | BLaterApp
-  | Add | Mul | Sub | Div | Eq | Lt | Leq
+  | Add | Mul | Sub | Div | Eq | Lt | Leq | Gt | Geq
 
 (** Source location for an expression node *)
 type location = Location.t
@@ -236,11 +236,14 @@ and string_of_binary_op = function
   | Eq -> "=="
   | Lt -> "<"
   | Leq -> "<="
+  | Gt -> ">"
+  | Geq -> ">="
 and string_of_unary_op = function
   | UWait -> "wait"
   | UWatch -> "watch"
   | UTail -> "tail"
   | UDelay -> "delay"
+  | UNot -> "not"
   | UProj i -> Printf.sprintf "proj_%d" i
 
 and pp_typ fmt = 

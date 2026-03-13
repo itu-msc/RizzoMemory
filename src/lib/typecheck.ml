@@ -423,7 +423,7 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     let* t1 = get_typ te1 in
     let* te2 = check e2 t1 in (* check that typeof(e1) == typeof(e2) *)
     return (EBinary (Eq, te1, te2, Ann_typed (get_location ann, TBool)))
-  | Lt | Leq ->
+  | Lt | Leq | Gt | Geq ->
     let* te1 = check e1 TInt in
     let* te2 = check e2 TInt in
     return (EBinary (op, te1, te2, Ann_typed (get_location ann, TBool)))
@@ -473,6 +473,9 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
     let* te = infer e in
     let* t = get_typ te in
     return (EUnary (UDelay, te, Ann_typed (get_location ann, TDelay t)))
+  | UNot ->
+    let* te = check e TBool in
+    return (EUnary (UNot, te, Ann_typed (get_location ann, TBool)))
   | UWatch -> 
     let* fresh_t = Type_env.fresh_type_var () in
     let* te = check e (TSignal (TOption (fresh_t))) in (* Signal (Option A) *)

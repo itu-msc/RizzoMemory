@@ -33,6 +33,14 @@ static inline rz_box_t rz_builtin_expect_string(const char *name, size_t index, 
 	return arg;
 }
 
+static inline bool rz_builtin_expect_bool(const char *name, size_t index, rz_box_t arg) {
+	if (arg.kind != RZ_BOX_PTR || (arg.as.obj != &RZ_BOOL_TRUE && arg.as.obj != &RZ_BOOL_FALSE)) {
+		fprintf(stderr, "Runtime error: builtin '%s' expected bool for argument %zu\n", name, index + 1);
+		exit(1);
+	}
+	return arg.as.obj == &RZ_BOOL_TRUE;
+}
+
 static inline rz_box_t rz_builtin_make_nothing(void) {
 	return rz_make_ptr(rz_ctor_var(0, 0));
 }
@@ -71,6 +79,13 @@ static inline rz_box_t rz_builtin_eq(size_t num_args, rz_box_t *args) {
 	return rz_eq(args[0], args[1]);
 }
 
+static inline rz_box_t rz_builtin_not(size_t num_args, rz_box_t *args) {
+	bool value;
+	rz_builtin_expect_arity("not", 1, num_args);
+	value = rz_builtin_expect_bool("not", 0, args[0]);
+	return rz_make_ptr(rz_bool_ctor(!value));
+}
+
 static inline rz_box_t rz_builtin_lt(size_t num_args, rz_box_t *args) {
 	int32_t lhs;
 	int32_t rhs;
@@ -87,6 +102,24 @@ static inline rz_box_t rz_builtin_leq(size_t num_args, rz_box_t *args) {
 	lhs = rz_builtin_expect_int("leq", 0, args[0]);
 	rhs = rz_builtin_expect_int("leq", 1, args[1]);
 	return rz_make_ptr(rz_bool_ctor(lhs <= rhs));
+}
+
+static inline rz_box_t rz_builtin_gt(size_t num_args, rz_box_t *args) {
+	int32_t lhs;
+	int32_t rhs;
+	rz_builtin_expect_arity("gt", 2, num_args);
+	lhs = rz_builtin_expect_int("gt", 0, args[0]);
+	rhs = rz_builtin_expect_int("gt", 1, args[1]);
+	return rz_make_ptr(rz_bool_ctor(lhs > rhs));
+}
+
+static inline rz_box_t rz_builtin_geq(size_t num_args, rz_box_t *args) {
+	int32_t lhs;
+	int32_t rhs;
+	rz_builtin_expect_arity("geq", 2, num_args);
+	lhs = rz_builtin_expect_int("geq", 0, args[0]);
+	rhs = rz_builtin_expect_int("geq", 1, args[1]);
+	return rz_make_ptr(rz_bool_ctor(lhs >= rhs));
 }
 
 static inline rz_box_t rz_builtin_add(size_t num_args, rz_box_t *args) {

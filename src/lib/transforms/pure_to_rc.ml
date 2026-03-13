@@ -58,6 +58,8 @@ let op_to_application = function
   | Eq -> "eq"
   | Lt -> "lt"
   | Leq -> "leq"
+  | Gt -> "gt"
+  | Geq -> "geq"
   | _ -> failwith "unsupported operator"
 
 (* strings are names of globals, option indicates arity with None for values *)
@@ -99,6 +101,7 @@ let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr =
   | EUnary (UTail, n, _) -> RCtor (Ctor { tag = tagof "tail"; fields = [get_name n] })
   | EUnary (UWatch, n, _) -> RCtor (Ctor { tag = tagof "watch"; fields = [get_name n] })
   | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = tagof "delay"; fields = [get_name n] })
+  | EUnary (UNot, n, _) -> RCall ("not", [get_name n])
   | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
   | EConst (const, _) -> RConst const
   | EAnno (e, _, _) -> expr_to_rexpr globals locals e

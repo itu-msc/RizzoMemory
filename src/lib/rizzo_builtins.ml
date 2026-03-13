@@ -21,9 +21,12 @@ let builtins = [
   mk "start_event_loop" ~ownership:(Some [Refcount.Borrowed]) (TFun(Cons1(Ast.TUnit, []), TUnit)) ();
   mk "output_int_signal" ~ownership:(Some [Refcount.Owned]) (TFun (Cons1(TSignal TInt, []), TUnit)) ();
   mk "parse_int" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TOption TInt)) ();
+  mk "not" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TBool, []), TBool)) ();
   mk "eq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TParam "'a", [TParam "'a"]), TBool)) ();
   mk "lt" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TBool))  ();
   mk "leq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TBool)) ();
+  mk "gt" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TBool)) ();
+  mk "geq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TBool)) ();
   mk "add" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TInt)) ();
   mk "sub" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TInt)) ();
   mk "mul" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TInt, [TInt]), TInt)) ();

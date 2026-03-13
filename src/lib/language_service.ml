@@ -1131,12 +1131,17 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
               | None -> ());
              walk_expr env e
-         | Ast.EUnary (Ast.UDelay, e, _) ->
-             (match keyword_range_from_expr ~name:"delay" expr with
-              | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
-              | None -> ());
-             walk_expr env e
-         | Ast.EUnary (_, e, _) -> walk_expr env e
+          | Ast.EUnary (Ast.UDelay, e, _) ->
+              (match keyword_range_from_expr ~name:"delay" expr with
+               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+               | None -> ());
+              walk_expr env e
+          | Ast.EUnary (Ast.UNot, e, _) ->
+              (match keyword_range_from_expr ~name:"not" expr with
+               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+               | None -> ());
+              walk_expr env e
+          | Ast.EUnary (_, e, _) -> walk_expr env e
          | Ast.EBinary (Ast.BSync, e1, e2, _) ->
              (match keyword_range_from_expr ~name:"sync" expr with
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range

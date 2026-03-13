@@ -53,11 +53,18 @@ rule read = parse
   | "|>" { PIPE_GT }
   | "->" { ARROW }
   | "::" { CONS }
+  | "<=" { LEQ }
+  | ">=" { GEQ }
+  | "<" { LT }
+  | ">" { GT }
   | ":" { COLON }
+  | "!" { BANG }
   | "+" { PLUS }
+  | "-" { MINUS }
   | "*" { STAR }
-  | "=" { EQ }
+  | "/" { SLASH }
   | "==" { EQEQ }
+  | "=" { EQ }
   | "," { COMMA }
   | "(" { LPAREN }
   | ")" { RPAREN }
@@ -91,6 +98,7 @@ rule read = parse
       | "watch" -> WATCH
       | "laterapp" -> LATERAPP
       | "delay" -> DELAY
+      (* | "not" -> NOT *)
       | "ostar" -> OSTAR
       | "if" -> IF
       | "then" -> THEN
