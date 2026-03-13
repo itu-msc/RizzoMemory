@@ -13,17 +13,17 @@ introduced the idea of reference counting as opposed to other memory management 
 These early implementations were implemented in the runtime system of the programming language. This is was a common approach, but is hard to optimize.
 Newer techniques, like the one proposed by \citetitle{ullrich_counting_2021}, are designed to be implemented in the compiler, allowing for more efficient memory management and better performance. 
 
-By using new `reset' and `reuse' instructions in combination, with ownership types that track 
+By using new `reset' and `reuse' instructions in combination with ownership types, the compiler can determine when incrementing or decrementing reference counts can be safely omitted, and when it cannot.
 
-to track which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
+% which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
 
 In this section, we will be using the term `RC token' (Reference Counting token) to refer to the reference one instance of a reference to an object. We say that when a new reference is created, an RC token is created and when a reference is destroyed, an RC token is consumed.
 
 % circular references? bacon papers solution to this? we don't have this problem in Rizzo because of mutable heads, but maybe we can still talk about it?
 
-\subsection{The Ullrich Et al. paper}
+\subsection{Counting immutable beans}
 
-\citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} gains their performance improvements by using a combination of ownership types and new `reset' and `reuse' instructions.
+\citeauthor*{ullrich_counting_2021} \cite{ullrich_counting_2021} gains their performance improvements by using a combination of ownership types and new `reset' and `reuse' instructions.
 The ownership types lets the compiler track which parts of the program are responsible for managing the memory of each object. This knowledge allows the compiler to determine when an object needs to be incremented or decremented, which reduces the number of reference counting operations that need to be performed. 
 On the other hand, the new `reset' and `reuse' instructions allows the compiler to optimize memory allocations of new objects, by reusing memory from old objects that are no longer needed, instead of always allocating new memory for each object. This leads to performance improvements, especially in cases where many short-lived objects are created and destroyed.
 
@@ -83,7 +83,7 @@ let z = c y y in
 ret z
 \end{verbatim}
 
-No matching `dec' is needed afterwards, since both RC tokens are consumed by the call itself. This is the safe but \todo{conservative} behaviour we get when both arguments are treated as owned.
+No matching `dec' is needed afterwards, since both RC tokens are consumed by the call itself. This is the safe but cautious behaviour we get when both arguments are treated as owned.
 
 Borrowing removes some of this overhead. If the first parameter of `c' is borrowed and the second is owned, then only one of the two uses of `y' consumes an RC token. The borrowed use still requires the object to stay alive for the duration of the call, so the compiler inserts a temporary increment before the call and a matching decrement afterwards:
 
