@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <malloc.h>
@@ -101,6 +102,12 @@ typedef struct rz_object_fields {
     rz_box_t fields[1];
 } rz_object_fields_t;
 
+typedef struct rz_string {
+    rz_object_t _base;
+    size_t byte_length;
+    char bytes[];
+} rz_string_t;
+
 /* helper function to get field. Instead of casting to [rz_object_fields_t*] */
 static inline rz_box_t rz_object_get_field(rz_object_t* obj, int16_t idx) {
     if (idx >= obj->header.num_fields) {
@@ -125,6 +132,65 @@ rz_object_t *rz_ctor(int16_t tag, int16_t num_fields, rz_box_t* args) {
 }
 
 #define rz_ctor_var(tag, num_fields, ...) rz_ctor(tag, num_fields, (rz_box_t[]){__VA_ARGS__})
+
+static inline bool rz_box_is_string(rz_box_t box) {
+    return box.kind == RZ_BOX_STRING_LITERAL
+        || (box.kind == RZ_BOX_PTR && rz_object_get_type(rz_unbox_ptr(box)) == RZ_STRING);
+}
+
+static inline const char* rz_string_data(rz_box_t box) {
+    if (box.kind == RZ_BOX_STRING_LITERAL) {
+        return rz_unbox_str_lit(box);
+    }
+    if (box.kind == RZ_BOX_PTR && rz_object_get_type(rz_unbox_ptr(box)) == RZ_STRING) {
+        return ((rz_string_t*)rz_unbox_ptr(box))->bytes;
+    }
+    fprintf(stderr, "Runtime error: expected string box, got kind %d\n", box.kind);
+    exit(1);
+}
+
+static inline size_t rz_string_byte_length(rz_box_t box) {
+    if (box.kind == RZ_BOX_STRING_LITERAL) {
+        return strlen(rz_unbox_str_lit(box));
+    }
+    if (box.kind == RZ_BOX_PTR && rz_object_get_type(rz_unbox_ptr(box)) == RZ_STRING) {
+        return ((rz_string_t*)rz_unbox_ptr(box))->byte_length;
+    }
+    fprintf(stderr, "Runtime error: expected string box, got kind %d\n", box.kind);
+    exit(1);
+}
+
+static inline rz_string_t* rz_alloc_string(size_t len) {
+    rz_string_t* str = (rz_string_t*) rz_malloc(sizeof(rz_string_t) + len + 1);
+    str->_base.header.tag = 0;
+    str->_base.header.num_fields = 0;
+    str->_base.header.obj_type = RZ_STRING;
+    str->_base.header.refcount = 1;
+    str->byte_length = len;
+    str->bytes[len] = '\0';
+    return str;
+}
+
+static inline rz_box_t rz_make_string_len(const char* bytes, size_t len) {
+    rz_string_t* str = rz_alloc_string(len);
+    memcpy(str->bytes, bytes, len);
+    return rz_make_ptr((rz_object_t*)str);
+}
+
+static inline size_t rz_utf8_codepoint_width(unsigned char lead) {
+    if ((lead & 0x80) == 0x00) return 1;
+    if ((lead & 0xE0) == 0xC0) return 2;
+    if ((lead & 0xF0) == 0xE0) return 3;
+    if ((lead & 0xF8) == 0xF0) return 4;
+    fprintf(stderr, "Runtime error: invalid UTF-8 leading byte 0x%02X\n", lead);
+    exit(1);
+}
+
+static inline bool rz_string_eq_content(rz_box_t a, rz_box_t b) {
+    size_t a_len = rz_string_byte_length(a);
+    size_t b_len = rz_string_byte_length(b);
+    return a_len == b_len && memcmp(rz_string_data(a), rz_string_data(b), a_len) == 0;
+}
 
 static inline void rz_refcount_inc(rz_object_t* obj) {
     if (obj) obj->header.refcount++;
@@ -156,8 +222,7 @@ static inline void rz_refcount_dec(rz_object_t* obj) {
                 rz_free(obj);
             } break;
             case RZ_STRING: {
-                fprintf(stderr, "TODO STRING FREE");
-                exit(1);
+                rz_free(obj);
             }
         }
     }
@@ -303,6 +368,10 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
 }
 
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
+    if (rz_box_is_string(a) || rz_box_is_string(b)) {
+        bool both_strings = rz_box_is_string(a) && rz_box_is_string(b);
+        return rz_make_ptr(rz_bool_ctor(both_strings && rz_string_eq_content(a, b)));
+    }
     if (a.kind != b.kind) return rz_make_ptr( rz_bool_ctor(false) );
     if (a.kind == RZ_BOX_INT) {
         return rz_make_ptr( rz_bool_ctor(a.as.i32 == b.as.i32) );
@@ -337,8 +406,7 @@ static inline void rz_debug_print_box(rz_box_t box) {
         case RZ_BOX_PTR: {
             switch (rz_object_get_type(rz_unbox_ptr(box))) {
                 case RZ_STRING: {
-                    fprintf(stderr, "ALLOCATED STRING TODO");
-                    exit(1);
+                    printf("%s", ((rz_string_t*)rz_unbox_ptr(box))->bytes);
                 } break;
                 case RZ_SIGNAL: { rz_debug_print_signal(box); } break;
                 case RZ_OBJECT: {

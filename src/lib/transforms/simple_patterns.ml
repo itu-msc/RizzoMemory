@@ -1,10 +1,42 @@
 open! Ast
 
 let head_elim = (Rizzo_builtins.get "head").name
+let string_eq = (Rizzo_builtins.get "string_eq").name
+let string_is_empty = (Rizzo_builtins.get "string_is_empty").name
+let string_head = (Rizzo_builtins.get "string_head").name
+let string_tail = (Rizzo_builtins.get "string_tail").name
+let match_fail = (Rizzo_builtins.get "match_fail").name
 
 let is_var_or_wildcard = function 
   | PVar _ | PWildcard -> true 
   | _ -> false
+
+let parsed_var ((name, ann) : _ name) = EVar (name, ann)
+
+let parsed_app ((name, ann) : _ name) args =
+  EApp (parsed_var (name, ann), args, ann)
+
+let is_simple_expr = function
+  | EVar _ | EConst _ -> true
+  | _ -> false
+
+let is_string_case_head = function
+  | PWildcard | PVar _ | PConst (CString _, _) -> true
+  | _ -> false
+
+let is_string_case_pattern = function
+  | PWildcard | PVar _ | PConst (CString _, _) -> true
+  | PStringCons (head, _, _) -> is_string_case_head head
+  | _ -> false
+
+let is_string_case cases =
+  let has_string_discriminator =
+    List.exists (fun (pattern, _, _) ->
+      match pattern with
+      | PConst (CString _, _) | PStringCons _ -> true
+      | _ -> false) cases
+  in
+  has_string_discriminator && List.for_all (fun (pattern, _, _) -> is_string_case_pattern pattern) cases
 
 let rec transform_patterns (p: 's Ast.program) = 
   List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) p
@@ -41,10 +73,64 @@ and compile_simple_pattern scrutinee case_body = function
     let tl_proj = EUnary (UTail, scrutinee, ann) in
     Some (ELet (tail, tl_proj, case_body (), ann))
   | _ -> failwith "Only simple patterns - variables !"
+
+and compile_string_case scrutinee cases ann =
+  let scrutinee = compile_match scrutinee in
+  let compile_with scrutinee_expr = compile_string_branches scrutinee_expr cases ann in
+  if is_simple_expr scrutinee then
+    compile_with scrutinee
+  else
+    let tmp = (Utilities.new_name "string_match", ann) in
+    ELet (tmp, scrutinee, compile_with (parsed_var tmp), ann)
+
+and compile_string_branches scrutinee cases ann =
+  match cases with
+  | [] -> parsed_app (match_fail, ann) [EConst (CString "Non-exhaustive string match", ann)]
+  | (pattern, body, _) :: rest ->
+    compile_string_pattern scrutinee pattern (compile_match body) (fun () -> compile_string_branches scrutinee rest ann) ann
+
+and compile_string_pattern scrutinee pattern success next ann =
+  match pattern with
+  | PWildcard -> success
+  | PVar (name, name_ann) -> ELet ((name, name_ann), scrutinee, success, ann)
+  | PConst (CString s, patt_ann) ->
+    EIfe (
+      parsed_app (string_eq, ann) [scrutinee; EConst (CString s, patt_ann)],
+      success,
+      next (),
+      ann)
+  | PStringCons (head_pat, tail_name, _) ->
+    compile_string_cons scrutinee head_pat tail_name success next ann
+  | _ -> failwith "Unexpected non-string pattern in compile_string_pattern"
+
+and compile_string_cons scrutinee head_pat tail_name success next ann =
+  let head_tmp = (Utilities.new_name "string_head", ann) in
+  let bind_tail body = ELet (tail_name, parsed_app (string_tail, ann) [scrutinee], body, ann) in
+  let head_body =
+    match head_pat with
+    | PWildcard -> bind_tail success
+    | PVar (name, name_ann) ->
+      ELet ((name, name_ann), parsed_var head_tmp, bind_tail success, ann)
+    | PConst (CString s, patt_ann) ->
+      EIfe (
+        parsed_app (string_eq, ann) [parsed_var head_tmp; EConst (CString s, patt_ann)],
+        bind_tail success,
+        next (),
+        ann)
+    | _ -> failwith "Unexpected non-string head pattern in compile_string_cons"
+  in
+  EIfe (
+    parsed_app (string_is_empty, ann) [scrutinee],
+    next (),
+    ELet (head_tmp, parsed_app (string_head, ann) [scrutinee], head_body, ann),
+    ann)
+
 and compile_match e = 
   match e with
   | EVar _ | EConst _ -> e 
   | ECtor (name, args, ann) -> ECtor (name, List.map compile_match args, ann)
+  | ECase (scrutinee, cases, ann) when is_string_case cases ->
+    compile_string_case scrutinee cases ann
   | ECase (scrutinee, cases, ann) -> 
     (* this happens before ANF, so expr may be complex *)
     let cases_compiled = 

@@ -69,6 +69,7 @@ module Transformations = struct
   let eliminate_dead_let_program = Transforms.Dead_let_elimination.dead_let_eliminate
   let eliminate_patterns = Transforms.Patterns.transform_patterns
   let eliminate_simple_patterns = Transforms.Simple_patterns.transform_patterns
+  let lower_typed_program = Transforms.Typed_lowering.lower_program
   let ast_to_rc_ir = Transforms.Pure_to_rc.to_rc_intermediate_representation
   
   let builtins = Rizzo_builtins.builtins_ownerships_map
@@ -100,5 +101,7 @@ let apply_transforms p =
 let ref_count p = Transformations.auto_ref_count p
 
 let typecheck = Typecheck.typecheck
+let lower_typed_program = Transformations.lower_typed_program
+let apply_typed_transforms p = p |> lower_typed_program |> apply_transforms
 
 let emit = Backend_c.emit_c_code

@@ -134,6 +134,7 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
     | PVar _ | PWildcard | PConst _ -> 0
     | PTuple _ -> 2 
     | PSigCons _ -> 5 (* should it be 2, 3, 4, 5? *)
+    | PStringCons _ -> failwith "String patterns should be eliminated before RC lowering"
     | PCtor (_, args, _) -> List.length args 
     in
     FnCase(x, List.map (fun (c, branch, _) -> (get_fields_of_pattern c, expr_to_fn_body locals branch)) cases)

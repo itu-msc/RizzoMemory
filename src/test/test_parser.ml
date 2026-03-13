@@ -8,6 +8,7 @@ let test_parser_program () =
     ^ "let pair = (x, 2)\n"
     ^ "let xs = x :: y :: z\n"
     ^ "let m = match xs with | h :: t -> h | _ -> y\n"
+    ^ "let greeting = \"he\" + \"llo\"\n"
     ^ "let app = f x y\n\n"
     ^ "let local = let z = 1 in z\n"
   in
@@ -19,6 +20,7 @@ let test_parser_program () =
       (* x :: (y :: z) *)
       toplet "xs" (binary SigCons (var "x") (binary SigCons (var "y") (var "z")));
       toplet "m" (case (var "xs") [ (psigcons (pvar "h") (name "t"), var "h"); (pwild, var "y") ]);
+      toplet "greeting" (binary Add (str "he") (str "llo"));
       toplet "app" (app (var "f") [var "x"; var "y"]);
       toplet "local" (let_ "z" (int 1) (var "z"));
     ]

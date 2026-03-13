@@ -4,7 +4,8 @@ fun _const x : 'a -> Signal 'a = x :: never
 fun mk_sig later = 
     (fun a -> a :: mk_sig later) |> later
 
-fun map f s = match s with
+fun map f s = 
+    match s with
     | x :: xs -> f x :: (map f |> xs)
     /*  let x = head s in
         inc x;
@@ -43,12 +44,13 @@ fun mytail s = match s with
 let entry : Unit -> Unit = fun ignore -> 
     let my_int_sig = _const 5 in
     let my_console_sig = mk_sig (wait console) in
-    let reactive_signal = 42 :: my_console_sig in
+    let parsed_console_sig = filter_map parse_int ("" :: my_console_sig) in
+    let reactive_signal = 42 :: parsed_console_sig in
 
     let xx = output_int_signal my_int_sig in 
     let xxx = output_int_signal reactive_signal in
 
-    let fourty42_sig = filter (fun x -> x == 42) (0 :: my_console_sig) in
+    let fourty42_sig = filter (fun x -> x == 42) (0 :: parsed_console_sig) in
     let zzz = output_int_signal (_switch reactive_signal fourty42_sig) in
 
     start_event_loop ()

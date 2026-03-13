@@ -60,6 +60,7 @@ type _ pattern =
   | PConst : const * 's ann -> 's pattern
   | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
   | PSigCons : 's pattern * 's name * 's ann -> 's pattern
+  | PStringCons : 's pattern * 's name * 's ann -> 's pattern
   | PCtor : 's name * 's pattern list * 's ann-> 's pattern
   (* could include more complex patterns like lists, records, etc. *)
 
@@ -116,7 +117,7 @@ let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
 let rec pattern_bound_vars = function
   | PWildcard | PConst _ -> []
   | PVar (x, _) -> [x]
-  | PSigCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
+  | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
   | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
   | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars ps
 
@@ -148,6 +149,7 @@ and eq_pattern a b =
   | PConst (c1, _), PConst (c2, _) -> c1 = c2
   | PTuple (a1, b1, _), PTuple (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
   | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2
+  | PStringCons (a1, b1, _), PStringCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2
   | PCtor (name1, args1, _), PCtor (name2, args2, _) ->
     eq_name name1 name2 && List.length args1 = List.length args2 && List.for_all2 eq_pattern args1 args2
   | _ -> false
@@ -159,7 +161,11 @@ and eq_typ a b = match a,b with
   | TFun (Cons1 (p1, p_rest1), r1), TFun (Cons1 (p2, p_rest2), r2) ->
     eq_typ p1 p2 && eq_typ r1 r2 && List.length p_rest1 = List.length p_rest2 && List.for_all2 eq_typ p_rest1 p_rest2
   | TTuple (a1, b1), TTuple (a2, b2) | TSync(a1, b1), TSync(a2,b2) -> eq_typ a1 a2 && eq_typ b1 b2
-  | TSignal t1, TSignal t2 | TLater t1, TLater t2 | TDelay t1, TDelay t2 -> eq_typ t1 t2
+  | TSignal t1, TSignal t2
+  | TLater t1, TLater t2
+  | TDelay t1, TDelay t2
+  | TOption t1, TOption t2
+  | TChan t1, TChan t2 -> eq_typ t1 t2
   | _ -> false
 
 let pp_const out = function
@@ -175,6 +181,7 @@ let rec pp_pattern out = function
   | PConst (c, _) -> pp_const out c
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
   | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
+  | PStringCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
   | PCtor (name, args, _) -> 
     if List.length args = 0 then Format.fprintf out "@{<green>%s@}" (fst name)
     else Format.fprintf out "@{<green>%s@}(%a)" (fst name) (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_pattern) args

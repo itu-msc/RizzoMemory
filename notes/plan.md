@@ -62,6 +62,7 @@
 - [ ] Add a pointer representation of signals (Important in the advance semantics)
   - [ ] `head` needs to be a function application
   - [ ] `tail` and `watch` needs to dereference the pointer to get the function of the real signals tail.
+- [ ] Optimize type guard checks in the transpiler (e.g. for `signal` and `later`), to avoid unnecessary checks at runtime.
 
 ## Rizzo type checking
 
