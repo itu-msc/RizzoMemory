@@ -100,6 +100,19 @@ let completion_labels ~(text : string) ~(position : Language_service.position) :
   in
   List.map (fun (item : Language_service.completion_item) -> item.label) completion.items
 
+let completion_item
+    ~(text : string)
+    ~(position : Language_service.position)
+    ~(name : string) : Language_service.completion_item option =
+  let completion =
+    Language_service.completions_at_position
+      ~uri:"file:///test.rizz"
+      ~filename:None
+      ~text
+      ~position
+  in
+  List.find_opt (fun (item : Language_service.completion_item) -> String.equal item.label name) completion.items
+
 let completion_has_label ~(labels : string list) ~(name : string) : bool =
   List.exists (fun label -> String.equal label name) labels
 
@@ -362,11 +375,72 @@ let test_semantic_tokens_after_block_comment () =
      "reference after block comment keeps correct line"
      true
      (has_semantic_token
+        ~tokens
+        ~line:2
+        ~character:8
+        ~kind:Language_service.SemanticVariable
+        ~declaration:false)
+
+let test_typed_top_level_function_symbols_and_tokens () =
+  let text =
+    "fun first_signal s : Signal String -> String = s\n"
+    ^ "let alias = first_signal\n"
+  in
+  let symbols = Language_service.document_symbols ~uri:"file:///test.rizz" ~filename:None ~text in
+  (match symbols with
+   | first :: _ ->
+       Alcotest.(check string) "first symbol name" "first_signal" first.Language_service.name;
+       Alcotest.(check int) "typed function symbol kind" 12
+         (match first.Language_service.kind with
+          | Language_service.Function -> 12
+          | Language_service.Variable -> 13)
+   | [] -> Alcotest.fail "expected typed function symbol");
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "typed function declaration token"
+    true
+    (has_semantic_token
        ~tokens
-       ~line:2
-       ~character:8
-       ~kind:Language_service.SemanticVariable
+       ~line:0
+       ~character:4
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  Alcotest.(check bool)
+    "typed function reference token"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:1
+       ~character:12
+       ~kind:Language_service.SemanticFunction
        ~declaration:false)
+
+let test_hover_and_completion_for_typed_top_level_function () =
+  let text =
+    "fun first_signal s : Signal String -> String = s\n"
+    ^ "fun use x = x\n"
+  in
+  (match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 0; character = 4 }
+   with
+   | None -> Alcotest.fail "expected hover for typed top-level function"
+   | Some hover ->
+       Alcotest.(check bool)
+         "hover mentions top-level function"
+         true
+         (contains_substring
+            ~text:hover.Language_service.contents
+            ~substring:"top-level function: first_signal"));
+  match completion_item
+          ~text
+          ~position:{ Language_service.line = 1; character = 12 }
+          ~name:"first_signal"
+  with
+  | None -> Alcotest.fail "expected annotated top-level function completion"
+  | Some item -> Alcotest.(check int) "completion kind is function" 3 item.Language_service.kind
 
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
@@ -378,14 +452,16 @@ let tests = [
   "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
   "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
   "semantic tokens builtin function references", `Quick, test_semantic_tokens_include_builtin_function_references;
-  "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
-  "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
-  "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
-  "completion local and top-level scope", `Quick, test_completions_include_local_scope_and_top_level;
-  "completion case branch scope", `Quick, test_completions_respect_case_branch_scope;
-  "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
-  "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
-  "document symbols", `Quick,
+   "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
+   "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
+   "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
+   "typed top-level function symbols and tokens", `Quick, test_typed_top_level_function_symbols_and_tokens;
+   "completion local and top-level scope", `Quick, test_completions_include_local_scope_and_top_level;
+   "completion case branch scope", `Quick, test_completions_respect_case_branch_scope;
+   "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
+   "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
+   "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
+   "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in
       let symbols : Language_service.document_symbol list =

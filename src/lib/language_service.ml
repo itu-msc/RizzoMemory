@@ -334,6 +334,15 @@ let file_name ~(uri : string) ~(filename : string option) : string =
   | Some path when String.length path > 0 -> path
   | _ -> if String.length uri = 0 then "<memory>.rizz" else uri
 
+let rec expr_is_function : type s. s Ast.expr -> bool =
+  function
+  | Ast.EFun _ -> true
+  | Ast.EAnno (expr, _, _) -> expr_is_function expr
+  | _ -> false
+
+let symbol_kind_of_expr : type s. s Ast.expr -> symbol_kind =
+  fun expr -> if expr_is_function expr then Function else Variable
+
 let top_level_declarations : type s.
     text:string -> s Ast.program -> (string * symbol_kind * range * range) list =
   fun ~text program ->
@@ -341,11 +350,7 @@ let top_level_declarations : type s.
   let declaration_of_top : s Ast.top_expr -> (string * symbol_kind * range * range) option = fun top ->
     match top with
     | Ast.TopLet (top_name, rhs, ann) ->
-        let kind =
-          match rhs with
-          | Ast.EFun _ -> Function
-          | _ -> Variable
-        in
+        let kind = symbol_kind_of_expr rhs in
         let name = name_text top_name in
         let top_range = range_of_ann ann in
         let selection_range = range_of_name top_name in
@@ -682,7 +687,8 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
             if range_contains_position name_range position then
               Some { name; range = name_range }
             else
-              let env' = StringMap.add name { kind = SemanticVariable; range = name_range } top_env in
+              let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
+              let env' = StringMap.add name { kind; range = name_range } top_env in
               match find_in_expr env' rhs with
               | Some _ as found -> found
               | None -> find_in_tops rest
@@ -701,9 +707,9 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                 let name_range = range_of_name top_name in
                 if range_contains_position name_range position then
                   let base =
-                    match rhs with
-                    | Ast.EFun _ -> "top-level function: " ^ name_text top_name
-                    | _ -> "top-level binding: " ^ name_text top_name
+                    match symbol_kind_of_expr rhs with
+                    | Function -> "top-level function: " ^ name_text top_name
+                    | Variable -> "top-level binding: " ^ name_text top_name
                   in
                   let type_block =
                     match typ_of_ann_opt top_ann with
@@ -909,11 +915,7 @@ let completions_at_position
           (fun env (top : Ast.typed Ast.top_expr) ->
             match top with
             | Ast.TopLet (top_name, rhs, _) ->
-                let kind =
-                  match rhs with
-                  | Ast.EFun _ -> SemanticFunction
-                  | _ -> SemanticVariable
-                in
+                let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
                 completion_add_prefer_high_priority
                   (name_text top_name)
                   (completion_symbol_of_name ~source:CompletionTopLevel ~kind top_name)
@@ -1175,11 +1177,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
           | Ast.TopLet (top_name, rhs, _) ->
               let name = name_text top_name in
               let name_range = range_of_name top_name in
-              let kind =
-                match rhs with
-                | Ast.EFun _ -> SemanticFunction
-                | _ -> SemanticVariable
-              in
+              let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
               let env' = StringMap.add name { kind; range = name_range } top_env in
               walk_expr env' rhs)
         program;
