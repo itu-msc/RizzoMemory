@@ -11,15 +11,15 @@ However, representing signals as infinite streams makes it easy to write \todo{f
 
 To overcome these issues, there exists a family of FRP languages~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} which use \textit{modal types} to guarantee these properties. In literature~\cite{bahr_asynchronous_2023,rizzo_modal_2025}, these modal types are the `later' (written $\bigcirc a$) and the `box' (written $\square a$) type constructors. The type $\bigcirc a$ is a promise that a value of type $a$ will become available at some later time step, whereas the $\square a$ describes a value of type $a$ that \textit{time-independent} time steps and as result safe to keep across time steps.
 
-Given these types it is possible to define a signal as a tuple of a current value (head) and a delayed computation (tail) for computing future values: $\text{type} \; \texttt{Signal }a = (a \times \texttt{Later }(\texttt{Signal }a))$.
+Given these types it is possible to define a signal as a tuple of a current value (head) and a delayed computation (tail) for computing future values: $\text{type} \; \texttt{Signal }a = a \times \texttt{Later }(\texttt{Signal }a)$.
 
 \subsection{Rizzo}\label{section:frp:rizzo}
 
-Rizzo~\cite{rizzo_modal_2025} is an FRP language that guarantees the same properties but removes the `box' type constructor by changing the semantics of signals. In particular, Rizzo redefines signals to be mutable references to a tuple of a head and tail:
+Rizzo~\cite{rizzo_modal_2025} is an asynchronous FRP language designed to provide the same properties but with a simpler type system. Rizzo changes the semantics of signals by defining them as mutable references:
 
-\[\text{type} \texttt{ Signal }a = \text{Ref }(a \times \texttt{Later }(\texttt{Signal }a))\]
+\[\text{type} \texttt{ Signal }a = \texttt{Ref }(a \times \texttt{Later }(\texttt{Signal }a))\]
 
-In Rizzo, signals are now updated in place whenever the environment produces a value that is relevant for the signal. These updates are done, not by the programmer, but instead by the reactive semantics of Rizzo, see Section~\ref{section:frp:rizzo}. For convenience we define the signal constructor as an infix operator: 
+Signals are updated signals in place whenever the environment produces a value that is relevant for the signal. These updates are done, not by the programmer, but by the reactive semantics of Rizzo, see Section~\ref{section:frp:rizzo}. For convenience we define the signal constructor as an infix operator: 
 \[\_ :: \_ : a \rightarrow \texttt{Later }(\texttt{Signal }a) \rightarrow \texttt{Signal }a\]
 
 Rizzo, like other languages~\cite{bahr_asynchronous_2023}, differentiates between two variants of the `later' type. 
@@ -31,41 +31,49 @@ And then there is the $\texttt{Delay }a$ which describe a value of type $a$ that
 Rizzo has a number of constructors for working with delayed computations~\cite{rizzo_modal_2025}. We shall present some of them here but for a full overview \todo{see section?}. 
 Starting with the delay type, its main constructor is $\text{delay} : a \rightarrow \texttt{Delay }a$ which simply pushes any value into the future. 
 Then for the later type, we may use the constructor $\text{wait} : \text{Chan }a \rightarrow \texttt{Later }a$, which is used to wait for the environment to produce input on a particular channel. One can think of a channel ($\text{Chan}$ type) as an opening through which the environment can pass values to Rizzo programs.
-Another later constructor is the $\text{tail} : \texttt{Signal }a \rightarrow \texttt{Later }(\texttt{Signal }a)$, which let us access the future value of a signal. 
+Another later constructor is the $\text{tail} : \texttt{Signal }a \rightarrow \texttt{Later }(\texttt{Signal }a)$, which let us access the delayed computation for the future value of a signal. 
 However, probably the most useful of all is the applicative action on $\texttt{Later}$ computations:
 
 \[f \triangleright x : \texttt{Delay }(a \rightarrow b) \rightarrow \texttt{Later }a \rightarrow \texttt{Later }b\]
 
-This allows later values to be applied to delayed functions but the actual application does not happen until a future time step when the argument $x$ becomes available.
+This allows later values to be applied to delayed functions but the application does not happen until a future time step when the argument $x$ has become available.
 
 \todo{Figure with later modality types?}
 
-With these constructors we already have the necessary tools to define some signal combinators of our own! 
+With these constructors we already have the necessary tools to define some signal combinators! 
 The $mk\_sig$ function allows us to create signals from any delayed computation:
 
 \[ \text{mk\_sig} \; later = (\lambda x. x :: \text{mk\_sig }later) \; \triangleright \; later \]
 
-Assuming there exists a channel $console : \text{Chan String}$ that reads from the console, we can define signals that react to console input. An example of such a signal is $(\text{""} :: \text{mk\_sig} \; (\text{wait} \; console))$, which echoes the strings that are read from the console.
+Assuming there exists a channel $console : \text{Chan String}$ that reads from the console, we can define signals that react to console input. An example of such a signal is $(\text{""} :: \text{mk\_sig} \; (\text{wait} \; console))$, which echoes strings read from the console.
 
-We can take it one step further and define the $\text{map} : (a \rightarrow b) \rightarrow \texttt{Signal }a \rightarrow \texttt{Signal }b$ function:
+We can take it one step further and define the function $\text{map} : (a \rightarrow b) \rightarrow \texttt{Signal }a \rightarrow \texttt{Signal }b$:
 
 \[ \text{map} \; f \; (x :: xs) = f \; x :: (delay \; (map \; f)) \triangleright xs \]
 
-The definition of map makes use of pattern matching on signals. Alternatively, we could have used explicit $\text{head}$ and $\text{tail}$ to extract $x$ and $xs$ respectively.
+The definition of map makes use of pattern matching on signals. We could alternatively used explicit $\text{head}$ and $\text{tail}$ to extract $x$ and $xs$ respectively.
 
-Let us return to what makes Rizzo different, its semantics of signals. Because signals are updated in place as mutable references, as opposed to stored immutable sequences is that it allows combinators like $\text{sample} : \texttt{Signal }a \rightarrow \texttt{Signal }b \rightarrow \texttt{Signal } (a \times b)$ defined as such:
+Let us return to what makes Rizzo different, its semantics of signals. Because signals are updated in place as mutable references, as opposed to stored as immutable sequences, is it possible to define combinators like $\text{sample} : \texttt{Signal }a \rightarrow \texttt{Signal }b \rightarrow \texttt{Signal } (a \times b)$:
 
-\[\text{sample} \; xs \; ys = map \; (\lambda x. (x, head ys)) \; xs\]
+\[\text{sample} \; xs \; ys = map \; (\lambda x. (x, head \; ys)) \; xs\]
 
-The $sample$ combinator allows sample the current value of $ys$, every time that a new value $x$ is produced on the signal $xs$. If it weren't for the mutable semantics, this combinator would have had to keep the entirety of $ys$ (beginning from its first value) in memory.
+The $sample$ combinator allows sampling the current value of $ys$, every time that a new value $x$ is produced on the signal $xs$. If it weren't for the mutable semantics, this combinator would have had to keep the entirety of $ys$ (beginning from its first value) in memory.
 
-Rizzo is an asynchronous FRP language which means different signals are not necessarily updated at the same time. This means input sources can produce values 
+\subsubsection{Signals and the heap}\label{section:frp:signal_heap}
 
-\subsection{Signals and the heap}\label{section:frp:signal_heap}
+%Should we explain somewhere how "time" works in Rizzo? Rizzo has discrete time steps, they happen one after the other. The heap 
 
-In Rizzo signals are stored in a heap structure, where the structure is a form of linked list. The importance of this structure is for the runtime to iterate and update signals for each input on a channel.
+In Rizzo, time will step forward whenever a value is produced by a channel. This could be as a result of a message from a network socket, a sensor reading, or a user entering something into the console. Time steps are discrete, meaning they happen one-after-the-other and never at the same time. This is important because whenever time advances, Rizzo must bring all signals into this new time step by updating them. In order for signals to be reachable during update, they are all stored in a signal-only heap. The heap is structure as a list because the ordering is important for making sure signals are updated in the correct order.
 
-\todo{Skal man introducere lynhurtig signal-heap?}
+The reactive semantics describe how signals are updated when time is progressed. Described at a high level the procedure will iterate through all signals in the heap. 
+For each signal it checks if the signal was dependent, either directly or indirectly, on the channel that produced a value and if so the signal is updated otherwise it is skipped. 
+A signal is then updated by evaluating the tail, the delayed computation, resulting in a new signal which is copied back into the old signal.
 
-Without going too much in detail, the way signals are stored in Rizzo is through a double linked list of signal nodes, where each node contains the current value of the signal and a pointer to the next node. When a signal is updated, a new node is created with the new value and the value is copied back to the initial signal node, so references don't have to be updated. This means that the memory management of Rizzo must be able to immediately identify signals that are no longer needed, otherwise these lead to unnecessary work being done. One solution to this is a reference counted memory management system. With reference counting, each object holds a counter with the number of references that exist for that object. The count then makes it possible to immediately know when a signal is not needed and can be safely discarded.
+This copying step is important for any implementation of a Rizzo runtime as it essentially leaves a fresh (possibly) intermediate signal and the original signal in the heap. 
+If clean-up is not performed before the next time step then both these signals are considered for update, creating duplicate work.
+\todo{Finish, this is what we'll solve\dots}
+
+% In Rizzo signals are stored in a heap structure, where the structure is a form of linked list. The importance of this structure is for the runtime to iterate and update signals for each input on a channel.
+
+% Without going too much in detail, the way signals are stored in Rizzo is through a double linked list of signal nodes, where each node contains the current value of the signal and a pointer to the next node. When a signal is updated, a new node is created with the new value and the value is copied back to the initial signal node, so references don't have to be updated. This means that the memory management of Rizzo must be able to immediately identify signals that are no longer needed, otherwise these lead to unnecessary work being done. One solution to this is a reference counted memory management system. With reference counting, each object holds a counter with the number of references that exist for that object. The count then makes it possible to immediately know when a signal is not needed and can be safely discarded.
 
