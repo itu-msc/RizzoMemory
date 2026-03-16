@@ -1,15 +1,174 @@
-\section{RizzoLang (ChoRizzo??) Syntax and Semantics}
+\section{RizzoLang Syntax and Semantics}
 
-%   - Syntax and semantics of Rizzo
-%     - very short reference to the grammar
-For our implementation of Rizzo, we have designed an ML like syntax. The syntax is shaped by the semantics of Rizzo, and the AST structure we got by implementing the \citetitle{ullrich_counting_2021} semantics.
+For our implementation of Rizzo, we have designed an ML-like syntax with let bindings, function definitions, and pattern matching. The syntax is shaped by the semantics of Rizzo and the AST structure required for implementing the \citetitle{ullrich_counting_2021} reference counting semantics.
 
-In this section we will give an overview of the syntax we have designed for Rizzo, the semantics of the language, the main types we have allowed the user to use, and then what we think is needed to implement the Rizzo heap.
+\citeauthor*{rizzo_modal_2025} did not include a concrete syntax for Rizzo in their paper, but \citetitle{ullrich_counting_2021} included syntax for both the $\lambda_{\text{pure}}$ and $\lambda_{\text{RC}}$ intermediate representations. We have leaned on the structure of the $\lambda_{\text{pure}}$ IR for our syntax design, as it was based on the A-normal form from \citetitle{flanagan_essence_1993}, which is a well-known intermediate representation for functional languages. We chose an ML-like syntax because it is familiar to functional programmers and aligns naturally with the constructs from \citetitle{ullrich_counting_2021}.
+
+In this section we first present the concrete syntax of Rizzo, then describe the type system with a focus on the modal types \texttt{Later} and \texttt{Delay}. We then describe the operational semantics; particularly the eager evaluation strategy and the \texttt{advance}/\texttt{update} mechanism for reactive signals. Finally, we describe the Rizzo heap structure and how it supports efficient reference counting for immutable data.
 
 \subsection{Syntax}
-We have designed our syntax for Rizzo to be ML like with let bindings, function definitions, and pattern matching. we decided to go with an ML like syntax because it is a well known syntax for functional programming languages and the constructs from \citetitle{ullrich_counting_2021} were already ML like.
-\citeauthor*{rizzo_modal_2025} did not include a concrete syntax for Rizzo in their paper, but \citetitle{ullrich_counting_2021} included syntax for both the $\lambda_{pure}$ and $\lambda_{RC}$ intermediate representations. We have leaned on the structure of the $\lambda_{pure}$ IR for our syntax design, as it was based on the A-normal form of the \citetitle{flanagan_essence_1993} paper, which is a well known intermediate representation for functional languages.
-We have also added some constructs to the syntax that are specific to Rizzo, such as the signal constructor and the later and delay constructors.
+
+We have extended the base ML-like syntax with constructs specific to Rizzo, such as the signal constructor (\texttt{::}) and the later/delay constructors. The syntax supports top-level definitions, local let bindings, lambda expressions, pattern matching, and type annotations.
+
+\subsubsection{Top-level Declarations}
+
+Programs in Rizzo consist of a sequence of top-level declarations. There are two forms: value bindings and function definitions.
+
+\begin{verbatim}
+let x = e                  (* value binding *)
+fun f x1 x2 ... xn = e     (* function definition *)
+\end{verbatim}
+
+The function definition \texttt{fun f x1 ... xn = e} is syntactic sugar for \texttt{let f = fun x1 xn -> e}. Functions marked with the \texttt{@effectful} annotation are allowed to perform side effects such as registering output signals.
+
+\subsubsection{Expressions}
+
+The core expression forms are:
+
+\begin{verbatim}
+e ::= x                           (* variable *)
+    | c                           (* constant: (), true, false, 42, "hello" *)
+    | fun x -> e                  (* lambda abstraction *)
+    | e1 e2                       (* application *)
+    | C (e1, ..., en)             (* constructor application *)
+    | let x = e1 in e2            (* local binding *)
+    | (e1, e2)                    (* tuple *)
+    | e1 :: e2                    (* signal/list constructor *)
+    | e1 |> e2                    (* pipe operator *)
+    | match e with | p1 -> e1 ... (* pattern matching *)
+    | if e1 then e2 else e3       (* conditional *)
+    | (e : t)                     (* type annotation *)
+\end{verbatim}
+
+The pipe operator \texttt{|>} is left-associative and desugars to application, for which \texttt{a |> f} becomes \texttt{f a}. This is particularly useful for chaining signal transformations and for applying delayed functions to later values.
+
+The signal constructor \texttt{::} is right-associative and constructs a signal from a head value and a tail computation. For example, \texttt{5 :: never} creates a constant signal with value 5.
+
+\subsubsection{Patterns}
+
+For patters we have chosen to keep it simple, by not allowing recursive patterns, but we have included the necessary forms to support destructuring of tuples, signals, and constructors:
+
+\begin{verbatim}
+p ::= _                           (* wildcard *)
+    | x                           (* variable binding *)
+    | c                           (* constant pattern *)
+    | (p1, p2)                    (* tuple pattern *)
+    | p1 :: p2                    (* signal/cons pattern *)
+    | c :: s                      (* string pattern *)
+    | C (p1, ..., pn)             (* constructor pattern *)
+\end{verbatim}
+
+Like other head and tail structured datatypes, we have chosen to use \texttt{x :: xs} for Signals, to bind the head of the signal to \texttt{x} and the tail (a \texttt{Later} computation) to \texttt{xs}. We also added it for strings, to allow the head character to be bound separately from the tail string. This is useful for combinators that need to process strings character by character.
+
+% \subsubsection{Example: Signal Combinators}
+
+% The following example demonstrates the syntax through common signal combinators:
+
+% \begin{lstlisting}
+% (* Create a constant signal *)
+% fun _const x : 'a -> Signal 'a = x :: never
+
+% (* Create a signal from a Later computation *)
+% fun mk_sig later = 
+%     (fun a -> a :: mk_sig later) |> later
+
+% (* Map a function over a signal *)
+% fun map f s = 
+%     match s with
+%     | x :: xs -> f x :: (map f |> xs)
+
+% (* Sample the current value of ys whenever xs updates *)
+% fun sample xs ys = map (fun x -> (x, head ys)) xs
+% \end{lstlisting}
+
+% The \texttt{map} function demonstrates several key syntactic features: pattern matching on signals with \texttt{x :: xs}, the pipe operator for delayed application \texttt{(map f |> xs)}, and recursive signal construction.
+
+
+\subsection{Types}\label{section:rizzolang:types}
+
+Rizzo's type system includes primitive types, compound types, and the modal types that are central to functional reactive programming. In this section we describe the types available in our implementation and acknowledge the current limitations.
+
+\subsubsection{Primitive Types and compound types}
+
+The language includes a small set of primitive types: \texttt{Int}, \texttt{Bool}, \texttt{String}, and the unit type \texttt{()}. These are simple by themselves but can be combined using tuples and function types to create more powerful abstractions. 
+
+\begin{verbatim}
+t ::= Int | Bool | String | Unit   (* primitive types *)
+    | t1 * t2                      (* tuple types *)
+    | t1 -> t2                     (* function types *)
+    | Later t                      (* later type *)
+    | Delay t                      (* delay type *)
+    | Signal t                     (* signal type *)
+    | Sync t1 t2                   (* sync type *)
+\end{verbatim}
+
+\subsubsection{Modal Types: Later and Delay}
+
+The modal types \texttt{Later} and \texttt{Delay} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.
+
+\paragraph{The Later Type.} A value of type \texttt{Later a} represents a promise that a value of type \texttt{a} will become available at some future time step. The ``some'' here is existential; we do not know exactly when the value will arrive, only that it will eventually. The main constructors for \texttt{Later} values are:
+
+\begin{itemize}
+    \item \texttt{never : Later a}   (* a computation that never produces a value *)
+    \item \texttt{wait c : Later a}   (* waits for input on channel \texttt{c : Chan a} *)
+    \item \texttt{tail s : Later (Signal a)}   (* the tail of signal \texttt{s} *)
+    \item \texttt{sync l1 l2 : Later (Sync a b)}   (* synchronizes two later computations, producing a value when either or both tick *)
+    \subitem
+\end{itemize}
+
+\paragraph{The Delay Type.} A value of type \texttt{Delay a} represents a computation that will be available at \emph{all} future time steps. This universally quantified nature makes \texttt{Delay} values safe to use across time boundaries. The main constructor is \texttt{delay e : Delay a}, which creates a delayed computation from an expression \texttt{e}. The expression \texttt{e} is not evaluated immediately, but is instead, suspended until the delayed value is applied to a later value.
+
+\paragraph{Combining Later and Delay.} One of the more important operations is the applicative action, written as the pipe operator in our syntax:
+% The key operation that connects these types is the applicative action, written as the pipe operator in our syntax:
+
+\[\texttt{|>} : \texttt{Delay (a -> b) -> Later a -> Later b}\]
+
+This combinator allows a delayed function to be applied to a later value, producing a later result. The application does not happen immediately, but is deferred until the \texttt{Later} value becomes available. This is the way signal combinators like \texttt{map} propagate computations forward in time.
+
+\subsubsection{Signal Type}
+
+Signals are the central abstraction for time-varying values. A signal of type \texttt{Signal a} represents a stream of values of type \texttt{a} over time. As described in Section~\ref{section:frp:rizzo}, signals are defined as:
+
+\[\texttt{Signal a} = \texttt{Ref (a * Later (Signal a))}\]
+
+The \texttt{head} and \texttt{tail} of a signal can be extracted using the functions names accordingly:
+
+\begin{itemize}
+    \item \texttt{head : Signal a -> a}
+    \item \texttt{tail : Signal a -> Later (Signal a)}
+\end{itemize}
+
+\subsubsection{The Sync Type}
+
+When synchronizing two \texttt{Later} computations with \texttt{sync}, the result has type \texttt{Later (Sync a b)}. The \texttt{Sync} type is a three-way sum indicating which computations produced values:
+
+\begin{verbatim}
+type Sync a b = Left a | Right b | Both (a * b)
+\end{verbatim}
+
+This allows combinators to react differently depending on which inputs updated. For example, the \texttt{zip} combinator uses \texttt{sync} to combine two signals:
+
+\begin{verbatim}
+fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
+    let cont = fun mysync -> 
+        match mysync with
+        | Left (xs_)      -> zip xs_ ys
+        | Right (ys_)     -> zip xs ys_
+        | Both (xs_, ys_) -> zip xs_ ys_
+    in
+    (head xs, head ys) :: (cont |> sync (tail xs) (tail ys))
+\end{verbatim}
+
+% \subsubsection{Limitations: No User-Defined Types}
+
+% A significant limitation of our current implementation is the absence of user-defined algebraic data types. Programmers cannot define custom sum types (variants) or record types. This means:
+
+% \begin{itemize}
+%     \item No custom data structures beyond tuples
+%     \item No recursive data types like lists or trees (except signals)
+% \end{itemize}
+
+% This limitation simplifies the compiler implementation, particularly the reference counting pass, but restricts the expressiveness of the language. Extending Rizzo with user-defined types is left for future work.
 
 
 \subsection{Types}
