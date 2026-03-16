@@ -131,7 +131,7 @@ fun map f s =
 Here the delayed computation still depends on `xs', so reusing the storage of `s' would destroy data that is needed later. This illustrates why reuse opportunities for signals in Rizzo are limited: they mainly arise in combinators that terminate, switch, or otherwise stop forwarding the original signal.
 
 
-\subsection{AST structure requirements}
+\subsection{AST structure requirements}\label{sec:background:beans:assumptions}
 % transformations that we need
 
 % (1) Inserting reset/reuse pairs (Section 5.1)  
