@@ -168,7 +168,7 @@ and compile_match e =
     let cases_compiled = 
       List.map 
       (fun (pat, case_body, case_ann) -> 
-        let compiled = compile_simple_pattern scrutinee (fun () -> case_body) pat in
+        let compiled = compile_simple_pattern scrutinee (fun () -> compile_match case_body) pat in
         (pat, Option.value compiled ~default:case_body, case_ann)) 
       cases 
     in

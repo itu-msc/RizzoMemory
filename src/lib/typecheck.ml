@@ -250,7 +250,15 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let* arg_types, ctor_type = get_constructor_signature typ_name typ_name_ann in
     let* inferred_args = Type_env.collect (List.map infer args) in
     let* inferred_arg_types = Type_env.collect (List.map get_typ inferred_args) in
-    let* _ = Type_env.collect (List.map2 (fun expected actual -> Type_env.expected_equal ann expected actual) arg_types inferred_arg_types) in
+    let* _ = 
+      let n_args = List.length arg_types in
+      let n_inferred = List.length inferred_arg_types in
+      if n_args = n_inferred
+      then Type_env.collect (List.map2 (Type_env.expected_equal ann) arg_types inferred_arg_types)
+      else
+        let* _ = error ann (Format.asprintf "Constructor '%s' expects %d argument(s), but got %d" typ_name n_args n_inferred) in
+        return []
+    in
     let* ctor_type = Type_env.apply_subst ctor_type in
     let name = (typ_name, Ann_typed (get_location typ_name_ann, ctor_type)) in
     return (ECtor (name, inferred_args, Ann_typed (get_location ann, ctor_type)))
