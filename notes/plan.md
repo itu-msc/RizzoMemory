@@ -115,7 +115,8 @@
   - Assumptions (refreshing the readers memory)
   - pure AST transformations (to satisfy the beans paper assumptions)
   - How we adapted the memory model for Rizzo (e.g. delayed, later, signal, sync ...)
-- (Transpiler ?)
+- Transpiler
+  - This is where the advance and update semantics are encoded.
 - Evaluation
   - Running a Rizzo program (maybe different section), we need to show we it means to execute. What does the heap look like etc.
   - Performance goals

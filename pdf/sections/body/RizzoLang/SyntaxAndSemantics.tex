@@ -1,14 +1,15 @@
-\section{RizzoLang Syntax and Semantics}
+\section{RizzoLang (ChoRizzo??) Syntax and Semantics}
 
 %   - Syntax and semantics of Rizzo
 %     - very short reference to the grammar
+For our implementation of Rizzo, we have designed an ML like syntax. The syntax is shaped by the semantics of Rizzo, and the AST structure we got by implementing the \citetitle{ullrich_counting_2021} semantics.
+
+In this section we will give an overview of the syntax we have designed for Rizzo, the semantics of the language, the main types we have allowed the user to use, and then what we think is needed to implement the Rizzo heap.
 
 \subsection{Syntax}
-
-
-
-\subsection{Semantics}
-
+We have designed our syntax for Rizzo to be ML like with let bindings, function definitions, and pattern matching. we decided to go with an ML like syntax because it is a well known syntax for functional programming languages and the constructs from \citetitle{ullrich_counting_2021} were already ML like.
+\citeauthor*{rizzo_modal_2025} did not include a concrete syntax for Rizzo in their paper, but \citetitle{ullrich_counting_2021} included syntax for both the $\lambda_{pure}$ and $\lambda_{RC}$ intermediate representations. We have leaned on the structure of the $\lambda_{pure}$ IR for our syntax design, as it was based on the A-normal form of the \citetitle{flanagan_essence_1993} paper, which is a well known intermediate representation for functional languages.
+We have also added some constructs to the syntax that are specific to Rizzo, such as the signal constructor and the later and delay constructors.
 
 
 \subsection{Types}
@@ -16,7 +17,16 @@
 %  - Signals
 
 
+
+\subsection{Semantics}
+% advance and update semantics, it is eager despite when something is delayed.
+% the semantics imposed on us by counting immutable beans
+
+
+
+
 \section{The Rizzo heap}
 % how the heap is structured, what objects look like, how we represent them in memory
 %  - Objects
-%  - Signals
+%  - Signals, why is it looking like this. why do we have the headers that we do. ordering based on semantics. linked list structure, how we update signals, how we know when to clean up signals, reference counting.
+% leave the detailed description for reference counting section
