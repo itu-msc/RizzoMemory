@@ -53,11 +53,13 @@ We can take it one step further and define the function $\text{map} : (a \righta
 
 The definition of map makes use of pattern matching on signals. We could alternatively used explicit $\text{head}$ and $\text{tail}$ to extract $x$ and $xs$ respectively.
 
-Let us return to what makes Rizzo different, its semantics of signals. Because signals are updated in place as mutable references, as opposed to stored as immutable sequences, is it possible to define combinators like $\text{sample} : \texttt{Signal }a \rightarrow \texttt{Signal }b \rightarrow \texttt{Signal } (a \times b)$:
+Let us return to what makes Rizzo different, its semantics of signals. 
+Because signals are updated in place as mutable references, as opposed to stored as immutable sequences, is it possible to define combinators like $\text{sample} : \texttt{Signal }a \rightarrow \texttt{Signal }b \rightarrow \texttt{Signal } (a \times b)$:
 
 \[\text{sample} \; xs \; ys = map \; (\lambda x. (x, head \; ys)) \; xs\]
 
-The $sample$ combinator allows sampling the current value of $ys$, every time that a new value $x$ is produced on the signal $xs$. If it weren't for the mutable semantics, this combinator would have had to keep the entirety of $ys$ (beginning from its first value) in memory.
+The $sample$ combinator allows sampling the current value of $ys$, every time that a new value $x$ is produced on the signal $xs$. 
+If it weren't for the mutable semantics, this combinator would instead reuse the very first value of $ys$ for each new $x$ produced. That would have required the runtime to keep the entirety of $ys$ (beginning from its first value), resulting in a space leak.
 
 \subsubsection{Signals and the heap}\label{section:frp:signal_heap}
 
