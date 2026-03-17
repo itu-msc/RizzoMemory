@@ -1,6 +1,17 @@
 # RizzoMemory
 
-MSc thesis
+MSc thesis project implementing **Rizzo**, a programming language based on the work of [Rizzo by Patrick Bahr](https://bahr.io/pubs/entries/rizzo.html), with a focus on memory management and safety. The project includes:
+
+- A compiler that translates Rizzo source code to C, leveraging reference counting for memory management.
+- A C runtime library that provides memory management primitives, safety checks and the Rizzo advance and update semantics.
+- A VS Code extension that integrates the Rizzo compiler and language server for an enhanced development experience with diagnostics, hover information, and code navigation (Rough implementation; not the focus of the MSc thesis).
+
+## Prerequisites
+
+- **OCaml** (4.14+) and **opam** — for building the compiler
+- **Dune** — OCaml build system (usually installed via opam)
+- **GCC** or **Clang** — for compiling generated C code
+- **Node.js** and **npm** — for the VS Code extension (optional)
 
 ## Development
 
@@ -11,7 +22,7 @@ MSc thesis
 
 The full pipeline compiles a Rizzo source file to C and then runs it:
 
-```
+```bash
 # 1. Compile .rizz → output.c
 opam exec -- dune exec rizzoc <file.rizz>
 
@@ -24,9 +35,11 @@ gcc -I./src/runtime output.c -o output
 
 Or use the convenience npm script from the repo root (after step 1):
 
-```
+```bash
 npm run rizzo
 ```
+
+> **Windows**: The extension automatically handles Windows-specific details (`.exe` extension, `-m64` flag). Both GCC and Clang are supported.
 
 ### Running from VS Code
 
@@ -56,7 +69,7 @@ To run the LSP server, use the command:
 The VS Code extension is located in the `vscode-rizzo-lsp` folder.
 It can easily be installed with
 
-```
+```bash
 cd vscode-rizzo-lsp && npm install && cd ..
 npm run ext:install
 ```
@@ -73,6 +86,36 @@ For development you might want to run the extension in a debug session, which al
 
 ### Notes
 
-- Workspace settings in `.vscode/settings.json` already map `*.rizz` to the `rizzo` language and preconfigure server command/args.
+- The extension contributes language configuration through `package.json`, so `*.rizz` files are automatically recognized.
 - For true "just open folder and it works" without running a debug session, run the task `rizzo: install local extension` once (requires `code` CLI in PATH), then reopen VS Code.
 - The C runtime headers (`src/runtime/*.h`) are bundled into the VSIX automatically by the `vscode:prepublish` step via `npm run copy:runtime`.
+
+### LSP Commands
+
+The extension provides several commands accessible via the Command Palette (`Ctrl+Shift+P`):
+
+| Command | Description |
+|---------|-------------|
+| `Rizzo: Run Current File` | Compile and run the active `.rizz` file |
+| `Rizzo: Check LSP Health` | Show LSP server status and configuration |
+| `Rizzo: Restart LSP Server` | Restart the language server |
+
+A status bar item shows the current LSP state (starting/running/stopped).
+
+## Testing
+
+Run the test suite with:
+
+```bash
+npm run test
+# or
+opam exec -- dune test
+```
+
+Tests cover parsing, type checking, transformations, and the language service.
+
+## Documentation
+
+- **Thesis document**: See `pdf/` for the LaTeX thesis document
+- **Development notes**: See `notes/` for design decisions and progress
+- **Syntax reference**: See `notes/syntax.md` for language syntax overview
