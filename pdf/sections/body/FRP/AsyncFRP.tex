@@ -23,8 +23,8 @@ Signals are updated in place whenever the environment produces a value that is r
 \[\_ :: \_ : a \rightarrow \texttt{Later }(\texttt{Signal }a) \rightarrow \texttt{Signal }a\]
 
 Rizzo, like other languages~\cite{bahr_asynchronous_2023}, differentiates between two variants of the `later' type. 
-In Rizzo there is the $\texttt{Later } a$ which describes a value of type $a$ becoming available at some (existential) future time step. 
-And then there is the $\texttt{Delayed }a$ which describe a value of type $a$ that is available at all (universally quantified) future time steps.
+In Rizzo there is the $\texttt{Later } a$ which describes a value of type $a$ becoming available at some future time step. The ``some'' here is existential; we do not know exactly when the value will arrive, only that it may eventually arrive.
+And then there is the $\texttt{Delayed }a$ which describe a value of type $a$ that is available at \emph{all} (universally quantified) future time steps. This universally quantified nature makes \texttt{Delayed} values safe to use across time boundaries.
 
 \todo{This delay type is how Rizzo can guarantee \textit{productivity}. It guards recursion with a delay, ensuring recursion cannot happen until a future time step is produced. This is useful in the formal model but a functional language without general recursion is inconvenient to work with and so going forward we assume general recursion. \dots I suspect this block is malplaced + also what are the ramifications?}
 
