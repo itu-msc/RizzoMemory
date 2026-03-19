@@ -285,7 +285,8 @@ The \texttt{prev} and \texttt{next} pointers form a doubly-linked list, which is
 The signal heap is implemented as a doubly-linked list rather than a contiguous array. This design choice is motivated by several requirements:
 
 \begin{enumerate}
-    \item \textbf{Ordered iteration}: Signals must be updated in creation order to respect dependencies. A linked list naturally preserves insertion order.
+    \item \textbf{Ordered iteration}: Signals must be updated in the order they were created to respect dependencies. For example, if signal $s_2$ depends on $s_1$, then $s_1$ must be updated before $s_2$. A linked list naturally preserves insertion order, while an array would require additional bookkeeping to maintain order during insertions and deletions.
+    % Signals must be updated in creation order to respect dependencies. A linked list naturally preserves insertion order.
     
     \item \textbf{Efficient insertion}: New signals created during an update must be inserted at the current position in the iteration. With a linked list, this is O(1).
     
