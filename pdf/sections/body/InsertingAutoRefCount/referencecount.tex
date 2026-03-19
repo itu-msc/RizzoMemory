@@ -28,14 +28,21 @@ Observe that the IR is defined in A-normal form~\cite{flanagan_essence_1993}, wh
 Our representation keeps this shape but introduce \textit{Primitives} such that variables and literals (i.e.~integers, booleans, strings, and \texttt{never}) can appear directly in returns and as arguments in function/constructor application. This makes translation easier and avoids bindings such as $\texttt{let} \; x = 20; \; \texttt{ret} \; x$ when $\texttt{ret}\;20$ is enough.
 We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). Finally, we added top level values represented as mappings from constants to $FnBody$.~\todo{is it worth describing what the $FnBody$ means? Why is there?}
 
-\subsection{Transformations}
+\subsection{Transformations}\label{section:refcount:transforms}
 
 The strategy for automatically inserting reference counting is to transform Rizzo syntax trees into the modified IR and then run the algorithms $R$, $collect_{\mathbb{O}}$, and $C$~\cite{ullrich_counting_2021}, in that order. 
-These algorithms require some additional invariants from Section~\ref{sec:background:beans:assumptions}. Therefore, RC insertion can begin the compiler performs a series of transformations as shown in~\todo{FIGURE??}.
+These algorithms require some additional invariants from Section~\ref{sec:background:beans:assumptions}. Therefore, RC insertion can begin the compiler performs a series of transformations as shown in Figure~\ref{figure:refcount:transformations}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{flowchart_transformations.png}
+	\caption{\todo{Transformations}}
+	\label{figure:refcount:transformations}
+\end{figure}
 
 \todo{Here comes a pretty little flow chart showing how we chain these transformatiosn together, and a little explanation of why/what in relation the assumptions}
 
-\subsection{Counting Rizzo's beans}
+\subsection{Counting Rizzo's beans}\label{section:refcount:beans}
 
 \todo{Walk through the 3 steps and explain: Purpose and how have we adapted it for Rizzo?}
 
