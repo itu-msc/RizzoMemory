@@ -1,32 +1,37 @@
-\section{Automatically reference counting Rizzo}
+\section{Automatically reference counting Rizzo}\label{section:refcount}
 
 \todo{Quick refresh of assumptions from \textit{Reference Counting section}}
 
-The algorithms created by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} are defined on the functional intermediate representations (calculi) $\lambda_{pure}$ and $\lambda_{RC}$ where the latter is an extension of the first with instructions for reference counting.
-\todo{Figure shows the language \dots}. 
-The \texttt{pap} keyword explicitly marks partial applications, $\texttt{ctor}_i \; \bar y$ is an application of the $i\text{-th}$ constructor of some erased type, and $\texttt{proj}_i \; x$ reads the $i\text{-th}$ field of a constructor value $x$. Partial and full function application may only happen on the names of global functions also called constants.
+The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} are defined over the calculi $\lambda_{pure}$ and $\lambda_{RC}$, where the $\lambda_{RC}$ extends $\lambda_{pure}$ with reference counting instructions Figure~\ref{figure:refcount_IR} shows the IR used in our compiler, where Rizzo-specific extensions are highlighted in green.  
 
-\[
-\begin{aligned}
-	w, x, y, z&\in Var\\
-    l &\in \textcolor{greenadditions}{Literal \qquad ::= \mathbb{Z} \mid \text{true} \mid \text{false} \mid \text{never} \mid string}\\
-    p &\in \textcolor{greenadditions}{Primitive \qquad ::= x\mid l}\\
-	c &\in Const \\
-	e &\in Expr \qquad ::= c\,\textcolor{greenadditions}{\bar p} \mid \mathbf{pap}\; c\,\textcolor{greenadditions}{\bar p} \mid x\; p \mid \mathbf{ctor}_i\,\textcolor{greenadditions}{\bar p} \mid \mathbf{proj}_i\; x \\
-	F &\in FnBody \; ::= \mathbf{ret}\; \textcolor{greenadditions}{p} \mid \mathbf{let}\; x = e;\; F \mid \mathbf{case}\; x\; \mathbf{of}\; \textcolor{greenadditions}{\overline{\langle \mathbb{Z}, F \rangle}} \\
-	f &\in Fn \qquad ::= \lambda\,\bar y.\; F \\
-	\delta &\in Program \; = Const \to Fn
-\end{aligned}
-\]
+In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global constant $c$, $\texttt{ctor}_i \; \bar p$ constructs a value of some erased type with tag $i$, and $\texttt{proj}_i \; x$ projects the $i\text{-th}$ field from constructor value $x$. Fully applied calls and partial applications may only happen on global constants and variable application is defined separately for only a single argument.
 
-Another important observation is that these languages are defined in the style of A-normal form \todo{cite flanagan}, where expressions are non-recursive and are only allowed on the right-hand-side of let-bindings. 
-In our representation, however, this constraint is relaxed by allowing variable names and literals (i.e.~integers, booleans, and strings) in $\texttt{ret}$ and as arguments for function and constructor application. This makes translation easier and reduces program size by allowing $\texttt{ret}\;20$ instead of requiring $\texttt{let} \; x = 20; \; \texttt{ret} \; x$.
-Our representation additionally adds the specialised $\texttt{Signal}$ constructor which can be used in place of $\texttt{ctor}_i$. This distinction is necessary for the runtime to know when a memory cell should go into the signal heap (see Section~\ref{section:frp:signal_heap}).~\todo{We have also added top-level values!}
+\begin{figure}[h]
+	\[
+	\begin{aligned}
+		w, x, y, z&\in Var\\
+		c &\in Const \\
+		l &\in \textcolor{greenadditions}{Literal \qquad ::= \mathbb{Z} \mid \text{true} \mid \text{false} \mid \text{never} \mid string}\\
+		p &\in \textcolor{greenadditions}{Primitive \qquad ::= x\mid l}\\
+		e &\in Expr \qquad ::= c\,\textcolor{greenadditions}{\bar p} \mid \mathbf{pap}\; c\,\textcolor{greenadditions}{\bar p} \mid x\; p \mid \mathbf{ctor}_i\,\textcolor{greenadditions}{\bar p} \mid \mathbf{proj}_i\; x 
+		\mid \textcolor{greenadditions}{\texttt{signal} \; p \; p} \\
+		F &\in FnBody \; ::= \mathbf{ret}\; \textcolor{greenadditions}{p} \mid \mathbf{let}\; x = e;\; F \mid \mathbf{case}\; x\; \mathbf{of}\; \textcolor{greenadditions}{\overline{\langle \mathbb{Z}, F \rangle}} \\
+		f &\in Fn \qquad ::= \lambda\,\bar y.\; F \\
+		\delta &\in Program \; = Const \to Fn \mid \textcolor{greenadditions}{Const \to FnBody}
+	\end{aligned}
+	\]
+	\caption{The reference counting IR. Our modifications are marked in green.}
+	\label{figure:refcount_IR}
+\end{figure}
+
+Observe that the IR is defined in A-normal form~\cite{flanagan_essence_1993}, where expressions are non-recursive and are only allowed on the right-hand-side of let-bindings. 
+Our representation keeps this shape but introduce \textit{Primitives} such that variables and literals (i.e.~integers, booleans, strings, and \texttt{never}) can appear directly in returns and as arguments in function/constructor application. This makes translation easier and avoids bindings such as $\texttt{let} \; x = 20; \; \texttt{ret} \; x$ when $\texttt{ret}\;20$ is enough.
+We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). Finally, we added top level values represented as mappings from constants to $FnBody$.~\todo{is it worth describing what the $FnBody$ means? Why is there?}
 
 \subsection{Transformations}
 
-Our strategy for inserting reference count instructions is to first transform the Rizzo syntax tree into our modified $\lambda_{pure}$ and then run the $R$, $collect_{\mathbb{O}}$, and $C$ in that order. 
-To do so, we must run the Rizzo AST through the transformations shown in \todo{Figure xx} because A-normal form is not the only restriction imposed by the intermediate language, they also impose a handful of restrictions as described in Section~\ref{sec:background:beans:assumptions}.
+The strategy for automatically inserting reference counting is to transform Rizzo syntax trees into the modified IR and then run the algorithms $R$, $collect_{\mathbb{O}}$, and $C$~\cite{ullrich_counting_2021}, in that order. 
+These algorithms require some additional invariants from Section~\ref{sec:background:beans:assumptions}. Therefore, RC insertion can begin the compiler performs a series of transformations as shown in~\todo{FIGURE??}.
 
 \todo{Here comes a pretty little flow chart showing how we chain these transformatiosn together, and a little explanation of why/what in relation the assumptions}
 
