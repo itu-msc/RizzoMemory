@@ -30,8 +30,9 @@ We additionally add a specialised $\texttt{signal}$ constructor that can be used
 
 \subsection{Transformations}\label{section:refcount:transforms}
 
-The strategy for automatically inserting reference counting is to transform Rizzo syntax trees into the modified IR and then run the algorithms $R$, $collect_{\mathbb{O}}$, and $C$~\cite{ullrich_counting_2021}, in that order. 
-These algorithms require some additional invariants from Section~\ref{sec:background:beans:assumptions}. Therefore, RC insertion can begin the compiler performs a series of transformations as shown in Figure~\ref{figure:refcount:transformations}.
+The strategy for automatically inserting reference counting is to first transform Rizzo syntax trees into a shape that satisfies the invariants listed in Section~\ref{sec:background:beans:assumptions}, then convert these to the IR, and only then running the algorithms $R$, $collect_{\mathbb{O}}$, and $C$~\cite{ullrich_counting_2021}.
+
+In order to get Rizzo programs into the correct shape, the compiler performs a series of transformations as shown in Figure~\ref{figure:refcount:transformations}.
 
 \begin{figure}[h]
 	\centering
@@ -39,6 +40,9 @@ These algorithms require some additional invariants from Section~\ref{sec:backgr
 	\caption{\todo{Transformations}}
 	\label{figure:refcount:transformations}
 \end{figure}
+
+Although, these transformations are standard, we'll 
+\todo{They all get us closer to the invariants with the exception of consec lambda elim}
 
 \todo{Here comes a pretty little flow chart showing how we chain these transformatiosn together, and a little explanation of why/what in relation the assumptions}
 
