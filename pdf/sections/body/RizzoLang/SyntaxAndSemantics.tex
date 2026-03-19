@@ -4,7 +4,7 @@ For our implementation of Rizzo, we have designed an ML-like syntax with let bin
 
 \citeauthor*{rizzo_modal_2025} did not include a concrete syntax for Rizzo in their paper, but \citetitle{ullrich_counting_2021} included syntax for both the $\lambda_{\text{pure}}$ and $\lambda_{\text{RC}}$ intermediate representations. We have leaned on the structure of the $\lambda_{\text{pure}}$ IR for our syntax design, as it was based on the A-normal form from \citetitle{flanagan_essence_1993}, which is a well-known intermediate representation for functional languages. We chose an ML-like syntax because it is familiar to functional programmers and aligns naturally with the constructs from \citetitle{ullrich_counting_2021}.
 
-In this section we first present the concrete syntax of Rizzo, then describe the type system with a focus on the modal types \texttt{Later} and \texttt{Delay}. We then describe the operational semantics; particularly the eager evaluation strategy and the \texttt{advance}/\texttt{update} mechanism for reactive signals. Finally, we describe the Rizzo heap structure and how it supports efficient reference counting for immutable data.
+In this section we first present the concrete syntax of Rizzo, then describe the type system with a focus on the modal types \texttt{Later} and \texttt{Delayed}. We then describe the operational semantics; particularly the eager evaluation strategy and the \texttt{advance}/\texttt{update} mechanism for reactive signals. Finally, we describe the Rizzo heap structure and how it supports efficient reference counting for immutable data.
 
 \subsection{Syntax}
 
@@ -86,67 +86,53 @@ Like other head and tail structured datatypes, we have chosen to use \texttt{x :
 
 \subsection{Types}\label{section:rizzolang:types}
 
-Rizzo's type system includes primitive types, compound types, and the modal types that are central to functional reactive programming. In this section we describe the types available in our implementation and acknowledge the current limitations.
+Rizzo's type system includes primitive types, compound types, and the \texttt{Later} and \texttt{Delayed} modal types that are central to functional reactive programming. In this section we describe the types available in our implementation and acknowledge the current limitations.
+
+% For our implementation, we have chosen to keep the type system simple by not including user-defined algebraic data types. This means that programmers cannot define their own sum types or record types, and must rely on tuples and signals for data structures. This limitation simplifies the implementation of reference counting, as we do not need to handle arbitrary recursive types, but it does restrict expressiveness. Extending the type system with user-defined types is a potential area for future work.
 
 \subsubsection{Primitive Types and compound types}
 
-The language includes a small set of primitive types: \texttt{Int}, \texttt{Bool}, \texttt{String}, and the unit type \texttt{()}. These are simple by themselves but can be combined using tuples and function types to create more powerful abstractions. 
+The language includes a small set of primitive types: \texttt{Int}, \texttt{Bool}, \texttt{String}, and the unit type \texttt{Unit}. These are simple by themselves, but can be combined using tuples and function types to create more powerful abstractions. 
 
 \begin{verbatim}
 t ::= Int | Bool | String | Unit   (* primitive types *)
     | t1 * t2                      (* tuple types *)
     | t1 -> t2                     (* function types *)
     | Later t                      (* later type *)
-    | Delay t                      (* delay type *)
+    | Delayed t                      (* delay type *)
     | Signal t                     (* signal type *)
     | Sync t1 t2                   (* sync type *)
 \end{verbatim}
 
-\subsubsection{Modal Types: Later and Delay}
+\subsubsection{Modal Types: Later and Delayed}
 
-The modal types \texttt{Later} and \texttt{Delay} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.
+% reference back to \ref{section:frp:rizzo}
 
-\paragraph{The Later Type.} A value of type \texttt{Later a} represents a promise that a value of type \texttt{a} will become available at some future time step. The ``some'' here is existential; we do not know exactly when the value will arrive, only that it will eventually. The main constructors for \texttt{Later} values are:
+The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.\citeauthor*{rizzo_modal_2025} introduced a set of constructors for these modal types, for which the constructors for \texttt{Later} values are:
 
 \begin{itemize}
     \item \texttt{never : Later a}   (* a computation that never produces a value *)
     \item \texttt{wait c : Later a}   (* waits for input on channel \texttt{c : Chan a} *)
-    \item \texttt{tail s : Later (Signal a)}   (* the tail of signal \texttt{s} *)
-    \item \texttt{sync l1 l2 : Later (Sync a b)}   (* synchronizes two later computations, producing a value when either or both tick *)
-    \subitem
+    \item \texttt{tail s : Later (Signal a)}   (* gets the tail of signal *)
+    \item \texttt{sync l1 l2 : Later (Sync a b)}   (* synchronizes two later's, producing a value when either or both tick *)
 \end{itemize}
 
-\paragraph{The Delay Type.} A value of type \texttt{Delay a} represents a computation that will be available at \emph{all} future time steps. This universally quantified nature makes \texttt{Delay} values safe to use across time boundaries. The main constructor is \texttt{delay e : Delay a}, which creates a delayed computation from an expression \texttt{e}. The expression \texttt{e} is not evaluated immediately, but is instead, suspended until the delayed value is applied to a later value.
-
-\paragraph{Combining Later and Delay.} One of the more important operations is the applicative action, written as the pipe operator in our syntax:
-% The key operation that connects these types is the applicative action, written as the pipe operator in our syntax:
-
-\[\texttt{|>} : \texttt{Delay (a -> b) -> Later a -> Later b}\]
-
-This combinator allows a delayed function to be applied to a later value, producing a later result. The application does not happen immediately, but is deferred until the \texttt{Later} value becomes available. This is the way signal combinators like \texttt{map} propagate computations forward in time.
-
-\subsubsection{Signal Type}
-
-Signals are the central abstraction for time-varying values. A signal of type \texttt{Signal a} represents a stream of values of type \texttt{a} over time. As described in Section~\ref{section:frp:rizzo}, signals are defined as:
-
-\[\texttt{Signal a} = \texttt{Ref (a * Later (Signal a))}\]
-
-The \texttt{head} and \texttt{tail} of a signal can be extracted using the functions names accordingly:
-
+and the constructor for \texttt{Delayed} values is:
 \begin{itemize}
-    \item \texttt{head : Signal a -> a}
-    \item \texttt{tail : Signal a -> Later (Signal a)}
+    \item \texttt{delay e : Delayed a}   (* creates a delayed computation from expression \texttt{e} *)
 \end{itemize}
+
+% \paragraph{The Delayed Type.} A value of type \texttt{Delayed a} represents a computation that will be available at \emph{all} future time steps. This universally quantified nature makes \texttt{Delayed} values safe to use across time boundaries. The main constructor is \texttt{delay e : Delayed a}, which creates a delayed computation from an expression \texttt{e}. The expression \texttt{e} is not evaluated immediately, but is instead, suspended until the delayed value is applied to a later value.
 
 \subsubsection{The Sync Type}
 
-When synchronizing two \texttt{Later} computations with \texttt{sync}, the result has type \texttt{Later (Sync a b)}. The \texttt{Sync} type is a three-way sum indicating which computations produced values:
+In \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025} the \texttt{sum} type is needed to represent the result of synchronizing two \texttt{Later} computations with the \texttt{sync} signal combinator. To simplify the implementation, we have chosen to use a custom \texttt{Sync} type instead, which is a three-way sum indicating which computations produced values when synchronizing two \texttt{Later} computations with \texttt{sync}:
 
 \begin{verbatim}
 type Sync a b = Left a | Right b | Both (a * b)
 \end{verbatim}
 
-This allows combinators to react differently depending on which inputs updated. For example, the \texttt{zip} combinator uses \texttt{sync} to combine two signals:
+In practice, the \texttt{sync} combinator is used to combine two \texttt{Later} computations, and the resulting \texttt{Sync} value indicates whether the first, second, or both signals have ticked in the current time step. This allows combinators that use \texttt{sync} to react differently depending on which inputs updated. For example, the \texttt{zip} combinator uses \texttt{sync} to combine two signals:
 
 \begin{verbatim}
 fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
@@ -171,21 +157,196 @@ fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
 % This limitation simplifies the compiler implementation, particularly the reference counting pass, but restricts the expressiveness of the language. Extending Rizzo with user-defined types is left for future work.
 
 
-\subsection{Types}
-% What are the main types in Rizzo, what have we allowed the user to use.
-%  - Signals
+\subsection{Semantics}\label{section:rizzolang:semantics}
+
+For RizzoLang we need to adhere to the \texttt{advance} and \texttt{update} semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, but we also need to define the semantics of reference counting for our implementation. In this section we first describe the evaluation strategy of Rizzo, then the reactive semantics for signals, and finally how reference counting interacts with the heap structure.
+
+% Rizzo has two layers of semantics: the standard evaluation semantics for expressions, and the reactive semantics that govern how signals are updated over time. Understanding both is essential for implementing an efficient runtime.
+
+\subsubsection{Eager Evaluation}
+
+Rizzo uses eager (strict) evaluation for all expressions. Function arguments are evaluated before the function body executes, and let bindings evaluate their right-hand side before the body. This is in contrast to lazy languages like Haskell where evaluation is deferred until values are needed.
+
+However, there is an important exception: \texttt{Delayed} and \texttt{Later} computations are not evaluated immediately. When we write \texttt{delay e}, the expression \texttt{e} is not evaluated---instead, a thunk (suspended computation) is created. Similarly, when we write \texttt{f |> later}, the application of \texttt{f} is deferred until the \texttt{later} value becomes available.
+
+This combination of eager evaluation with explicit delayed computations gives programmers precise control over when computations occur. Signal combinators use \texttt{delay} to ensure that recursive calls happen only when time advances, preventing infinite loops.
+
+\subsubsection{Reactive Semantics: Time Steps and Updates}
+
+The reactive semantics describe how signals evolve over time. Time in Rizzo is discrete: it advances in steps, with each step triggered by input arriving on a channel. Between time steps, signals maintain their current values.
+
+When a channel produces a value, the runtime must update all signals that depend (directly or indirectly) on that channel. This is done through two key operations: \texttt{ticked} and \texttt{advance}.
+
+\paragraph{The Ticked Predicate.} Given a \texttt{Later} computation and a channel that just produced a value, the \texttt{ticked} predicate determines whether the computation should produce a value in this time step:
+
+\begin{itemize}
+    \item $\texttt{ticked}(\texttt{never}, c, v) = \texttt{false}$ --- never produces a value
+    \item $\texttt{ticked}(\texttt{wait } k, c, v) = (k = c)$ --- ticks when the waited channel fires
+    \item $\texttt{ticked}(\texttt{tail } s, c, v) = \texttt{updated}(s)$ --- ticks when the signal was updated
+    \item $\texttt{ticked}(\texttt{sync } l_1 \; l_2, c, v) = \texttt{ticked}(l_1, c, v) \lor \texttt{ticked}(l_2, c, v)$
+    \item $\texttt{ticked}(f \triangleright l, c, v) = \texttt{ticked}(l, c, v)$ --- follows the later argument
+\end{itemize}
+
+\paragraph{The Advance Operation.} When a \texttt{Later} computation has ticked, the \texttt{advance} operation extracts the value it produces:
+
+\begin{itemize}
+    \item $\texttt{advance}(\texttt{wait } k, c, v) = v$ --- returns the channel's value
+    \item $\texttt{advance}(\texttt{tail } s, c, v) = s$ --- returns the (now updated) signal
+    \item $\texttt{advance}(f \triangleright l, c, v) = f(\texttt{advance}(l, c, v))$ --- applies the delayed function
+    \item $\texttt{advance}(\texttt{sync } l_1 \; l_2, c, v)$ returns \texttt{Left}, \texttt{Right}, or \texttt{Both} depending on which computations ticked
+\end{itemize}
+
+\paragraph{The Heap Update Procedure.} The runtime maintains all signals in a heap (see Section~\ref{section:rizzolang:heap}). When a channel fires, the update procedure iterates through the heap:
+
+\begin{enumerate}
+    \item For each signal $s$ with tail $t$:
+    \item If $\texttt{ticked}(t, c, v)$:
+    \begin{enumerate}
+        \item Compute $s' = \texttt{advance}(t, c, v)$ --- this produces a new signal
+        \item Copy $\texttt{head}(s')$ and $\texttt{tail}(s')$ back into $s$
+        \item Mark $s$ as updated
+        \item The intermediate signal $s'$ can now be deallocated
+    \end{enumerate}
+    \item Otherwise, mark $s$ as not updated
+\end{enumerate}
+
+The copying step is crucial: it ensures that references to $s$ remain valid while the signal's contents are updated. This is the ``mutable reference'' semantics that distinguishes Rizzo from other FRP languages.
+% this will become important as to why we cant reuse the intermediate signal
+
+\subsubsection{Update Ordering and Cascading}
+
+The order in which signals are updated matters. Consider a signal $s_2$ whose tail depends on another signal $s_1$. If $s_1$ updates, then $s_2$ may also need to update (if its tail uses \texttt{tail} $s_1$). For correct semantics, $s_1$ must be updated before $s_2$.
+
+The heap maintains signals in creation order, which ensures that dependencies are respected: a signal can only depend on signals created before it. When a new signal is created during an update (e.g., by advancing a \texttt{Later} computation), it is inserted into the now heap, ensuring the signal will not be updated until the next time step. This allows for cascading updates without risking infinite loops within a single time step.
+
+\subsubsection{Reference Counting Semantics}
+
+The \citetitle{ullrich_counting_2021} paper defines a reference-counted intermediate representation ($\lambda_{\text{RC}}$) with explicit \texttt{inc}, \texttt{dec}, \texttt{reset}, and \texttt{reuse} operations. Our compiler transforms Rizzo programs into this representation before generating C code.
+
+The key semantic rules are:
+
+\begin{itemize}
+    \item Every variable starts with a reference count of 1 when bound
+    \item Passing a variable to an \emph{owned} parameter consumes one reference
+    \item Passing a variable to a \emph{borrowed} parameter does not consume a reference
+    \item \texttt{inc x} increments the reference count of \texttt{x}
+    \item \texttt{dec x} decrements the reference count; if it reaches zero, the object is freed
+    \item \texttt{reset x} prepares \texttt{x} for potential reuse if its count is 1
+    \item \texttt{reuse x in C(...)} reuses the memory of \texttt{x} for a new constructor
+\end{itemize}
+
+These operations are inserted automatically by the compiler based on ownership analysis. The details of this transformation are covered in Section~\ref{section:refcount}.
 
 
 
-\subsection{Semantics}
-% advance and update semantics, it is eager despite when something is delayed.
-% the semantics imposed on us by counting immutable beans
 
+\section{The Rizzo Heap}\label{section:rizzolang:heap}
 
+The reactive semantics of Rizzo require that all signals be reachable during the update phase. To support this, signals are stored in a dedicated heap structure. In this section we describe the design of this heap and how it interacts with reference counting to enable efficient memory management.
 
+\subsection{Object Representation}
 
-\section{The Rizzo heap}
-% how the heap is structured, what objects look like, how we represent them in memory
-%  - Objects
-%  - Signals, why is it looking like this. why do we have the headers that we do. ordering based on semantics. linked list structure, how we update signals, how we know when to clean up signals, reference counting.
-% leave the detailed description for reference counting section
+All heap-allocated objects in Rizzo share a common header structure:
+
+\begin{verbatim}
+struct rz_header {
+    uint16_t num_fields;    /* number of fields in the object */
+    uint8_t  tag;           /* constructor tag for pattern matching */
+    uint8_t  obj_type;      /* object kind: regular, string, signal, etc. */
+    int32_t  refcount;      /* reference count */
+};
+\end{verbatim}
+
+The \texttt{num\_fields} and \texttt{tag} fields support pattern matching and recursive deallocation. The \texttt{obj\_type} field distinguishes between regular objects, strings, signals, and partial applications---each requiring different handling during deallocation. The \texttt{refcount} field tracks how many references point to this object.
+
+Following the header, objects store their fields as an array of boxed values. A boxed value (\texttt{rz\_box\_t}) can hold either an immediate integer, a string literal pointer, or a pointer to a heap object. This uniform representation simplifies the generated code at the cost of some memory overhead.
+
+\subsection{Signal Structure}
+
+Signals have additional fields beyond the standard header:
+
+\begin{verbatim}
+struct rz_signal {
+    rz_header_t header;
+    rz_box_t head;      /* current value */
+    rz_box_t tail;      /* Later computation for future values */
+    rz_box_t updated;   /* flag: was this signal updated this tick? */
+    rz_box_t prev;      /* previous signal in heap (doubly-linked list) */
+    rz_box_t next;      /* next signal in heap */
+};
+\end{verbatim}
+
+The \texttt{head} and \texttt{tail} fields correspond to the signal definition from Section~\ref{section:frp:rizzo}. The \texttt{updated} flag is set during the heap update procedure and is used by combinators that need to know whether a signal changed (e.g., \texttt{watch}).
+
+The \texttt{prev} and \texttt{next} pointers form a doubly-linked list, which is the heap structure itself.
+
+\subsection{The Heap as a Linked List}
+
+The signal heap is implemented as a doubly-linked list rather than a contiguous array. This design choice is motivated by several requirements:
+
+\begin{enumerate}
+    \item \textbf{Ordered iteration}: Signals must be updated in the order they were created to respect dependencies. For example, if signal $s_2$ depends on $s_1$, then $s_1$ must be updated before $s_2$. A linked list naturally preserves insertion order, while an array would require additional bookkeeping to maintain order during insertions and deletions.
+    % Signals must be updated in creation order to respect dependencies. A linked list naturally preserves insertion order.
+    
+    \item \textbf{Efficient insertion}: New signals created during an update must be inserted at the current position in the iteration. With a linked list, this is O(1).
+    
+    \item \textbf{Efficient removal}: When a signal's reference count drops to zero, it must be removed from the heap. Doubly-linked lists support O(1) removal.
+    
+    \item \textbf{Stable references}: Unlike arrays, linked lists do not move elements when inserting or removing, so pointers to signals remain valid.
+\end{enumerate}
+
+The runtime maintains two pointers into the heap:
+\begin{itemize}
+    \item \texttt{heap\_base}: Points to the first signal in the heap
+    \item \texttt{heap\_cursor}: Points to the signal currently being processed during update
+\end{itemize}
+
+\subsection{Signal Lifecycle}
+
+A signal goes through the following lifecycle:
+
+\paragraph{Creation.} When a signal is constructed (via \texttt{::}), it is allocated and inserted into the heap just before the current cursor position. This ensures that newly created signals are considered for update in the current time step. The signal starts with a reference count of 1.
+
+\paragraph{Update.} During the heap update phase, if a signal's tail has ticked, the runtime:
+\begin{enumerate}
+    \item Advances the tail to produce a new (intermediate) signal
+    \item Copies the head and tail from the intermediate signal to the original
+    \item Decrements the reference count of the old head and tail
+    \item Increments the reference count of the new head and tail
+    \item Decrements the reference count of the intermediate signal
+\end{enumerate}
+
+If the intermediate signal's reference count reaches zero (which is typical), it is immediately deallocated and removed from the heap.
+
+\paragraph{Deallocation.} When a signal's reference count reaches zero:
+\begin{enumerate}
+    \item The reference counts of its head and tail are decremented (potentially triggering further deallocations)
+    \item The signal is removed from the linked list by updating its neighbors' pointers
+    \item The signal's memory is freed
+\end{enumerate}
+
+\subsection{Why Reference Counting Matters for the Heap}
+
+The heap update procedure creates intermediate signals that are typically used only to copy values back to the original signal. Without proper memory management, these intermediate signals would accumulate in the heap, causing two problems:
+
+\begin{enumerate}
+    \item \textbf{Memory leaks}: Intermediate signals consume memory indefinitely.
+    
+    \item \textbf{Redundant work}: During the next update, the runtime would iterate over and potentially update these orphaned signals, wasting CPU cycles and potentially causing incorrect behavior.
+\end{enumerate}
+
+Reference counting solves both problems by ensuring that intermediate signals are deallocated immediately when they are no longer needed. The key insight is that an intermediate signal typically has a reference count of 1 (held by the local variable in the update procedure). When that reference is released, the signal is freed and removed from the heap before the next iteration.
+
+This is why the \citetitle{ullrich_counting_2021} approach is particularly well-suited to Rizzo: the combination of precise reference counting with the \texttt{reset}/\texttt{reuse} optimization allows the runtime to efficiently recycle signal memory, minimizing both allocation overhead and heap size.
+
+\subsection{Memory Layout Summary}
+
+To summarize, the Rizzo runtime manages memory at two levels:
+
+\begin{enumerate}
+    \item \textbf{Object level}: All heap objects (including signals) use reference counting for lifetime management. The compiler inserts \texttt{inc}/\texttt{dec} operations, and the runtime performs deallocation when counts reach zero.
+    
+    \item \textbf{Heap level}: Signals are additionally linked into the signal heap for iteration during updates. The heap structure is maintained automatically as signals are created and destroyed.
+\end{enumerate}
+
+This two-level design separates concerns: reference counting handles object lifetimes, while the heap structure supports the reactive semantics. The detailed implementation of reference count insertion is covered in Section~\ref{section:refcount}.
