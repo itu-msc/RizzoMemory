@@ -23,7 +23,7 @@ typedef enum {
 } rz_delay_tag_t;
 
 static rz_object_t RZ_NEVER_OBJ = { .header = { .num_fields = 0, .tag = RZ_TAG_LATER_NEVER, .refcount = -1 } };
-static rz_box_t RZ_NEVER = { .kind = RZ_BOX_INT, .as.obj = &RZ_NEVER_OBJ }; /* should it have kind int? */
+#define RZ_NEVER (rz_make_ptr(&RZ_NEVER_OBJ))
 
 static inline void rz_debug_print_delayed(rz_box_t delay);
 

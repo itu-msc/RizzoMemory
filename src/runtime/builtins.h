@@ -5,10 +5,9 @@
 #include <stdlib.h>
 
 #include "core.h"
+#include "rzstring.h"
 
 static rz_box_t rz_start_event_loop();
-static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args);
-static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b);
 
 static inline void rz_builtin_expect_arity(const char *name, size_t expected, size_t actual) {
 	if (expected != actual) {
@@ -18,8 +17,8 @@ static inline void rz_builtin_expect_arity(const char *name, size_t expected, si
 }
 
 static inline int32_t rz_builtin_expect_int(const char *name, size_t index, rz_box_t arg) {
-	if (arg.kind != RZ_BOX_INT) {
-		fprintf(stderr, "Runtime error: builtin '%s' expected int for argument %zu, got box kind %d\n", name, index + 1, arg.kind);
+	if (rz_box_get_kind(arg)  != RZ_BOX_INT) {
+		fprintf(stderr, "Runtime error: builtin '%s' expected int for argument %zu, got box kind %d\n", name, index + 1, rz_box_get_kind(arg));
 		exit(1);
 	}
 	return rz_unbox_int(arg);
@@ -27,18 +26,18 @@ static inline int32_t rz_builtin_expect_int(const char *name, size_t index, rz_b
 
 static inline rz_box_t rz_builtin_expect_string(const char *name, size_t index, rz_box_t arg) {
 	if (!rz_box_is_string(arg)) {
-		fprintf(stderr, "Runtime error: builtin '%s' expected string for argument %zu, got box kind %d\n", name, index + 1, arg.kind);
+		fprintf(stderr, "Runtime error: builtin '%s' expected string for argument %zu, got box kind %d\n", name, index + 1, rz_box_get_kind(arg));
 		exit(1);
 	}
 	return arg;
 }
 
 static inline bool rz_builtin_expect_bool(const char *name, size_t index, rz_box_t arg) {
-	if (arg.kind != RZ_BOX_PTR || (arg.as.obj != &RZ_BOOL_TRUE && arg.as.obj != &RZ_BOOL_FALSE)) {
+	if (rz_box_get_kind(arg) != RZ_BOX_PTR || (rz_unbox_ptr(arg) != &RZ_BOOL_TRUE && rz_unbox_ptr(arg) != &RZ_BOOL_FALSE)) {
 		fprintf(stderr, "Runtime error: builtin '%s' expected bool for argument %zu\n", name, index + 1);
 		exit(1);
 	}
-	return arg.as.obj == &RZ_BOOL_TRUE;
+	return rz_unbox_ptr(arg) == &RZ_BOOL_TRUE;
 }
 
 static inline rz_box_t rz_builtin_make_nothing(void) {

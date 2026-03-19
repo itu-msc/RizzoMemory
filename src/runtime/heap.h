@@ -17,18 +17,18 @@ typedef struct rz_signal {
     rz_box_t prev, next;    /* holders a pointer (of rz_signal_t) to the prev/next signal in the heap */
 } rz_signal_t;
 
-rz_signal_t* rz_heap_base = NULL;
-rz_signal_t* rz_heap_cursor = NULL;
-size_t rz_heap_size = 0;
+extern rz_signal_t* rz_heap_base;
+extern rz_signal_t* rz_heap_cursor;
+extern size_t rz_heap_size;
 
 static inline void rz_remove_signal_node(rz_signal_t* sig) {
-    rz_signal_t* prev = (rz_signal_t*)sig->prev.as.obj;
-    rz_signal_t* next = (rz_signal_t*)sig->next.as.obj;
+    rz_signal_t* prev = (rz_signal_t*)rz_unbox_ptr(sig->prev);
+    rz_signal_t* next = (rz_signal_t*)rz_unbox_ptr(sig->next);
 
-    if (prev) prev->next.as.obj = (rz_object_t*) next;
+    if (prev) prev->next = sig->next;
     /* if sig.prev is null, then sig must be the heap_base (first element of heap), so move heap_base forward */
     else rz_heap_base = next; 
-    if (next) next->prev.as.obj = (rz_object_t*) prev;
+    if (next) next->prev = sig->prev;
 
     if(rz_heap_cursor == sig) rz_heap_cursor = next ? next : prev;
 }
@@ -37,11 +37,12 @@ static inline void rz_insert_signal_node(rz_signal_t* sig) {
     rz_signal_t* prev = (rz_signal_t*) rz_unbox_ptr(rz_heap_cursor->prev);
     rz_signal_t* next = rz_heap_cursor;
 
-    sig->prev.as.obj = (rz_object_t*) prev;
-    sig->next.as.obj = (rz_object_t*) next;
+    sig->prev = rz_heap_cursor->prev;
+    sig->next = rz_make_ptr((rz_object_t*)next);
 
-    if (next) next->prev.as.obj = (rz_object_t*) sig;
-    if (prev) prev->next.as.obj = (rz_object_t*) sig;
+    rz_box_t sig_box = rz_make_ptr((rz_object_t*)sig);
+    if (next) next->prev = sig_box;
+    if (prev) prev->next = sig_box;
     /* if cursor is pointing to the first element (heap size) then we should become the first */
     if (rz_heap_cursor == rz_heap_base) rz_heap_base = sig;
 }
@@ -72,7 +73,7 @@ static rz_object_t* rz_signal_ctor(rz_box_t head, rz_box_t tail) {
 }
 
 static inline rz_box_t rz_make_ptr_sig(rz_object_t* sig) {
-    return (rz_box_t){.kind = RZ_BOX_PTR, .as.obj = sig};
+    return rz_make_ptr(sig);
 }
 
 static inline void rz_signal_free(rz_object_t* obj) {
@@ -94,7 +95,7 @@ static inline rz_object_t* rz_reuse_signal(rz_object_t* obj, rz_box_t head, rz_b
     rz_refcount_dec_box(sig->tail);
     rz_remove_signal_node(sig);
 
-    sig->updated.as.i32 = 0;
+    sig->updated = rz_make_int(0);
     sig->_base.num_fields = 5;
     sig->_base.tag = 0;
     sig->_base.obj_type = RZ_SIGNAL;
@@ -114,7 +115,7 @@ static void rz_debug_print_heap() {
     }
     rz_signal_t* cursor = rz_heap_base;
     printf("Heap size: %zu\n", rz_heap_size);
-    for(int i = 0; cursor; cursor = (rz_signal_t*)cursor->next.as.obj, i++) {
+    for(int i = 0; cursor; cursor = (rz_signal_t*)rz_unbox_ptr(cursor->next), i++) {
         printf("%d:(ref:%d) (", i, cursor->_base.refcount);
         rz_debug_print_box(cursor->head);
         printf(", ");
@@ -125,10 +126,10 @@ static void rz_debug_print_heap() {
 }
 
 static void rz_debug_print_signal(rz_box_t box) {
-    rz_signal_t* signal = (rz_signal_t*)box.as.obj;
+    rz_signal_t* signal = (rz_signal_t*)rz_unbox_ptr(box);
     printf("signal(ref: %d, head: ", signal->_base.refcount); rz_debug_print_box(signal->head); 
     printf(", tail: "); rz_debug_print_box(signal->tail);
-    printf(", updated: %d)", signal->updated.as.i32); 
+    printf(", updated: %d)", rz_unbox_int(signal->updated)); 
 }
 
 /*   |------------------------------|
@@ -148,11 +149,11 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v) {
         rz_heap_cursor = cur;
         rz_object_t* tl = rz_unbox_ptr(rz_heap_cursor->tail);
         if(!rz_ticked(tl, chan, v)) {
-            rz_heap_cursor->updated.as.i32 = false;
+            rz_heap_cursor->updated = rz_make_int(false);
         } else { /* chan produced a tick on tl of cursor! */
             rz_box_t l_boxed = rz_advance(tl, chan, v);
             rz_signal_t* l = (rz_signal_t*)rz_unbox_ptr(l_boxed);
-            rz_heap_cursor->updated.as.i32 = true;
+            rz_heap_cursor->updated= rz_make_int(true);
             rz_refcount_inc_box(l->head);
             rz_refcount_inc_box(l->tail);
             rz_refcount_dec_box(rz_heap_cursor->head);
@@ -170,11 +171,11 @@ static bool rz_ticked(rz_object_t* later, rz_channel_t chan, rz_box_t v) {
         case RZ_TAG_LATER_NEVER: return false;
         case RZ_TAG_LATER_APP: {
             rz_box_t w = rz_object_get_field(later, 1);
-            return rz_ticked(w.as.obj, chan, v);
+            return rz_ticked(rz_unbox_ptr(w), chan, v);
         }
         case RZ_TAG_LATER_WAIT: {
             rz_box_t k = rz_object_get_field(later, 0);
-            return k.as.i32 == chan;
+            return rz_unbox_int(k) == chan;
         }
         case RZ_TAG_LATER_WATCH: {
             rz_signal_t* l = (rz_signal_t*) rz_unbox_ptr(rz_object_get_field(later, 0));
@@ -191,7 +192,7 @@ static bool rz_ticked(rz_object_t* later, rz_channel_t chan, rz_box_t v) {
                 || rz_ticked(rz_unbox_ptr(later2), chan, v);
         }
         default: 
-            printf("rz_ticked(%s) - unknown later tag '%d'", __FILE__, rz_object_tag(later));
+            printf("rz_ticked(%s:%d) - unknown later tag '%d'", __FILE__, __LINE__, rz_object_tag(later));
             exit(1);
     }
 }
