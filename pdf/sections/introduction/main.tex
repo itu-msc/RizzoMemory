@@ -3,7 +3,8 @@
 
 % Motivation
 
-Functional reactive programming (FRP) is a programming paradigm for building \textit{reactive} programs in a declarative and functional style. FRP languages model time-varying values as first class values. 
+Functional reactive programming (FRP) is a programming paradigm for building \textit{reactive} programs in a declarative and functional style. FRP languages model time-varying values as first class values. % more on why programming languages needs to have a way to model these first class time-varying values. 
+% then btw, rizzo does this... singals... updating in place... be careful with this ...
 In the FRP language Rizzo \cite{rizzo_modal_2025}, such values are captured by \textit{signals}. 
 Rizzo maintains a global heap of signals, which are all (potentially) updated whenever input is received from the environment. 
 To avoid superfluous work, it is important that signals are erased in a timely manner and so memory management is particularly important for Rizzo.
