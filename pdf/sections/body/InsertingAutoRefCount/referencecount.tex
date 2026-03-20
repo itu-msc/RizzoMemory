@@ -7,26 +7,45 @@ The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021
 In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global constant $c$, $\texttt{ctor}_i \; \bar p$ constructs a value of some erased type with tag $i$, and $\texttt{proj}_i \; x$ projects the $i\text{-th}$ field from constructor value $x$. Fully applied calls and partial applications may only happen on global constants and variable application is defined separately for only a single argument.
 
 \begin{figure}[h]
-	\[
-	\begin{aligned}
-		w, x, y, z&\in Var\\
-		c &\in Const \\
-		l &\in \textcolor{greenadditions}{Literal \qquad ::= \mathbb{Z} \mid \text{true} \mid \text{false} \mid \text{never} \mid string}\\
-		p &\in \textcolor{greenadditions}{Primitive \qquad ::= x\mid l}\\
-		e &\in Expr \qquad ::= c\,\textcolor{greenadditions}{\bar p} \mid \mathbf{pap}\; c\,\textcolor{greenadditions}{\bar p} \mid x\; p \mid \mathbf{ctor}_i\,\textcolor{greenadditions}{\bar p} \mid \mathbf{proj}_i\; x 
-		\mid \textcolor{greenadditions}{\texttt{signal} \; p \; p} \\
-		F &\in FnBody \; ::= \mathbf{ret}\; \textcolor{greenadditions}{p} \mid \mathbf{let}\; x = e;\; F \mid \mathbf{case}\; x\; \mathbf{of}\; \textcolor{greenadditions}{\overline{\langle \mathbb{Z}, F \rangle}} \\
-		f &\in Fn \qquad ::= \lambda\,\bar y.\; F \\
-		\delta &\in Program \; = Const \to Fn \mid \textcolor{greenadditions}{Const \to FnBody}
-	\end{aligned}
-	\]
-	\caption{The reference counting IR. Our modifications are marked in green.}
-	\label{figure:refcount_IR}
+  \centering
+  \small
+  \[
+  \begin{array}{rcl}
+  w,x,y,z &\in& Var\\
+  c &\in& Const\\
+  l &\in& \textcolor{greenadditions}{Literal \;::=\; \mathbb{Z} \mid \text{true} \mid \text{false} \mid \text{never} \mid string}\\
+  p &\in& \textcolor{greenadditions}{Primitive \;::=\; x \mid l}\\[2pt]
+  e &\in&
+  \begin{array}[t]{@{}l@{}}
+  Expr \;::=\; c\; \textcolor{greenadditions}{\bar p}
+  \mid \mathbf{pap}\; c\; \textcolor{greenadditions}{\bar p}
+  \mid x \; \textcolor{greenadditions}{p}
+  \mid \mathbf{ctor}_i\,\textcolor{greenadditions}{\bar p}
+  \mid \mathbf{proj}_i\,x \\
+  \qquad\mid \textcolor{greenadditions}{\textbf{signal}\;p\;p}
+  \mid \mathbf{reset} \; x
+  \mid \mathbf{reuse} \; x \;\mathbf{in}\,\mathbf{ctor}_i \;\textcolor{greenadditions}{\bar p} \\
+  \qquad\mid \textcolor{greenadditions}{\mathbf{reuse}\,x\,\mathbf{in}\,\mathbf{signal}\;p\;p}
+  \end{array}
+  \\[2pt]
+  F &\in& FnBody \;::=\; 
+  	\mathbf{ret}\;\textcolor{greenadditions}{p}
+  	\mid \mathbf{let}\;x=e;\,F\\
+  	&& \mid \mathbf{case}\;x\;\mathbf{of}\;\textcolor{greenadditions}{\overline{\langle \mathbb{Z},F\rangle}}
+	\mid \mathbf{inc} \; x;\;F
+	\mid \mathbf{dec} \; x;\;F
+	\\
+  f &\in& Fn \;::=\; \lambda\,\bar y.\,F\\
+  \delta &\in& Program \;=\; Const \to Fn \mid \textcolor{greenadditions}{Const \to FnBody}
+  \end{array}
+  \]
+  \caption{The reference counting IR. Modifications and Rizzo specific constructs are marked in green.}
+  \label{figure:refcount_IR}
 \end{figure}
 
 Observe that the IR is defined in A-normal form~\cite{flanagan_essence_1993}, where expressions are non-recursive and are only allowed on the right-hand-side of let-bindings. 
 Our representation keeps this shape but introduces \textit{Primitives} so that variables and literals (i.e.~integers, booleans, strings, and \texttt{never}) can appear directly in returns and as arguments in function/constructor application. This makes translation easier and avoids bindings such as $\texttt{let} \; x = 20; \; \texttt{ret} \; x$ when $\texttt{ret}\;20$ is enough.
-We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). Finally, we add top level values as mappings from constants to $FnBody$.~\todo{is it worth describing what the $FnBody$ means? Why is there? }
+We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). Finally, we add top level values as mappings from constants to $FnBody$. The $FnBody$ is operation that will run at program start up when the top level values is initialised. 
 
 \subsection{Transformations}\label{section:refcount:transforms}
 
