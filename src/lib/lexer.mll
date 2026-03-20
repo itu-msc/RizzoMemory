@@ -81,7 +81,12 @@ rule read = parse
     | _ -> TYPE_ID x 
     }
   | int as i { INT (int_of_string i) }
-  | '"' { STRING (read_string (Buffer.create 32) lexbuf) }
+  | '"' {
+      let start_pos = lexbuf.Lexing.lex_start_p in
+      let contents = read_string (Buffer.create 32) lexbuf in
+      lexbuf.Lexing.lex_start_p <- start_pos;
+      STRING contents
+    }
   | id as x {
       match x with
       | "let" -> LET

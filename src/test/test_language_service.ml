@@ -442,6 +442,29 @@ let test_hover_and_completion_for_typed_top_level_function () =
   | None -> Alcotest.fail "expected annotated top-level function completion"
   | Some item -> Alcotest.(check int) "completion kind is function" 3 item.Language_service.kind
 
+let test_hover_inside_string_literal_uses_full_range () =
+  let text = "let greeting = \"Hello World!\"\n" in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 0; character = 20 }
+  with
+  | None -> Alcotest.fail "expected hover inside string literal"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover reports string constant"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"constant Hello World!");
+      Alcotest.(check int)
+        "hover range starts at opening quote"
+        15
+        hover.Language_service.range.start_pos.character;
+      Alcotest.(check bool)
+        "hover range extends beyond interior character"
+        true
+        (hover.Language_service.range.end_pos.character > 20)
+
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
@@ -461,6 +484,7 @@ let tests = [
    "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
    "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
+   "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
    "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in

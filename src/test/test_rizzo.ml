@@ -29,6 +29,21 @@ let test_lexer_error_has_location () =
        Alcotest.(check int) "line" 3 loc.Location.start_pos.Lexing.pos_lnum
    | _ -> Alcotest.fail "unexpected exception")
 
+let test_string_literal_location_spans_full_literal () =
+  let input = "let greeting = \"Hello World!\"\n" in
+  match Parser.parse_string_with_filename ~filename:"test_string_location.rizz" input with
+  | [Ast.TopLet (_, Ast.EConst (Ast.CString "Hello World!", ann), _)] ->
+      let loc = Ast.get_location ann in
+      Alcotest.(check int)
+        "string literal starts at opening quote"
+        15
+        (loc.Location.start_pos.Lexing.pos_cnum - loc.Location.start_pos.Lexing.pos_bol);
+      Alcotest.(check int)
+        "string literal ends after closing quote"
+        29
+        (loc.Location.end_pos.Lexing.pos_cnum - loc.Location.end_pos.Lexing.pos_bol)
+  | _ -> Alcotest.fail "expected top-level string literal binding"
+
 let test_show_error_context () =
   let test_file = "test_location_temp.rz" in
   let oc = open_out test_file in
@@ -66,6 +81,7 @@ let test_warning () =
 let location_tests = [
   "location creation", `Quick, test_location_creation;
   "lexer error has location", `Quick, test_lexer_error_has_location;
+  "string literal location spans full literal", `Quick, test_string_literal_location_spans_full_literal;
   "error context display", `Quick, test_show_error_context;
   "warning reporting", `Quick, test_warning;
 ]
