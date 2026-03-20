@@ -214,7 +214,8 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
 
     const outputName = isWindows ? "output.exe" : "output";
     const windowsArchFlag = isWindows ? " -m64" : "";
-    const ccCmd = `${cc}${windowsArchFlag} -I"${runtimePath}" output.c -o ${outputName}`;
+    const corefile = path.join(runtimePath, "core.c");
+    const ccCmd = `${cc}${windowsArchFlag} -I"${runtimePath}" "${corefile}" output.c -o ${outputName}`;
     const runCmd = isWindows ? `.\\${outputName}` : `./${outputName}`;
 
     const terminal = getOrCreateRunTerminal(workspaceFolder ?? "");
