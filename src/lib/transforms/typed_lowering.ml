@@ -52,7 +52,7 @@ and lower_case_branch (pattern, body, ann) =
   (lower_pattern pattern, lower_expr body, parsed_ann ann)
 
 and lower_pattern : type s. s pattern -> parsed pattern = function
-  | PWildcard -> PWildcard
+  | PWildcard ann -> PWildcard (parsed_ann ann)
   | PVar (name, ann) -> PVar (name, parsed_ann ann)
   | PConst (c, ann) -> PConst (c, parsed_ann ann)
   | PTuple (p1, p2, ann) -> PTuple (lower_pattern p1, lower_pattern p2, parsed_ann ann)

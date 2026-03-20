@@ -134,7 +134,7 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
     FnLet(x, expr_to_rexpr locals rhs, expr_to_fn_body (LocalsEnv.add x locals) e')
   | ECase (EVar (x,_), cases, _) -> 
     let get_fields_of_pattern = function (* Causion: are we counting the nested part correctly? *)
-    | PVar _ | PWildcard | PConst _ -> 0
+    | PVar _ | PWildcard _ | PConst _ -> 0
     | PTuple _ -> 2 
     | PSigCons _ -> 5 (* should it be 2, 3, 4, 5? *)
     | PStringCons _ -> failwith "String patterns should be eliminated before RC lowering"

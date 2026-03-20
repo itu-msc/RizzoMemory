@@ -535,6 +535,41 @@ let test_hover_on_match_pattern_binding_uses_name_range () =
         false
         (contains_substring ~text:hover.Language_service.contents ~substring:"Expr:")
 
+let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
+  let text =
+    "fun entry p : Int * Bool -> Int =\n"
+    ^ "  match p with\n"
+    ^ "  | (_, y) -> 1\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 2; character = 5 }
+  with
+  | None -> Alcotest.fail "expected hover for wildcard pattern"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover mentions wildcard pattern"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"wildcard pattern");
+      Alcotest.(check int)
+        "hover range starts at underscore"
+        5
+        hover.Language_service.range.start_pos.character;
+      Alcotest.(check int)
+        "hover range ends after underscore"
+        6
+        hover.Language_service.range.end_pos.character;
+      Alcotest.(check bool)
+        "hover shows inferred wildcard type"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz\nInt\n```");
+      Alcotest.(check bool)
+        "hover omits enclosing match expression"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"match expression")
+
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
@@ -557,6 +592,7 @@ let tests = [
    "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
    "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;
+   "hover on wildcard pattern uses range and type", `Quick, test_hover_on_wildcard_pattern_uses_pattern_range_and_type;
    "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in

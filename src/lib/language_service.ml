@@ -426,6 +426,9 @@ let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
   fun ~label (name, ann) ->
     label ^ " " ^ name ^ type_info_block_of_ann ann
 
+let hover_text_for_pattern_ann : type s. label:string -> s Ast.ann -> string =
+  fun ~label ann -> label ^ type_info_block_of_ann ann
+
 let type_info_block : type s. s Ast.expr -> string =
   fun expr ->
     type_info_block_of_typ_opt (typ_of_ann_opt (Ast.expr_get_ann expr))
@@ -464,7 +467,7 @@ let hover_text_for_expr : type s. s Ast.expr -> string =
 let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
   fun pat ->
     match pat with
-    | Ast.PWildcard | Ast.PConst _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ -> []
     | Ast.PVar (name, ann) -> [ (name, range_of_ann ann) ]
   | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
         pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
@@ -476,7 +479,7 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
 let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_symbol) list =
   fun pat ->
     match pat with
-    | Ast.PWildcard | Ast.PConst _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ -> []
     | Ast.PVar (name, ann) ->
         [
           ( name,
@@ -506,7 +509,7 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
   let rec pattern_bound_names : type s. s Ast.pattern -> s Ast.name list =
     fun pat ->
     match pat with
-    | Ast.PWildcard | Ast.PConst _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ -> []
     | Ast.PVar (name, ann) -> [ (name, ann) ]
     | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
       pattern_bound_names p1 @ [ p2 ]
@@ -518,13 +521,49 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
 let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
   fun pat ->
     match pat with
-    | Ast.PWildcard | Ast.PConst _ | Ast.PVar _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ -> []
   | Ast.PSigCons (p1, _, _) | Ast.PStringCons (p1, _, _) ->
         pattern_constructor_ranges p1
     | Ast.PTuple (p1, p2, _) ->
         pattern_constructor_ranges p1 @ pattern_constructor_ranges p2
     | Ast.PCtor (ctor_name, args, _) ->
         range_of_name ctor_name :: List.flatten (List.map pattern_constructor_ranges args)
+
+let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -> hover_info option =
+  fun ~position pat ->
+    match pat with
+    | Ast.PWildcard ann ->
+        let pat_range = range_of_ann ann in
+        if range_contains_position pat_range position then
+          Some { range = pat_range; contents = hover_text_for_pattern_ann ~label:"wildcard pattern" ann }
+        else
+          None
+    | Ast.PVar (name, ann) ->
+        let pat_range = range_of_ann ann in
+        if range_contains_position pat_range position then
+          Some { range = pat_range; contents = hover_text_for_named_symbol ~label:"pattern binding" (name, ann) }
+        else
+          None
+    | Ast.PConst (_, _) -> None
+    | Ast.PTuple (p1, p2, _) ->
+        (match pattern_hover_at_position ~position p1 with
+         | Some _ as hover -> hover
+         | None -> pattern_hover_at_position ~position p2)
+    | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
+        (match pattern_hover_at_position ~position p1 with
+         | Some _ as hover -> hover
+         | None ->
+             let pat_range = range_of_name p2 in
+             if range_contains_position pat_range position then
+               Some { range = pat_range; contents = hover_text_for_named_symbol ~label:"pattern binding" p2 }
+             else
+               None)
+    | Ast.PCtor (ctor_name, args, _) ->
+        let ctor_range = range_of_name ctor_name in
+        if range_contains_position ctor_range position then
+          Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
+        else
+          List.find_map (pattern_hover_at_position ~position) args
 
 let keyword_range_from_expr : type s. name:string -> s Ast.expr -> range option =
   fun ~name expr ->
@@ -797,18 +836,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                    | None ->
                        List.find_map
                          (fun (pattern, branch_expr, _) ->
-                           let pattern_hover =
-                             pattern_bound_names pattern
-                             |> List.find_map (fun bound_name ->
-                                    let bound_range = range_of_name bound_name in
-                                    if range_contains_position bound_range position then
-                                      Some {
-                                        range = bound_range;
-                                        contents = hover_text_for_named_symbol ~label:"pattern binding" bound_name;
-                                      }
-                                    else
-                                      None)
-                           in
+                           let pattern_hover = pattern_hover_at_position ~position pattern in
                            match pattern_hover with
                            | Some _ as hover -> hover
                            | None -> find_symbol_hover_in_expr branch_expr)

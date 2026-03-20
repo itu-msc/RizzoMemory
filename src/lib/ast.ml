@@ -55,7 +55,7 @@ type _ ann =
   | Ann_typed : Location.t * typ -> typed ann
 
 type _ pattern =
-  | PWildcard
+  | PWildcard : 's ann -> 's pattern
   | PVar : string * 's ann -> 's pattern 
   | PConst : const * 's ann -> 's pattern
   | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
@@ -115,7 +115,7 @@ let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   | EAnno (_,_, ann)-> ann
 
 let rec pattern_bound_vars = function
-  | PWildcard | PConst _ -> []
+  | PWildcard _ | PConst _ -> []
   | PVar (x, _) -> [x]
   | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
   | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
@@ -144,7 +144,7 @@ and eq_name (a: _ name) (b: _ name) = fst a = fst b
 
 and eq_pattern a b =
   match a, b with
-  | PWildcard, PWildcard -> true
+  | PWildcard _, PWildcard _ -> true
   | PVar (x1, _), PVar (x2, _) -> x1 = x2
   | PConst (c1, _), PConst (c2, _) -> c1 = c2
   | PTuple (a1, b1, _), PTuple (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
@@ -176,7 +176,7 @@ let pp_const out = function
   | CBool b -> Format.fprintf out "@{<blue>%b@}" b
 
 let rec pp_pattern out = function
-  | PWildcard -> Format.fprintf out "@{<lightcyan>_@}"
+  | PWildcard _ -> Format.fprintf out "@{<lightcyan>_@}"
   | PVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | PConst (c, _) -> pp_const out c
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2

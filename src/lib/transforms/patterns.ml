@@ -8,18 +8,18 @@ let rec transform_patterns (p: 's Ast.program) =
 
 and compile_pattern p scrutinee good bad = 
   match p with
-  | PWildcard -> good scrutinee
+  | PWildcard _ -> good scrutinee
   | PVar (s, ann) -> ELet ((s, ann), scrutinee, good (EVar (s, ann)), ann)
   | PConst (c, ann) ->
     let b = Utilities.new_name "test" in
     let equality = EApp (EVar ("eq", ann), [scrutinee; EConst (c, ann)], ann) in
     ELet ((b, ann), equality, EIfe (EVar (b, ann), good scrutinee, bad (), ann), ann)
   (* TODO: should we special case wildcards? or should this just be left to dead code analysis? *)
-  | PTuple (PWildcard, PWildcard, _) -> good scrutinee
-  | PTuple (p1, PWildcard, ann) -> 
+  | PTuple (PWildcard _, PWildcard _, _) -> good scrutinee
+  | PTuple (p1, PWildcard _, ann) -> 
     let t = Utilities.new_name "t", ann in
     ELet (t, EApp (EVar ("fst", ann), [scrutinee], ann), compile_pattern p1 (EVar t) good bad, ann)
-  | PTuple (PWildcard, p2, ann) -> 
+  | PTuple (PWildcard _, p2, ann) -> 
     let t = Utilities.new_name "t", ann in
     ELet (t, EApp (EVar ("snd", ann), [scrutinee], ann), compile_pattern p2 (EVar t) good bad, ann)
   | PTuple (p1, p2, ann) as pat ->

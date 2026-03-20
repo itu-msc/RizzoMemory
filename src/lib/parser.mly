@@ -251,7 +251,7 @@ ctor_pattern_args:
 
 
 pattern_atom:
-  | UNDERSCORE { PWildcard }
+  | UNDERSCORE { PWildcard (mkloc $startpos $endpos) }
   | x=ID { PVar (x, mkloc $startpos $endpos) }
   | i=INT { PConst (CInt i, mkloc $startpos $endpos) }
   | s=STRING { PConst (CString s, mkloc $startpos $endpos) }

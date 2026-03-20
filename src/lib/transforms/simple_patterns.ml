@@ -8,7 +8,7 @@ let string_tail = (Rizzo_builtins.get "string_tail").name
 let match_fail = (Rizzo_builtins.get "match_fail").name
 
 let is_var_or_wildcard = function 
-  | PVar _ | PWildcard -> true 
+  | PVar _ | PWildcard _ -> true 
   | _ -> false
 
 let parsed_var ((name, ann) : _ name) = EVar (name, ann)
@@ -21,11 +21,11 @@ let is_simple_expr = function
   | _ -> false
 
 let is_string_case_head = function
-  | PWildcard | PVar _ | PConst (CString _, _) -> true
+  | PWildcard _ | PVar _ | PConst (CString _, _) -> true
   | _ -> false
 
 let is_string_case_pattern = function
-  | PWildcard | PVar _ | PConst (CString _, _) -> true
+  | PWildcard _ | PVar _ | PConst (CString _, _) -> true
   | PStringCons (head, _, _) -> is_string_case_head head
   | _ -> false
 
@@ -81,13 +81,13 @@ and compile_simple_pattern scrutinee case_body = function
       |> List.filter_map (fun (i,p) -> 
       match p with 
       | PVar (name, name_ann ) -> Some ((name, name_ann), EUnary (UProj i, scrutinee, ann))
-      | PWildcard -> None
+      | PWildcard _ -> None
       | _ -> failwith "compile_simple_pattern NEVER HAPPENS!")
     in
     Some( List.fold_right (fun (name, proj) acc -> ELet (name, proj, acc, ann)) projs (case_body ()))
-  | PTuple (PVar (x, x_ann), PWildcard, ann) -> 
+  | PTuple (PVar (x, x_ann), PWildcard _, ann) -> 
     Some (ELet ((x, x_ann), EApp (EVar ("fst", ann), [scrutinee], ann), case_body (), ann))
-  | PTuple (PWildcard, PVar (x, x_ann), ann) -> 
+  | PTuple (PWildcard _, PVar (x, x_ann), ann) -> 
     Some (ELet ((x, x_ann), EApp (EVar ("snd", ann), [scrutinee], ann), case_body (), ann))
   | PTuple (PVar (left, left_ann), PVar (right, right_ann), ann) -> 
     let t0 = left, left_ann in
@@ -100,7 +100,7 @@ and compile_simple_pattern scrutinee case_body = function
     let tl_proj = EUnary (UTail, scrutinee, ann) in
     let body = sink_until_first_use tail tl_proj ann (case_body ()) in
     Some (ELet ((head, head_ann), hd_proj, body, ann))
-  | PSigCons (PWildcard, tail, ann) ->
+  | PSigCons (PWildcard _, tail, ann) ->
     let tl_proj = EUnary (UTail, scrutinee, ann) in
     let body = sink_until_first_use tail tl_proj ann (case_body ()) in
     Some (body)
@@ -123,7 +123,7 @@ and compile_string_branches scrutinee cases ann =
 
 and compile_string_pattern scrutinee pattern success next ann =
   match pattern with
-  | PWildcard -> success
+  | PWildcard _ -> success
   | PVar (name, name_ann) -> ELet ((name, name_ann), scrutinee, success, ann)
   | PConst (CString s, patt_ann) ->
     EIfe (
@@ -140,7 +140,7 @@ and compile_string_cons scrutinee head_pat tail_name success next ann =
   let bind_tail body = ELet (tail_name, parsed_app (string_tail, ann) [scrutinee], body, ann) in
   let head_body =
     match head_pat with
-    | PWildcard -> bind_tail success
+    | PWildcard _ -> bind_tail success
     | PVar (name, name_ann) ->
       ELet ((name, name_ann), parsed_var head_tmp, bind_tail success, ann)
     | PConst (CString s, patt_ann) ->

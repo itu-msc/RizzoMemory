@@ -59,7 +59,7 @@ and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
   | EAnno (e, t, ann) -> EAnno (subst replacement_of e, t, ann)
 and subst_pattern (replacement_of : string StringMap.t) (p : 's pattern) : 's pattern =
   match p with
-  | PWildcard -> p
+  | PWildcard _ -> p
   | PConst _ -> p
   | PVar (y, ann) when StringMap.mem y replacement_of -> PVar (StringMap.find y replacement_of, ann)
   | PVar _ -> p

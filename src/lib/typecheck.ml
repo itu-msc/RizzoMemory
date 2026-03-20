@@ -344,8 +344,9 @@ and get_constructor_signature : type stage. string -> stage ann -> (typ list * t
 and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string * scheme) list) Type_env.t =
   fun pattern expected_type ->
   match pattern with
-  | PWildcard ->
-    return (PWildcard, [])
+  | PWildcard ann ->
+    let* pattern_type = Type_env.apply_subst expected_type in
+    return (PWildcard (Ann_typed (get_location ann, pattern_type)), [])
   | PVar (name, ann) ->
     let* pattern_type = Type_env.apply_subst expected_type in
     return (PVar (name, Ann_typed (get_location ann, pattern_type)), [name, mono pattern_type])
@@ -383,10 +384,10 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
     | _ ->
       let* _ = error ann (Format.asprintf "Expected a signal or string for '::' pattern, got '%a'" Ast.pp_typ expected_type) in
       let typed_tail = (tail_name, Ann_typed (get_location tail_ann, TError)) in
-      return (PStringCons (PWildcard, typed_tail, Ann_typed (get_location ann, TError)), []))
+      return (PStringCons (PWildcard (Ann_typed (get_location ann, TError)), typed_tail, Ann_typed (get_location ann, TError)), []))
   | PStringCons (_, _, ann) ->
     let* _ = error ann "Internal error: string-cons pattern should not appear before typed lowering" in
-    return (PWildcard, [])
+    return (PWildcard (Ann_typed (get_location ann, TError)), [])
   | PCtor ((ctor_name, ctor_ann), args, ann) ->
     let* param_types, ctor_result = get_constructor_signature ctor_name ctor_ann in
     let* _ = Type_env.expected_equal ann expected_type ctor_result in
