@@ -500,6 +500,54 @@ let test_hover_on_local_let_binding_uses_name_range () =
         true
         (contains_substring ~text:hover.Language_service.contents ~substring:"\n\nType:\n```")
 
+let test_hover_on_local_let_binding_reflects_later_constraints () =
+  let text =
+    "fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =\n"
+    ^ "  let cont = fun mysync -> match mysync with\n"
+    ^ "    | Left (xs_)      -> map2 f xs_ ys\n"
+    ^ "    | Right (ys_)     -> map2 f xs ys_\n"
+    ^ "    | Both (xs_, ys_) -> map2 f xs_ ys_\n"
+    ^ "  in\n"
+    ^ "  f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 6 }
+  with
+  | None -> Alcotest.fail "expected hover for constrained local let binding"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover mentions cont let binding"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"let-binding cont");
+      Alcotest.(check bool)
+        "hover includes resolved Signal return type"
+        true
+        (contains_substring
+           ~text:hover.Language_service.contents
+           ~substring:"Type:\n```rizz\n(Sync((Signal 'a), (Signal 'b)) -> (Signal 'c))\n```")
+
+let test_hover_reuses_stable_type_names_across_requests () =
+  let text =
+    "fun second x y = y\n"
+  in
+  let hover () =
+    Language_service.hover_at_position
+      ~uri:"file:///test.rizz"
+      ~filename:None
+      ~text
+      ~position:{ Language_service.line = 0; character = 4 }
+  in
+  match hover (), hover () with
+  | Some first, Some second ->
+      Alcotest.(check string)
+        "hover contents are stable across repeated requests"
+        first.Language_service.contents
+        second.Language_service.contents
+  | _ -> Alcotest.fail "expected stable hover responses"
+
 let test_hover_on_match_pattern_binding_uses_name_range () =
   let text =
     "fun entry p =\n"
@@ -591,6 +639,8 @@ let tests = [
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
    "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
+  "hover on constrained let binding uses resolved type", `Quick, test_hover_on_local_let_binding_reflects_later_constraints;
+  "hover names are stable across repeated requests", `Quick, test_hover_reuses_stable_type_names_across_requests;
    "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;
    "hover on wildcard pattern uses range and type", `Quick, test_hover_on_wildcard_pattern_uses_pattern_range_and_type;
    "document symbols", `Quick,

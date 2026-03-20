@@ -137,7 +137,7 @@ fun trigger f s1 s2 =
     map (fun p -> match p with | (a, b) -> f a b) (sample s1 s2)
 
 fun trigger_l f s1 s2 =
-    (fun s1' -> trigger f s1' s2) |> s1
+    (fun _s1 -> trigger f _s1 s2) |> s1
 
 fun mytail s = match s with
     | x :: xs -> let x_delayed = delay x in xs

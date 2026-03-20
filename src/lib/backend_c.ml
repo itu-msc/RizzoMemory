@@ -48,7 +48,17 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     |> M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate function name %s" key)) builtin_arity_map
   in
   
-  let mangle = (^) "rizz_" in
+  let sanitize_identifier name =
+    let buf = Buffer.create (String.length name) in
+    String.iter (fun ch ->
+      match ch with
+      | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> Buffer.add_char buf ch
+      | _ -> Buffer.add_string buf (Printf.sprintf "_x%02X_" (Char.code ch)))
+      name;
+    Buffer.contents buf
+  in
+
+  let mangle name = "rizz_" ^ sanitize_identifier name in
 
   let builtin_c_name name =
     if M.mem name builtin_arity_map then Printf.sprintf "rz_builtin_%s" name 

@@ -10,6 +10,7 @@ let dummy ann = EConst (CUnit, Ann_typed (get_location ann, TError))
 let get_typ e = Type_env.get_type e
 
 type scheme = Type_env.scheme
+module IntSet = Set.Make(Int)
 module StringSet = Set.Make(String)
 module StringMap = Type_env.StringMap
 let forall vars t = Type_env.Forall (vars, t)
@@ -19,7 +20,10 @@ let mono t = forall [] t
 
 (** Generalises a typ -> used for polymorphic let-bindings *)
 let rec generalize : typ -> scheme Type_env.t = fun t -> 
+  let* t = Type_env.apply_subst t in
   let* env_free = free_type_vars_env () in
+  let* env_tvars = free_unresolved_tvars_env () in
+  let* t = Type_env.generalize_type_vars ~should_generalize:(fun id -> not (IntSet.mem id env_tvars)) t in
   let* t_free = free_type_vars_typ t in
   let generalized_vars = StringSet.diff t_free env_free in
   return (forall (StringSet.elements generalized_vars) t)
@@ -58,6 +62,43 @@ and free_type_vars_env : unit -> StringSet.t Type_env.t = fun () ->
   let* global_free = free_type_vars_env_scheme env.global in
   let* local_free = free_type_vars_env_scheme env.local in
   return (StringSet.union global_free local_free)
+
+and free_unresolved_tvars_typ : typ -> IntSet.t Type_env.t = fun t ->
+  let* t = Type_env.apply_subst t in
+  match t with
+  | TError | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return IntSet.empty
+  | TVar id -> return (IntSet.singleton id)
+  | TTuple (t1, t2) | TSync (t1, t2) ->
+    let* t1_free = free_unresolved_tvars_typ t1 in
+    let* t2_free = free_unresolved_tvars_typ t2 in
+    return (IntSet.union t1_free t2_free)
+  | TSignal t | TDelay t | TLater t | TOption t | TChan t -> free_unresolved_tvars_typ t
+  | TFun (Cons1 (front, rest), ret_type) ->
+    let* param_free = List.fold_left (fun acc t ->
+        let* acc = acc in
+        let* free_in_t = free_unresolved_tvars_typ t in
+        return (IntSet.union acc free_in_t))
+      (return IntSet.empty)
+      (front :: rest) in
+    let* ret_free = free_unresolved_tvars_typ ret_type in
+    return (IntSet.union param_free ret_free)
+
+and free_unresolved_tvars_scheme : scheme -> IntSet.t Type_env.t = function
+  | Forall (_, t) -> free_unresolved_tvars_typ t
+
+and free_unresolved_tvars_env_scheme : Type_env.scheme_env -> IntSet.t Type_env.t =
+  fun scheme_env -> StringMap.fold (
+    fun _ scheme acc ->
+      let* acc = acc in
+      let* free_in_scheme = free_unresolved_tvars_scheme scheme in
+      return (IntSet.union acc free_in_scheme)
+    ) scheme_env (return IntSet.empty)
+
+and free_unresolved_tvars_env : unit -> IntSet.t Type_env.t = fun () ->
+  let* env = Type_env.get_state in
+  let* global_free = free_unresolved_tvars_env_scheme env.global in
+  let* local_free = free_unresolved_tvars_env_scheme env.local in
+  return (IntSet.union global_free local_free)
 
 (*
 * Typechecks a program, returns a typed program and a boolean indicating whether there were any type errors (TODO: this is a bit of a hack - we should probably return the errors instead of printing them and returning a bool)
@@ -118,7 +159,6 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     | _ -> Type_env.with_local_scope (infer e)
     in
     let* t = get_typ te in
-    let* t = Type_env.generalize_type_vars t in
     let* generalized_type = generalize t in
     let* () = Type_env.add_global name_text generalized_type in
     let typed_name = (name_text, Ann_typed (get_location (snd name), t)) in
@@ -126,7 +166,7 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     return (toplet_expr :: acc)
   ) (return []) p in
   let* () = Type_env.flatten_unification_env in
-  normalize_typed_program (List.rev checked_program)
+  finalize_typed_program (List.rev checked_program)
 
 (** Infers the type of an expr*)
 and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
@@ -140,10 +180,10 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in
-    let* t_rhs = Type_env.generalize_type_vars t_rhs in
     let* t_rhs_generalized = generalize t_rhs in
     let* tbody = Type_env.with_locals [name, t_rhs_generalized] (infer body) in
     let* tbody_type = get_typ tbody in
+    let* t_rhs = get_typ trhs in
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
   | EIfe (cond, e1, e2, ann) ->
@@ -276,10 +316,10 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in
-    let* t_rhs = Type_env.generalize_type_vars t_rhs in
     let* rhs_gen = generalize t_rhs in
     let* tbody = Type_env.with_local name rhs_gen (check body expected) in
     let* tbody_type = get_typ tbody in
+    let* t_rhs = get_typ trhs in
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
   | EFun (params, body, ann) -> 
@@ -538,121 +578,119 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
     | TSync _ -> 
       let* _ = error ann "Cannot project a sync?" in
       return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
-and normalize_typed_ann : type stage. (string Type_env.IntMap.t ref) -> stage ann -> stage ann Type_env.t =
-  fun id_to_name -> function
+and finalize_typed_ann : type stage. stage ann -> stage ann Type_env.t = function
   | Ann_typed (loc, typ) ->
-    let* typ = Type_env.generalize_type_vars ~id_to_name typ in
+    let* typ = Type_env.apply_subst typ in
     return (Ann_typed (loc, typ))
   | Ann_parsed loc -> return (Ann_parsed loc)
   | Ann_bound (loc, scope) -> return (Ann_bound (loc, scope))
 
-and normalize_typed_name id_to_name ((name, ann) : typed name) : typed name Type_env.t =
-  let* ann = normalize_typed_ann id_to_name ann in
+and finalize_typed_name ((name, ann) : typed name) : typed name Type_env.t =
+  let* ann = finalize_typed_ann ann in
   return (name, ann)
 
-and normalize_typed_pattern id_to_name : typed pattern -> typed pattern Type_env.t = function
+and finalize_typed_pattern : typed pattern -> typed pattern Type_env.t = function
   | PWildcard ann ->
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* ann = finalize_typed_ann ann in
     return (PWildcard ann)
   | PVar (name, ann) ->
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* ann = finalize_typed_ann ann in
     return (PVar (name, ann))
   | PConst (c, ann) ->
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* ann = finalize_typed_ann ann in
     return (PConst (c, ann))
   | PTuple (p1, p2, ann) ->
-    let* p1 = normalize_typed_pattern id_to_name p1 in
-    let* p2 = normalize_typed_pattern id_to_name p2 in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* p1 = finalize_typed_pattern p1 in
+    let* p2 = finalize_typed_pattern p2 in
+    let* ann = finalize_typed_ann ann in
     return (PTuple (p1, p2, ann))
   | PSigCons (p1, name, ann) ->
-    let* p1 = normalize_typed_pattern id_to_name p1 in
-    let* name = normalize_typed_name id_to_name name in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* p1 = finalize_typed_pattern p1 in
+    let* name = finalize_typed_name name in
+    let* ann = finalize_typed_ann ann in
     return (PSigCons (p1, name, ann))
   | PStringCons (p1, name, ann) ->
-    let* p1 = normalize_typed_pattern id_to_name p1 in
-    let* name = normalize_typed_name id_to_name name in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* p1 = finalize_typed_pattern p1 in
+    let* name = finalize_typed_name name in
+    let* ann = finalize_typed_ann ann in
     return (PStringCons (p1, name, ann))
   | PCtor (name, args, ann) ->
-    let* name = normalize_typed_name id_to_name name in
-    let* args = Type_env.collect (List.map (normalize_typed_pattern id_to_name) args) in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* name = finalize_typed_name name in
+    let* args = Type_env.collect (List.map finalize_typed_pattern args) in
+    let* ann = finalize_typed_ann ann in
     return (PCtor (name, args, ann))
 
-and normalize_typed_expr id_to_name : typed expr -> typed expr Type_env.t = function
+and finalize_typed_expr : typed expr -> typed expr Type_env.t = function
   | EConst (c, ann) ->
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* ann = finalize_typed_ann ann in
     return (EConst (c, ann))
   | EVar name ->
-    let* name = normalize_typed_name id_to_name name in
+    let* name = finalize_typed_name name in
     return (EVar name)
   | ECtor (name, args, ann) ->
-    let* name = normalize_typed_name id_to_name name in
-    let* args = Type_env.collect (List.map (normalize_typed_expr id_to_name) args) in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* name = finalize_typed_name name in
+    let* args = Type_env.collect (List.map finalize_typed_expr args) in
+    let* ann = finalize_typed_ann ann in
     return (ECtor (name, args, ann))
   | ELet (name, rhs, body, ann) ->
-    let* name = normalize_typed_name id_to_name name in
-    let* rhs = normalize_typed_expr id_to_name rhs in
-    let* body = normalize_typed_expr id_to_name body in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* name = finalize_typed_name name in
+    let* rhs = finalize_typed_expr rhs in
+    let* body = finalize_typed_expr body in
+    let* ann = finalize_typed_ann ann in
     return (ELet (name, rhs, body, ann))
   | EFun (params, body, ann) ->
-    let* params = Type_env.collect (List.map (normalize_typed_name id_to_name) params) in
-    let* body = normalize_typed_expr id_to_name body in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* params = Type_env.collect (List.map finalize_typed_name params) in
+    let* body = finalize_typed_expr body in
+    let* ann = finalize_typed_ann ann in
     return (EFun (params, body, ann))
   | EApp (fn, args, ann) ->
-    let* fn = normalize_typed_expr id_to_name fn in
-    let* args = Type_env.collect (List.map (normalize_typed_expr id_to_name) args) in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* fn = finalize_typed_expr fn in
+    let* args = Type_env.collect (List.map finalize_typed_expr args) in
+    let* ann = finalize_typed_ann ann in
     return (EApp (fn, args, ann))
   | EUnary (op, expr, ann) ->
-    let* expr = normalize_typed_expr id_to_name expr in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* expr = finalize_typed_expr expr in
+    let* ann = finalize_typed_ann ann in
     return (EUnary (op, expr, ann))
   | EBinary (op, e1, e2, ann) ->
-    let* e1 = normalize_typed_expr id_to_name e1 in
-    let* e2 = normalize_typed_expr id_to_name e2 in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* e1 = finalize_typed_expr e1 in
+    let* e2 = finalize_typed_expr e2 in
+    let* ann = finalize_typed_ann ann in
     return (EBinary (op, e1, e2, ann))
   | ETuple (e1, e2, ann) ->
-    let* e1 = normalize_typed_expr id_to_name e1 in
-    let* e2 = normalize_typed_expr id_to_name e2 in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* e1 = finalize_typed_expr e1 in
+    let* e2 = finalize_typed_expr e2 in
+    let* ann = finalize_typed_ann ann in
     return (ETuple (e1, e2, ann))
   | ECase (scrutinee, branches, ann) ->
-    let* scrutinee = normalize_typed_expr id_to_name scrutinee in
+    let* scrutinee = finalize_typed_expr scrutinee in
     let* branches =
       Type_env.collect @@ List.map (fun (pattern, body, branch_ann) ->
-        let* pattern = normalize_typed_pattern id_to_name pattern in
-        let* body = normalize_typed_expr id_to_name body in
-        let* branch_ann = normalize_typed_ann id_to_name branch_ann in
+        let* pattern = finalize_typed_pattern pattern in
+        let* body = finalize_typed_expr body in
+        let* branch_ann = finalize_typed_ann branch_ann in
         return (pattern, body, branch_ann)) branches
     in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* ann = finalize_typed_ann ann in
     return (ECase (scrutinee, branches, ann))
   | EIfe (cond, if_true, if_false, ann) ->
-    let* cond = normalize_typed_expr id_to_name cond in
-    let* if_true = normalize_typed_expr id_to_name if_true in
-    let* if_false = normalize_typed_expr id_to_name if_false in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* cond = finalize_typed_expr cond in
+    let* if_true = finalize_typed_expr if_true in
+    let* if_false = finalize_typed_expr if_false in
+    let* ann = finalize_typed_ann ann in
     return (EIfe (cond, if_true, if_false, ann))
   | EAnno (expr, typ, ann) ->
-    let* expr = normalize_typed_expr id_to_name expr in
-    let* typ = Type_env.generalize_type_vars ~id_to_name typ in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* expr = finalize_typed_expr expr in
+    let* typ = Type_env.apply_subst typ in
+    let* ann = finalize_typed_ann ann in
     return (EAnno (expr, typ, ann))
 
-and normalize_typed_top_expr id_to_name : typed top_expr -> typed top_expr Type_env.t = function
+and finalize_typed_top_expr : typed top_expr -> typed top_expr Type_env.t = function
   | TopLet (name, expr, ann) ->
-    let* name = normalize_typed_name id_to_name name in
-    let* expr = normalize_typed_expr id_to_name expr in
-    let* ann = normalize_typed_ann id_to_name ann in
+    let* name = finalize_typed_name name in
+    let* expr = finalize_typed_expr expr in
+    let* ann = finalize_typed_ann ann in
     return (TopLet (name, expr, ann))
 
-and normalize_typed_program (program : typed program) : typed program Type_env.t =
-  let id_to_name = ref Type_env.IntMap.empty in
-  Type_env.collect (List.map (normalize_typed_top_expr id_to_name) program)
+and finalize_typed_program (program : typed program) : typed program Type_env.t =
+  Type_env.collect (List.map finalize_typed_top_expr program)

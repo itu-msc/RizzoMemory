@@ -129,7 +129,36 @@ let program_has_tvar (program : _ Ast.program) : bool =
     | Ast.TopLet ((_, name_ann), expr, ann) ->
         ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar expr) program
 
-let test_typecheck_normalizes_inner_annotations () =
+let normalize_type ?(id_to_name = ref Rizzoc.Type_env.IntMap.empty) typ =
+  fst (Rizzoc.Type_env.run (Rizzoc.Type_env.generalize_type_vars ~id_to_name typ))
+
+let display_type ?ctx typ =
+  Ast.string_of_typ_display ?ctx typ
+
+let test_generalize_type_vars_ignores_utilities_global_counter () =
+  Utilities.new_name_reset ();
+  ignore (Utilities.new_name "noise");
+  let normalized = normalize_type (Ast.TVar 0) in
+  Utilities.new_name_reset ();
+  Alcotest.(check bool)
+    "inferred type variable starts from 'a independently of Utilities.new_name"
+    true
+    (Ast.eq_typ normalized (Ast.TParam "'a"))
+
+let test_generalize_type_vars_skips_explicit_type_params () =
+  let typ =
+    Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TVar 0]), Ast.TVar 0)
+  in
+  let normalized = normalize_type typ in
+  let expected =
+    Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TParam "'b"]), Ast.TParam "'b")
+  in
+  Alcotest.(check bool)
+    "inferred type variable does not collide with explicit type params"
+    true
+    (Ast.eq_typ normalized expected)
+
+let test_typecheck_retains_unresolved_inner_annotations () =
   let program =
     Parser.parse_string
       "fun entry p =\n\
@@ -138,7 +167,41 @@ let test_typecheck_normalizes_inner_annotations () =
   in
   let typed_program, errors = Rizzoc.typecheck program in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
-  Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
+  Alcotest.(check bool) "typed program keeps unresolved vars for display-time naming" true (program_has_tvar typed_program)
+
+let test_display_names_restart_per_top_level () =
+  let program =
+    Parser.parse_string
+      ("fun id x = x\n"
+       ^ "fun const x y = x\n")
+  in
+  let typed_program, errors = Rizzoc.typecheck program in
+  Alcotest.(check int) "no type errors" 0 (List.length errors);
+  match typed_program with
+  | [Ast.TopLet (_, _, Ast.Ann_typed (_, id_t)); Ast.TopLet (_, _, Ast.Ann_typed (_, const_t))] ->
+      Alcotest.(check string)
+        "first polymorphic top-level uses 'a"
+        "('a -> 'a)"
+        (display_type id_t);
+      Alcotest.(check string)
+        "second polymorphic top-level restarts at 'a"
+        "('a -> 'b -> 'a)"
+        (display_type const_t)
+  | _ -> Alcotest.fail "expected two typed top-level definitions"
+
+let test_typecheck_allows_env_shared_let_type_vars () =
+  let program =
+    Parser.parse_string
+      "fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =\n\
+      \  let cont = fun mysync -> match mysync with\n\
+      \    | Left (xs_)      -> map2 f xs_ ys\n\
+      \    | Right (ys_)     -> map2 f xs ys_\n\
+      \    | Both (xs_, ys_) -> map2 f xs_ ys_\n\
+      \  in\n\
+      \  f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))\n"
+  in
+  let _, errors = Rizzoc.typecheck program in
+  Alcotest.(check int) "no type errors" 0 (List.length errors)
 
 let location_tests = [
   "location creation", `Quick, test_location_creation;
@@ -146,7 +209,11 @@ let location_tests = [
   "string literal location spans full literal", `Quick, test_string_literal_location_spans_full_literal;
   "error context display", `Quick, test_show_error_context;
   "warning reporting", `Quick, test_warning;
-  "typecheck normalizes inner annotations", `Quick, test_typecheck_normalizes_inner_annotations;
+  "generalize type vars ignores Utilities counter", `Quick, test_generalize_type_vars_ignores_utilities_global_counter;
+  "generalize type vars skips explicit params", `Quick, test_generalize_type_vars_skips_explicit_type_params;
+  "typecheck keeps unresolved inner annotations", `Quick, test_typecheck_retains_unresolved_inner_annotations;
+  "display names restart per top-level", `Quick, test_display_names_restart_per_top_level;
+  "typecheck keeps env-shared let vars monomorphic", `Quick, test_typecheck_allows_env_shared_let_type_vars;
 ]
 
 

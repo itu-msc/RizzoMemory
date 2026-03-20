@@ -1,5 +1,6 @@
 (** Source location tracking - re-export from Location module *)
 module Loc = Location
+module StringSet = Set.Make(String)
 
 type const = 
   | CUnit
@@ -266,6 +267,106 @@ and pp_typ fmt =
   | TOption t -> fprintf fmt "(@{<green>Option@} %a)" pp_typ t
   | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
   | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
+
+type typ_display_ctx = {
+  id_to_name : (int, string) Hashtbl.t;
+  mutable used_names : StringSet.t;
+  mutable next_name_index : int;
+}
+
+let create_typ_display_ctx () = {
+  id_to_name = Hashtbl.create 16;
+  used_names = StringSet.empty;
+  next_name_index = 0;
+}
+
+let type_param_name_of_index index =
+  let rec go current =
+    let letter = Char.chr (Char.code 'a' + (current mod 26)) in
+    if current < 26 then String.make 1 letter
+    else go ((current / 26) - 1) ^ String.make 1 letter
+  in
+  "'" ^ go index
+
+let rec collect_type_param_names used_names = function
+  | TError | TUnit | TInt | TBool | TString | TName _ | TVar _ -> used_names
+  | TParam name -> StringSet.add name used_names
+  | TSignal t | TLater t | TDelay t | TOption t | TChan t -> collect_type_param_names used_names t
+  | TSync (t1, t2) | TTuple (t1, t2) ->
+    collect_type_param_names (collect_type_param_names used_names t1) t2
+  | TFun (Cons1 (front, rest), ret) ->
+    let used_names = List.fold_left collect_type_param_names used_names (front :: rest) in
+    collect_type_param_names used_names ret
+
+let next_typ_display_name ctx =
+  let rec go index =
+    let candidate = type_param_name_of_index index in
+    if StringSet.mem candidate ctx.used_names then
+      go (index + 1)
+    else begin
+      ctx.used_names <- StringSet.add candidate ctx.used_names;
+      ctx.next_name_index <- index + 1;
+      candidate
+    end
+  in
+  go ctx.next_name_index
+
+let ensure_typ_display_name ctx id =
+  match Hashtbl.find_opt ctx.id_to_name id with
+  | Some name -> name
+  | None ->
+    let name = next_typ_display_name ctx in
+    Hashtbl.add ctx.id_to_name id name;
+    name
+
+let reserve_typ_display_names ctx typ =
+  ctx.used_names <- StringSet.union ctx.used_names (collect_type_param_names StringSet.empty typ);
+  let rec go = function
+    | TError | TUnit | TInt | TBool | TString | TName _ | TParam _ -> ()
+    | TVar id -> ignore (ensure_typ_display_name ctx id)
+    | TSignal t | TLater t | TDelay t | TOption t | TChan t -> go t
+    | TSync (t1, t2) | TTuple (t1, t2) ->
+      go t1;
+      go t2
+    | TFun (Cons1 (front, rest), ret) ->
+      List.iter go (front :: rest);
+      go ret
+  in
+  go typ
+
+let rec pp_typ_display ctx fmt =
+  let open Format in
+  function
+  | TError -> fprintf fmt "@{<red>*Error-type*@}"
+  | TBool -> fprintf fmt "@{<green>Bool@}"
+  | TInt -> fprintf fmt "@{<green>Int@}"
+  | TString -> fprintf fmt "@{<green>String@}"
+  | TUnit -> fprintf fmt "@{<green>Unit@}"
+  | TFun (Cons1 (t1, []), t) -> fprintf fmt "(%a -> %a)" (pp_typ_display ctx) t1 (pp_typ_display ctx) t
+  | TFun (Cons1 (t1, ts), t) ->
+    fprintf fmt
+      "(%a -> %a -> %a)"
+      (pp_typ_display ctx)
+      t1
+      (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " -> ") (pp_typ_display ctx))
+      ts
+      (pp_typ_display ctx)
+      t
+  | TDelay t -> fprintf fmt "(@{<green>Delay@} %a)" (pp_typ_display ctx) t
+  | TLater t -> fprintf fmt "(@{<green>Later@} %a)" (pp_typ_display ctx) t
+  | TName n -> fprintf fmt "@{<green>%s@}" n
+  | TParam n -> fprintf fmt "@{<green>%s@}" n
+  | TSignal t -> fprintf fmt "(@{<green>Signal@} %a)" (pp_typ_display ctx) t
+  | TTuple (t1, t2) -> fprintf fmt "(%a * %a)" (pp_typ_display ctx) t1 (pp_typ_display ctx) t2
+  | TSync (t1, t2) -> fprintf fmt "@{<green>Sync@}(%a, %a)" (pp_typ_display ctx) t1 (pp_typ_display ctx) t2
+  | TOption t -> fprintf fmt "(@{<green>Option@} %a)" (pp_typ_display ctx) t
+  | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" (pp_typ_display ctx) t
+  | TVar id -> fprintf fmt "@{<green>%s@}" (ensure_typ_display_name ctx id)
+
+let string_of_typ_display ?ctx typ =
+  let ctx = Option.value ctx ~default:(create_typ_display_ctx ()) in
+  reserve_typ_display_names ctx typ;
+  Format.asprintf "%a" (pp_typ_display ctx) typ
 
 let eq_top_expr a b = match a,b with
   | TopLet (x1, e1, _), TopLet (x2, e2, _) -> eq_name x1 x2 && eq_expr e1 e2 

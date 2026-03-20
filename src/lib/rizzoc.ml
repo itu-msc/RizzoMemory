@@ -81,6 +81,10 @@ end
 
 module Utilities = struct include Utilities end
 
+module Type_env = struct
+include Type_env
+end
+
 module Language_service = struct
 include Language_service
 end

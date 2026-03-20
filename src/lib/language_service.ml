@@ -405,40 +405,131 @@ let typ_of_ann_opt : type s. s Ast.ann -> Ast.typ option = function
   | Ast.Ann_typed (_, t) -> Some t
   | Ast.Ann_parsed _ | Ast.Ann_bound _ -> None
 
-let string_of_typ (t : Ast.typ) : string =
-  Format.asprintf "%a" Ast.pp_typ t
+type render_context = {
+  typ_ctx : Ast.typ_display_ctx;
+}
 
-let detail_of_ann_opt : type s. s Ast.ann -> string option =
-  fun ann -> typ_of_ann_opt ann |> Option.map string_of_typ
+let create_render_context () = {
+  typ_ctx = Ast.create_typ_display_ctx ();
+}
 
-let detail_of_name : type s. s Ast.name -> string option =
-  fun (_, ann) -> detail_of_ann_opt ann
+let reserve_typ_opt (ctx : render_context) (typ_opt : Ast.typ option) : unit =
+  Option.iter (Ast.reserve_typ_display_names ctx.typ_ctx) typ_opt
 
-let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
+let reserve_ann (ctx : render_context) (ann : _ Ast.ann) : unit =
+  reserve_typ_opt ctx (typ_of_ann_opt ann)
+
+let reserve_name (ctx : render_context) ((_, ann) : _ Ast.name) : unit =
+  reserve_ann ctx ann
+
+let rec reserve_pattern : type s. render_context -> s Ast.pattern -> unit =
+  fun ctx pat ->
+  match pat with
+  | Ast.PWildcard ann | Ast.PConst (_, ann) | Ast.PVar (_, ann) -> reserve_ann ctx ann
+  | Ast.PTuple (p1, p2, ann) ->
+    reserve_pattern ctx p1;
+    reserve_pattern ctx p2;
+    reserve_ann ctx ann
+  | Ast.PSigCons (p1, name, ann) | Ast.PStringCons (p1, name, ann) ->
+    reserve_pattern ctx p1;
+    reserve_name ctx name;
+    reserve_ann ctx ann
+  | Ast.PCtor (name, args, ann) ->
+    reserve_name ctx name;
+    List.iter (reserve_pattern ctx) args;
+    reserve_ann ctx ann
+
+let rec reserve_expr : type s. render_context -> s Ast.expr -> unit =
+  fun ctx expr ->
+  match expr with
+  | Ast.EConst (_, ann) -> reserve_ann ctx ann
+  | Ast.EVar name -> reserve_name ctx name
+  | Ast.ECtor (name, args, ann) ->
+    reserve_name ctx name;
+    List.iter (reserve_expr ctx) args;
+    reserve_ann ctx ann
+  | Ast.ELet (name, e1, e2, ann) ->
+    reserve_name ctx name;
+    reserve_expr ctx e1;
+    reserve_expr ctx e2;
+    reserve_ann ctx ann
+  | Ast.EFun (params, body, ann) ->
+    List.iter (reserve_name ctx) params;
+    reserve_expr ctx body;
+    reserve_ann ctx ann
+  | Ast.EApp (fn, args, ann) ->
+    reserve_expr ctx fn;
+    List.iter (reserve_expr ctx) args;
+    reserve_ann ctx ann
+  | Ast.EUnary (_, inner_expr, ann) ->
+    reserve_expr ctx inner_expr;
+    reserve_ann ctx ann
+  | Ast.EBinary (_, e1, e2, ann) | Ast.ETuple (e1, e2, ann) ->
+    reserve_expr ctx e1;
+    reserve_expr ctx e2;
+    reserve_ann ctx ann
+  | Ast.ECase (scrutinee, branches, ann) ->
+    reserve_expr ctx scrutinee;
+    List.iter (fun (pattern, body, branch_ann) ->
+      reserve_pattern ctx pattern;
+      reserve_expr ctx body;
+      reserve_ann ctx branch_ann) branches;
+    reserve_ann ctx ann
+  | Ast.EIfe (c, t, e, ann) ->
+    reserve_expr ctx c;
+    reserve_expr ctx t;
+    reserve_expr ctx e;
+    reserve_ann ctx ann
+  | Ast.EAnno (inner_expr, typ, ann) ->
+    reserve_expr ctx inner_expr;
+    Ast.reserve_typ_display_names ctx.typ_ctx typ;
+    reserve_ann ctx ann
+
+let render_context_of_top_expr (top : Ast.typed Ast.top_expr) : render_context =
+  let ctx = create_render_context () in
+  match top with
+  | Ast.TopLet (name, expr, ann) ->
+      reserve_name ctx name;
+      reserve_expr ctx expr;
+      reserve_ann ctx ann;
+      ctx
+
+let string_of_typ ?ctx (t : Ast.typ) : string =
+  match ctx with
+  | Some ctx -> Ast.string_of_typ_display ~ctx:ctx.typ_ctx t
+  | None -> Ast.string_of_typ_display t
+
+let detail_of_ann_opt : type s. ?ctx:render_context -> s Ast.ann -> string option =
+  fun ?ctx ann -> typ_of_ann_opt ann |> Option.map (string_of_typ ?ctx)
+
+let detail_of_name : type s. ?ctx:render_context -> s Ast.name -> string option =
+  fun ?ctx (_, ann) -> detail_of_ann_opt ?ctx ann
+
+let type_info_block_of_typ_opt ?ctx (typ : Ast.typ option) : string =
   match typ with
   | None -> ""
-  | Some t -> Format.asprintf "\n\nType:\n```rizz\n%a\n```" Ast.pp_typ t
+  | Some t -> Printf.sprintf "\n\nType:\n```rizz\n%s\n```" (string_of_typ ?ctx t)
 
-let type_info_block_of_ann : type s. s Ast.ann -> string =
-  fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
+let type_info_block_of_ann : type s. ?ctx:render_context -> s Ast.ann -> string =
+  fun ?ctx ann -> type_info_block_of_typ_opt ?ctx (typ_of_ann_opt ann)
 
-let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
-  fun ~label (name, ann) ->
-    label ^ " " ^ name ^ type_info_block_of_ann ann
+let hover_text_for_named_symbol : type s. ?ctx:render_context -> label:string -> s Ast.name -> string =
+  fun ?ctx ~label (name, ann) ->
+    label ^ " " ^ name ^ type_info_block_of_ann ?ctx ann
 
-let hover_text_for_pattern_ann : type s. label:string -> s Ast.ann -> string =
-  fun ~label ann -> label ^ type_info_block_of_ann ann
+let hover_text_for_pattern_ann : type s. ?ctx:render_context -> label:string -> s Ast.ann -> string =
+  fun ?ctx ~label ann -> label ^ type_info_block_of_ann ?ctx ann
 
-let type_info_block : type s. s Ast.expr -> string =
-  fun expr ->
-    type_info_block_of_typ_opt (typ_of_ann_opt (Ast.expr_get_ann expr))
+let type_info_block : type s. ?ctx:render_context -> s Ast.expr -> string =
+  fun ?ctx expr ->
+    type_info_block_of_typ_opt ?ctx (typ_of_ann_opt (Ast.expr_get_ann expr))
 
 let expression_info_block : type s. s Ast.expr -> string =
   fun expr ->
     Format.asprintf "\n\nExpr:\n```rizz\n%a\n```" Ast.pp_expr expr
 
-let hover_text_for_expr : type s. s Ast.expr -> string =
-  fun expr ->
+let hover_text_for_expr : type s. ?ctx:render_context -> s Ast.expr -> string =
+  fun ?ctx expr ->
     let base =
       match expr with
       | Ast.EConst (c, _) ->
@@ -462,7 +553,7 @@ let hover_text_for_expr : type s. s Ast.expr -> string =
       | Ast.EIfe _ -> "if expression"
       | Ast.EAnno _ -> "annotated expression"
     in
-    base ^ type_info_block expr ^ expression_info_block expr
+    base ^ type_info_block ?ctx expr ^ expression_info_block expr
 
 let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
   fun pat ->
@@ -476,8 +567,8 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
     | Ast.PCtor (_, args, _) ->
         List.flatten (List.map pattern_bound_decls args)
 
-let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_symbol) list =
-  fun pat ->
+let rec pattern_bound_symbols : type s. render_context -> s Ast.pattern -> (string * completion_symbol) list =
+  fun ctx pat ->
     match pat with
     | Ast.PWildcard _ | Ast.PConst _ -> []
     | Ast.PVar (name, ann) ->
@@ -486,25 +577,25 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
             {
               kind = SemanticVariable;
               range = range_of_ann ann;
-              detail = detail_of_ann_opt ann;
+              detail = detail_of_ann_opt ~ctx ann;
               source = CompletionLocal;
             } );
         ]
     | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
-        pattern_bound_symbols p1
+        pattern_bound_symbols ctx p1
         @ [
             ( fst p2,
               {
                 kind = SemanticVariable;
                 range = range_of_ann (snd p2);
-                detail = detail_of_ann_opt (snd p2);
+                detail = detail_of_ann_opt ~ctx (snd p2);
                 source = CompletionLocal;
               } );
           ]
     | Ast.PTuple (p1, p2, _) ->
-        pattern_bound_symbols p1 @ pattern_bound_symbols p2
+        pattern_bound_symbols ctx p1 @ pattern_bound_symbols ctx p2
     | Ast.PCtor (_, args, _) ->
-        List.flatten (List.map pattern_bound_symbols args)
+        List.flatten (List.map (pattern_bound_symbols ctx) args)
 
   let rec pattern_bound_names : type s. s Ast.pattern -> s Ast.name list =
     fun pat ->
@@ -529,33 +620,33 @@ let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
     | Ast.PCtor (ctor_name, args, _) ->
         range_of_name ctor_name :: List.flatten (List.map pattern_constructor_ranges args)
 
-let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -> hover_info option =
-  fun ~position pat ->
+let rec pattern_hover_at_position : type s. ctx:render_context -> position:position -> s Ast.pattern -> hover_info option =
+  fun ~ctx ~position pat ->
     match pat with
     | Ast.PWildcard ann ->
         let pat_range = range_of_ann ann in
         if range_contains_position pat_range position then
-          Some { range = pat_range; contents = hover_text_for_pattern_ann ~label:"wildcard pattern" ann }
+          Some { range = pat_range; contents = hover_text_for_pattern_ann ~ctx ~label:"wildcard pattern" ann }
         else
           None
     | Ast.PVar (name, ann) ->
         let pat_range = range_of_ann ann in
         if range_contains_position pat_range position then
-          Some { range = pat_range; contents = hover_text_for_named_symbol ~label:"pattern binding" (name, ann) }
+          Some { range = pat_range; contents = hover_text_for_named_symbol ~ctx ~label:"pattern binding" (name, ann) }
         else
           None
     | Ast.PConst (_, _) -> None
     | Ast.PTuple (p1, p2, _) ->
-        (match pattern_hover_at_position ~position p1 with
+        (match pattern_hover_at_position ~ctx ~position p1 with
          | Some _ as hover -> hover
-         | None -> pattern_hover_at_position ~position p2)
+         | None -> pattern_hover_at_position ~ctx ~position p2)
     | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
-        (match pattern_hover_at_position ~position p1 with
+        (match pattern_hover_at_position ~ctx ~position p1 with
          | Some _ as hover -> hover
          | None ->
              let pat_range = range_of_name p2 in
              if range_contains_position pat_range position then
-               Some { range = pat_range; contents = hover_text_for_named_symbol ~label:"pattern binding" p2 }
+               Some { range = pat_range; contents = hover_text_for_named_symbol ~ctx ~label:"pattern binding" p2 }
              else
                None)
     | Ast.PCtor (ctor_name, args, _) ->
@@ -563,7 +654,7 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
         if range_contains_position ctor_range position then
           Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
         else
-          List.find_map (pattern_hover_at_position ~position) args
+          List.find_map (pattern_hover_at_position ~ctx ~position) args
 
 let keyword_range_from_expr : type s. name:string -> s Ast.expr -> range option =
   fun ~name expr ->
@@ -760,9 +851,10 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
+      let tops_with_context = List.map (fun top -> (top, render_context_of_top_expr top)) program in
       let top_level_hover =
         List.find_map
-          (fun (top : Ast.typed Ast.top_expr) ->
+          (fun ((top : Ast.typed Ast.top_expr), ctx) ->
             match top with
             | Ast.TopLet (top_name, rhs, top_ann) ->
                 let name_range = range_of_name top_name in
@@ -772,22 +864,22 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                     | Function -> "top-level function: " ^ name_text top_name
                     | Variable -> "top-level binding: " ^ name_text top_name
                   in
-                  Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
+                  Some { range = name_range; contents = base ^ type_info_block_of_ann ~ctx top_ann }
                 else
                   None)
-          program
+          tops_with_context
       in
       match top_level_hover with
       | Some _ as hover -> hover
       | None ->
-          let rec find_symbol_hover_in_expr : type s. s Ast.expr -> hover_info option =
-            fun expr ->
+          let rec find_symbol_hover_in_expr : type s. render_context -> s Ast.expr -> hover_info option =
+            fun ctx expr ->
               match expr with
               | Ast.EConst _ -> None
               | Ast.EVar var_name ->
                   let var_range = range_of_name var_name in
                   if range_contains_position var_range position then
-                    Some { range = var_range; contents = hover_text_for_named_symbol ~label:"variable" var_name }
+                    Some { range = var_range; contents = hover_text_for_named_symbol ~ctx ~label:"variable" var_name }
                   else
                     None
               | Ast.ECtor (ctor_name, args, _) ->
@@ -795,84 +887,87 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                   if range_contains_position ctor_range position then
                     Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
                   else
-                    List.find_map find_symbol_hover_in_expr args
+                    List.find_map (find_symbol_hover_in_expr ctx) args
               | Ast.ELet (bound_name, e1, e2, _) ->
                   let binding_range = range_of_name bound_name in
                   if range_contains_position binding_range position then
-                    Some { range = binding_range; contents = hover_text_for_named_symbol ~label:"let-binding" bound_name }
+                    Some { range = binding_range; contents = hover_text_for_named_symbol ~ctx ~label:"let-binding" bound_name }
                   else
-                    (match find_symbol_hover_in_expr e1 with
+                    (match find_symbol_hover_in_expr ctx e1 with
                      | Some _ as hover -> hover
-                     | None -> find_symbol_hover_in_expr e2)
+                     | None -> find_symbol_hover_in_expr ctx e2)
               | Ast.EFun (params, body, _) ->
                   let param_hover =
                     params
                     |> List.find_map (fun param ->
                            let param_range = range_of_name param in
                            if range_contains_position param_range position then
-                             Some { range = param_range; contents = hover_text_for_named_symbol ~label:"parameter" param }
+                             Some { range = param_range; contents = hover_text_for_named_symbol ~ctx ~label:"parameter" param }
                            else
                              None)
                   in
                   (match param_hover with
                    | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr body)
+                   | None -> find_symbol_hover_in_expr ctx body)
               | Ast.EApp (fn, args, _) ->
-                  (match find_symbol_hover_in_expr fn with
+                  (match find_symbol_hover_in_expr ctx fn with
                    | Some _ as hover -> hover
-                   | None -> List.find_map find_symbol_hover_in_expr args)
-              | Ast.EUnary (_, e, _) -> find_symbol_hover_in_expr e
+                   | None -> List.find_map (find_symbol_hover_in_expr ctx) args)
+              | Ast.EUnary (_, e, _) -> find_symbol_hover_in_expr ctx e
               | Ast.EBinary (_, e1, e2, _) ->
-                  (match find_symbol_hover_in_expr e1 with
+                  (match find_symbol_hover_in_expr ctx e1 with
                    | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr e2)
+                   | None -> find_symbol_hover_in_expr ctx e2)
               | Ast.ETuple (e1, e2, _) ->
-                  (match find_symbol_hover_in_expr e1 with
+                  (match find_symbol_hover_in_expr ctx e1 with
                    | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr e2)
+                   | None -> find_symbol_hover_in_expr ctx e2)
               | Ast.ECase (scrutinee, branches, _) ->
-                  (match find_symbol_hover_in_expr scrutinee with
+                  (match find_symbol_hover_in_expr ctx scrutinee with
                    | Some _ as hover -> hover
                    | None ->
                        List.find_map
                          (fun (pattern, branch_expr, _) ->
-                           let pattern_hover = pattern_hover_at_position ~position pattern in
+                           let pattern_hover = pattern_hover_at_position ~ctx ~position pattern in
                            match pattern_hover with
                            | Some _ as hover -> hover
-                           | None -> find_symbol_hover_in_expr branch_expr)
+                           | None -> find_symbol_hover_in_expr ctx branch_expr)
                          branches)
               | Ast.EIfe (c, t, e, _) ->
-                  (match find_symbol_hover_in_expr c with
+                  (match find_symbol_hover_in_expr ctx c with
                    | Some _ as hover -> hover
                    | None ->
-                       match find_symbol_hover_in_expr t with
+                       match find_symbol_hover_in_expr ctx t with
                        | Some _ as hover -> hover
-                       | None -> find_symbol_hover_in_expr e)
-              | Ast.EAnno (e, _, _) -> find_symbol_hover_in_expr e
+                       | None -> find_symbol_hover_in_expr ctx e)
+              | Ast.EAnno (e, _, _) -> find_symbol_hover_in_expr ctx e
           in
           let symbol_hover =
             List.find_map
-              (fun (top : Ast.typed Ast.top_expr) ->
+              (fun ((top : Ast.typed Ast.top_expr), ctx) ->
                 match top with
-                | Ast.TopLet (_, rhs, _) -> find_symbol_hover_in_expr rhs)
-              program
+                | Ast.TopLet (_, rhs, _) -> find_symbol_hover_in_expr ctx rhs)
+              tops_with_context
           in
           match symbol_hover with
           | Some _ as hover -> hover
           | None ->
-              collect_expr_ranges program
-              |> List.filter (fun (_, range) -> range_contains_position range position)
-              |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
+              tops_with_context
+              |> List.concat_map (fun (top, ctx) ->
+                     collect_expr_ranges [top]
+                     |> List.map (fun (expr, range) -> (expr, range, ctx)))
+              |> List.filter (fun (_, range, _) -> range_contains_position range position)
+              |> List.sort (fun (_, r1, _) (_, r2, _) -> compare (range_span_score r1) (range_span_score r2))
               |> first_opt
-              |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
+              |> Option.map (fun (expr, range, ctx) -> { range; contents = hover_text_for_expr ~ctx expr })
 
 let completion_symbol_of_name : type s.
-    source:completion_source -> kind:semantic_token_kind -> s Ast.name -> completion_symbol =
-  fun ~source ~kind name ->
+    ctx:render_context -> source:completion_source -> kind:semantic_token_kind -> s Ast.name -> completion_symbol =
+  fun ~ctx ~source ~kind name ->
     {
       kind;
       range = range_of_name name;
-      detail = detail_of_name name;
+      detail = detail_of_name ~ctx name;
       source;
     }
 
@@ -1043,185 +1138,180 @@ let completions_at_position
   | Error _ -> completion_empty_list
   | Ok { typed_program = program; _ } ->
       let _ = uri in
+      let tops_with_context = List.map (fun top -> (top, render_context_of_top_expr top)) program in
       let base_env =
         let with_constructors =
           StringMap.fold completion_add_prefer_high_priority constructor_completion_symbols builtin_completion_symbols
         in
         List.fold_left
-          (fun env (top : Ast.typed Ast.top_expr) ->
+          (fun env ((top : Ast.typed Ast.top_expr), ctx) ->
             match top with
             | Ast.TopLet (top_name, rhs, _) ->
                 let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
                 completion_add_prefer_high_priority
                   (name_text top_name)
-                  (completion_symbol_of_name ~source:CompletionTopLevel ~kind top_name)
+                  (completion_symbol_of_name ~ctx ~source:CompletionTopLevel ~kind top_name)
                   env)
           with_constructors
-          program
+          tops_with_context
       in
-      let rec env_in_expr
-          (env : completion_symbol StringMap.t)
-          (expr : Ast.typed Ast.expr) : completion_symbol StringMap.t option =
-        let expr_range = range_of_ann (Ast.expr_get_ann expr) in
-        if not (range_contains_position expr_range position) then
-          None
-        else
-          match expr with
-          | Ast.EConst _ | Ast.EVar _ -> Some env
-          | Ast.ECtor (ctor_name, args, _) ->
-              if range_contains_position (range_of_name ctor_name) position then
-                Some env
-              else
-                (match List.find_map (env_in_expr env) args with
-                 | Some _ as found -> found
-                 | None -> Some env)
-          | Ast.ELet (bound_name, e1, e2, _) ->
-              let bound_range = range_of_name bound_name in
-              if range_contains_position bound_range position then
-                Some env
-              else
-                (match env_in_expr env e1 with
+      let rec env_in_expr : type s.
+          render_context -> completion_symbol StringMap.t -> s Ast.expr -> completion_symbol StringMap.t option =
+        fun ctx env expr ->
+          let expr_range = range_of_ann (Ast.expr_get_ann expr) in
+          if not (range_contains_position expr_range position) then
+            None
+          else
+            match expr with
+            | Ast.EConst _ | Ast.EVar _ -> Some env
+            | Ast.ECtor (ctor_name, args, _) ->
+                if range_contains_position (range_of_name ctor_name) position then
+                  Some env
+                else
+                  (match List.find_map (env_in_expr ctx env) args with
+                   | Some _ as found -> found
+                   | None -> Some env)
+            | Ast.ELet (bound_name, e1, e2, _) ->
+                let bound_range = range_of_name bound_name in
+                if range_contains_position bound_range position then
+                  Some env
+                else
+                  (match env_in_expr ctx env e1 with
+                   | Some _ as found -> found
+                   | None ->
+                       let env' =
+                         completion_add_shadowing
+                           (name_text bound_name)
+                           (completion_symbol_of_name ~ctx ~source:CompletionLocal ~kind:SemanticVariable bound_name)
+                           env
+                       in
+                       (match env_in_expr ctx env' e2 with
+                        | Some _ as found -> found
+                        | None -> Some env'))
+            | Ast.EFun (params, body, _) ->
+                let cursor_on_param =
+                  List.exists (fun param -> range_contains_position (range_of_name param) position) params
+                in
+                if cursor_on_param then
+                  Some env
+                else
+                  let env' =
+                    List.fold_left
+                      (fun acc param ->
+                        completion_add_shadowing
+                          (name_text param)
+                          (completion_symbol_of_name ~ctx ~source:CompletionLocal ~kind:SemanticVariable param)
+                          acc)
+                      env
+                      params
+                  in
+                  (match env_in_expr ctx env' body with
+                   | Some _ as found -> found
+                   | None -> Some env')
+            | Ast.EApp (fn, args, _) ->
+                (match env_in_expr ctx env fn with
                  | Some _ as found -> found
                  | None ->
-                     let env' =
-                       completion_add_shadowing
-                         (name_text bound_name)
-                         (completion_symbol_of_name ~source:CompletionLocal ~kind:SemanticVariable bound_name)
-                         env
-                     in
-                     (match env_in_expr env' e2 with
+                     (match List.find_map (env_in_expr ctx env) args with
                       | Some _ as found -> found
-                      | None -> Some env'))
-          | Ast.EFun (params, body, _) ->
-              let cursor_on_param =
-                List.exists
-                  (fun param -> range_contains_position (range_of_name param) position)
-                  params
-              in
-              if cursor_on_param then
-                Some env
-              else
-                let env' =
-                  List.fold_left
-                    (fun acc param ->
-                      completion_add_shadowing
-                        (name_text param)
-                        (completion_symbol_of_name ~source:CompletionLocal ~kind:SemanticVariable param)
-                        acc)
-                    env
-                    params
-                in
-                (match env_in_expr env' body with
+                      | None -> Some env))
+            | Ast.EUnary (_, e, _) ->
+                (match env_in_expr ctx env e with
                  | Some _ as found -> found
-                 | None -> Some env')
-          | Ast.EApp (fn, args, _) ->
-              (match env_in_expr env fn with
-               | Some _ as found -> found
-               | None ->
-                   (match List.find_map (env_in_expr env) args with
-                    | Some _ as found -> found
-                    | None -> Some env))
-          | Ast.EUnary (_, e, _) ->
-              (match env_in_expr env e with
-               | Some _ as found -> found
-               | None -> Some env)
-          | Ast.EBinary (_, e1, e2, _) | Ast.ETuple (e1, e2, _) ->
-              (match env_in_expr env e1 with
-               | Some _ as found -> found
-               | None ->
-                   (match env_in_expr env e2 with
-                    | Some _ as found -> found
-                    | None -> Some env))
-          | Ast.ECase (scrutinee, branches, _) ->
-              (match env_in_expr env scrutinee with
-               | Some _ as found -> found
-               | None ->
-                   let in_branch (pattern, branch_expr, branch_ann) =
-                     let branch_range = range_of_ann branch_ann in
-                     if not (range_contains_position branch_range position) then
-                       None
-                     else
-                       let bound = pattern_bound_symbols pattern in
-                       let bound : (string * completion_symbol) list = bound in
-                       let cursor_on_pattern_binding =
-                         List.exists
-                           (fun ((_, symbol) : string * completion_symbol) -> range_contains_position symbol.range position)
-                           bound
-                       in
-                       let cursor_on_pattern_constructor =
-                         List.exists
-                           (fun ctor_range -> range_contains_position ctor_range position)
-                           (pattern_constructor_ranges pattern)
-                       in
-                       if cursor_on_pattern_binding || cursor_on_pattern_constructor then
-                         Some env
+                 | None -> Some env)
+            | Ast.EBinary (_, e1, e2, _) | Ast.ETuple (e1, e2, _) ->
+                (match env_in_expr ctx env e1 with
+                 | Some _ as found -> found
+                 | None ->
+                     (match env_in_expr ctx env e2 with
+                      | Some _ as found -> found
+                      | None -> Some env))
+            | Ast.ECase (scrutinee, branches, _) ->
+                (match env_in_expr ctx env scrutinee with
+                 | Some _ as found -> found
+                 | None ->
+                     let in_branch (pattern, branch_expr, branch_ann) =
+                       let branch_range = range_of_ann branch_ann in
+                       if not (range_contains_position branch_range position) then
+                         None
                        else
-                         let env' =
-                           List.fold_left
-                             (fun acc ((name, symbol) : string * completion_symbol) ->
-                               completion_add_shadowing name symbol acc)
-                             env
+                         let bound = pattern_bound_symbols ctx pattern in
+                         let cursor_on_pattern_binding =
+                           List.exists
+                             (fun ((_, symbol) : string * completion_symbol) -> range_contains_position symbol.range position)
                              bound
                          in
-                         (match env_in_expr env' branch_expr with
-                          | Some _ as found -> found
-                          | None -> Some env')
-                   in
-                   (match List.find_map in_branch branches with
-                    | Some _ as found -> found
-                    | None -> Some env))
-          | Ast.EIfe (c, t, e, _) ->
-              (match env_in_expr env c with
-               | Some _ as found -> found
-               | None ->
-                   (match env_in_expr env t with
-                    | Some _ as found -> found
-                    | None ->
-                        (match env_in_expr env e with
-                         | Some _ as found -> found
-                         | None -> Some env)))
-          | Ast.EAnno (e, _, _) ->
-              (match env_in_expr env e with
-               | Some _ as found -> found
-               | None -> Some env)
-      in
-      let rec env_in_tops = function
-        | [] -> None
-        | Ast.TopLet (top_name, rhs, top_ann) :: rest ->
-            if range_contains_position (range_of_ann top_ann) position then
-              if range_contains_position (range_of_name top_name) position then
-                Some base_env
-              else
-                (match env_in_expr base_env rhs with
+                         let cursor_on_pattern_constructor =
+                           List.exists
+                             (fun ctor_range -> range_contains_position ctor_range position)
+                             (pattern_constructor_ranges pattern)
+                         in
+                         if cursor_on_pattern_binding || cursor_on_pattern_constructor then
+                           Some env
+                         else
+                           let env' =
+                             List.fold_left
+                               (fun acc ((name, symbol) : string * completion_symbol) ->
+                                 completion_add_shadowing name symbol acc)
+                               env
+                               bound
+                           in
+                           (match env_in_expr ctx env' branch_expr with
+                            | Some _ as found -> found
+                            | None -> Some env')
+                     in
+                     (match List.find_map in_branch branches with
+                      | Some _ as found -> found
+                      | None -> Some env))
+            | Ast.EIfe (c, t, e, _) ->
+                (match env_in_expr ctx env c with
                  | Some _ as found -> found
-                 | None -> Some base_env)
-            else
-              env_in_tops rest
+                 | None ->
+                     (match env_in_expr ctx env t with
+                      | Some _ as found -> found
+                      | None ->
+                          (match env_in_expr ctx env e with
+                           | Some _ as found -> found
+                           | None -> Some env)))
+            | Ast.EAnno (e, _, _) ->
+                (match env_in_expr ctx env e with
+                 | Some _ as found -> found
+                 | None -> Some env)
       in
       let env =
-        match env_in_tops program with
-        | Some scope_env -> scope_env
-        | None -> base_env
+        tops_with_context
+        |> List.find_map (fun ((top : Ast.typed Ast.top_expr), ctx) ->
+               match top with
+               | Ast.TopLet (top_name, rhs, top_ann) ->
+                   if range_contains_position (range_of_ann top_ann) position then
+                     if range_contains_position (range_of_name top_name) position then
+                       Some base_env
+                     else
+                       match env_in_expr ctx base_env rhs with
+                       | Some _ as found -> found
+                       | None -> Some base_env
+                   else
+                     None)
+        |> Option.value ~default:base_env
       in
       completion_items_of_env ~text ~position env
-
 let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string) : semantic_token list =
   match parse_with_filename ~filename:(file_name ~uri ~filename) text with
   | Error _ -> []
   | Ok { typed_program = program; _ } ->
       let top_decls = top_level_declarations ~text program in
-      let tokens : semantic_token list ref = ref [] in
+      let tokens = ref [] in
       let push_token ~(kind : semantic_token_kind) ~(range : range) =
         tokens := { range; kind; declaration = false } :: !tokens
       in
       let top_env =
-        top_decls
-        |> List.fold_left
-             (fun env (name, kind, _top_range, selection_range) ->
-               let semantic_kind = semantic_kind_of_symbol_kind kind in
-               push_token ~kind:semantic_kind ~range:selection_range;
-               StringMap.add name { kind = semantic_kind; range = selection_range } env)
-             builtin_scoped_symbols
+        List.fold_left
+          (fun env (name, kind, _top_range, selection_range) ->
+             let semantic_kind = semantic_kind_of_symbol_kind kind in
+             push_token ~kind:semantic_kind ~range:selection_range;
+             StringMap.add name { kind = semantic_kind; range = selection_range } env)
+          builtin_scoped_symbols
+          top_decls
       in
       let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.typed Ast.expr) : unit =
         (match expr with

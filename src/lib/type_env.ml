@@ -1,5 +1,6 @@
 open! Ast
 module StringMap = Map.Make(String)
+module StringSet = Set.Make(String)
 module IntMap = Map.Make(Int)
 
 type typing_error = Typing_error of Location.t * string
@@ -249,35 +250,92 @@ let print_unification_env : unit t =
   let result = String.concat "\n" binding_strs in
   return (Format.printf "Unification environment:\n%s\n" result)
 
+let rec collect_type_param_names used_names = function
+  | TError | TUnit | TInt | TBool | TString | TName _ | TVar _ -> used_names
+  | TParam name -> StringSet.add name used_names
+  | TSignal t | TLater t | TDelay t | TOption t | TChan t -> collect_type_param_names used_names t
+  | TSync (t1, t2) | TTuple (t1, t2) ->
+    collect_type_param_names (collect_type_param_names used_names t1) t2
+  | TFun (Cons1 (front, rest), ret) ->
+    let used_names = List.fold_left collect_type_param_names used_names (front :: rest) in
+    collect_type_param_names used_names ret
+
+let type_param_name_of_index index =
+  let rec go index =
+    let letter = Char.chr (Char.code 'a' + (index mod 26)) in
+    if index < 26 then String.make 1 letter
+    else go ((index / 26) - 1) ^ String.make 1 letter
+  in
+  "'" ^ go index
+
 (* return the typ but every TVar which has not been unified with anything(?) is 
   lifted to a TParam ('a) ... *)
-let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t = 
+let generalize_type_vars ?(id_to_name = ref IntMap.empty) ?(should_generalize = fun _ -> true) typ : typ t = 
   let open Operators in
-  
-  let rec go typ = 
-    match typ with
-    | TError -> return TError
-    | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return typ
-    | TSignal t -> let* t = go t in return (TSignal t)
-    | TLater t  -> let* t = go t in return (TLater t)
-    | TDelay t  -> let* t = go t in return (TDelay t)
-    | TOption t -> let* t = go t in return (TOption t)
-    | TChan t   -> let* t = go t in return (TChan t)
-    | TTuple (t1, t2) ->
-      let* t1 = go t1 in let* t2 = go t2 in return (TTuple (t1, t2))
-    | TSync (t1, t2) ->
-      let* t1 = go t1 in let* t2 = go t2 in return (TSync (t1, t2))
-    | TFun (Cons1(front, rest), ret) ->
-      let* params = collect (List.map go (front :: rest)) in
-      let* ret = go ret in
-      return (TFun (Cons1(List.hd params, List.tl params), ret))
-    | TVar id -> 
-      match IntMap.find_opt id !id_to_name with
-      | Some name -> return (TParam name)
-      | None -> 
-        let param_name = Utilities.new_name "'inferred" in
-        id_to_name := IntMap.add id param_name !id_to_name;
-        return (TParam param_name)
-  in
   let* typ = apply_subst typ in
-  go typ
+
+  let next_type_param_name used_names next_name_index =
+    let rec go next_name_index =
+      let candidate = type_param_name_of_index next_name_index in
+      if StringSet.mem candidate used_names
+      then go (next_name_index + 1)
+      else (candidate, StringSet.add candidate used_names, next_name_index + 1)
+    in
+    go next_name_index
+  in
+
+  let initial_used_names =
+    IntMap.fold (fun _ name acc -> StringSet.add name acc) !id_to_name (collect_type_param_names StringSet.empty typ)
+  in
+
+  let rec go id_to_name_map used_names next_name_index typ = 
+    match typ with
+    | TError -> return (TError, id_to_name_map, used_names, next_name_index)
+    | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return (typ, id_to_name_map, used_names, next_name_index)
+    | TSignal t ->
+      let* t, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t in
+      return (TSignal t, id_to_name_map, used_names, next_name_index)
+    | TLater t  ->
+      let* t, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t in
+      return (TLater t, id_to_name_map, used_names, next_name_index)
+    | TDelay t  ->
+      let* t, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t in
+      return (TDelay t, id_to_name_map, used_names, next_name_index)
+    | TOption t ->
+      let* t, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t in
+      return (TOption t, id_to_name_map, used_names, next_name_index)
+    | TChan t   ->
+      let* t, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t in
+      return (TChan t, id_to_name_map, used_names, next_name_index)
+    | TTuple (t1, t2) ->
+      let* t1, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t1 in
+      let* t2, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t2 in
+      return (TTuple (t1, t2), id_to_name_map, used_names, next_name_index)
+    | TSync (t1, t2) ->
+      let* t1, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t1 in
+      let* t2, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t2 in
+      return (TSync (t1, t2), id_to_name_map, used_names, next_name_index)
+    | TFun (Cons1(front, rest), ret) ->
+      let rec go_list id_to_name_map used_names next_name_index = function
+        | [] -> return ([], id_to_name_map, used_names, next_name_index)
+        | t :: ts ->
+          let* t, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index t in
+          let* ts, id_to_name_map, used_names, next_name_index = go_list id_to_name_map used_names next_name_index ts in
+          return (t :: ts, id_to_name_map, used_names, next_name_index)
+      in
+      let* params, id_to_name_map, used_names, next_name_index = go_list id_to_name_map used_names next_name_index (front :: rest) in
+      let* ret, id_to_name_map, used_names, next_name_index = go id_to_name_map used_names next_name_index ret in
+      return (TFun (Cons1(List.hd params, List.tl params), ret), id_to_name_map, used_names, next_name_index)
+    | TVar id when not (should_generalize id) ->
+      return (TVar id, id_to_name_map, used_names, next_name_index)
+    | TVar id -> 
+      match IntMap.find_opt id id_to_name_map with
+      | Some name -> return (TParam name, id_to_name_map, used_names, next_name_index)
+      | None -> 
+        let param_name, used_names, next_name_index = next_type_param_name used_names next_name_index in
+        let id_to_name_map = IntMap.add id param_name id_to_name_map in
+        return (TParam param_name, id_to_name_map, used_names, next_name_index)
+  in
+  let* typ, id_to_name_map, _, _ = go !id_to_name initial_used_names 0 typ in
+  id_to_name := id_to_name_map;
+  return typ
