@@ -253,6 +253,7 @@ let print_unification_env : unit t =
   lifted to a TParam ('a) ... *)
 let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t = 
   let open Operators in
+  let name_index = ref 0 in
   
   let rec go typ = 
     match typ with
@@ -275,7 +276,8 @@ let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t =
       match IntMap.find_opt id !id_to_name with
       | Some name -> return (TParam name)
       | None -> 
-        let param_name = Utilities.new_name "'inferred" in
+        incr name_index;
+        let param_name = "'inferred" ^ string_of_int !name_index in 
         id_to_name := IntMap.add id param_name !id_to_name;
         return (TParam param_name)
   in
