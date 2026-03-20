@@ -465,6 +465,76 @@ let test_hover_inside_string_literal_uses_full_range () =
         true
         (hover.Language_service.range.end_pos.character > 20)
 
+let test_hover_on_local_let_binding_uses_name_range () =
+  let text =
+    "fun entry p =\n"
+    ^ "  let t = ((\"Hello world!\", 42), 1337) in\n"
+    ^ "  snd (fst t)\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 6 }
+  with
+  | None -> Alcotest.fail "expected hover for local let binding"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover mentions let binding"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"let-binding t");
+      Alcotest.(check int)
+        "hover range starts at binding name"
+        6
+        hover.Language_service.range.start_pos.character;
+      Alcotest.(check int)
+        "hover range ends after binding name"
+        7
+        hover.Language_service.range.end_pos.character;
+      Alcotest.(check bool)
+        "hover omits enclosing let expression"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Expr:");
+      Alcotest.(check bool)
+        "type section starts on its own paragraph"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"\n\nType:\n```")
+
+let test_hover_on_match_pattern_binding_uses_name_range () =
+  let text =
+    "fun entry p =\n"
+    ^ "  match p with\n"
+    ^ "  | (x, y) -> x\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 2; character = 5 }
+  with
+  | None -> Alcotest.fail "expected hover for match pattern binding"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover mentions pattern binding"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"pattern binding x");
+      Alcotest.(check int)
+        "hover range starts at pattern name"
+        5
+        hover.Language_service.range.start_pos.character;
+      Alcotest.(check int)
+        "hover range ends after pattern name"
+        6
+        hover.Language_service.range.end_pos.character;
+      Alcotest.(check bool)
+        "hover omits enclosing match expression"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"match expression");
+      Alcotest.(check bool)
+        "hover omits enclosing expression block"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Expr:")
+
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
@@ -485,6 +555,8 @@ let tests = [
    "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
    "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
+   "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
+   "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;
    "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in

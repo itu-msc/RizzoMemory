@@ -414,15 +414,25 @@ let detail_of_ann_opt : type s. s Ast.ann -> string option =
 let detail_of_name : type s. s Ast.name -> string option =
   fun (_, ann) -> detail_of_ann_opt ann
 
+let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
+  match typ with
+  | None -> ""
+  | Some t -> Format.asprintf "\n\nType:\n```rizz\n%a\n```" Ast.pp_typ t
+
+let type_info_block_of_ann : type s. s Ast.ann -> string =
+  fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
+
+let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
+  fun ~label (name, ann) ->
+    label ^ " " ^ name ^ type_info_block_of_ann ann
+
 let type_info_block : type s. s Ast.expr -> string =
   fun expr ->
-    match typ_of_ann_opt (Ast.expr_get_ann expr) with
-    | None -> ""
-    | Some t -> Format.asprintf "\nType:\n```rizz\n%a\n```" Ast.pp_typ t
+    type_info_block_of_typ_opt (typ_of_ann_opt (Ast.expr_get_ann expr))
 
 let expression_info_block : type s. s Ast.expr -> string =
   fun expr ->
-    Format.asprintf "\nExpr:\n```rizz\n%a\n```" Ast.pp_expr expr
+    Format.asprintf "\n\nExpr:\n```rizz\n%a\n```" Ast.pp_expr expr
 
 let hover_text_for_expr : type s. s Ast.expr -> string =
   fun expr ->
@@ -492,6 +502,18 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
         pattern_bound_symbols p1 @ pattern_bound_symbols p2
     | Ast.PCtor (_, args, _) ->
         List.flatten (List.map pattern_bound_symbols args)
+
+  let rec pattern_bound_names : type s. s Ast.pattern -> s Ast.name list =
+    fun pat ->
+    match pat with
+    | Ast.PWildcard | Ast.PConst _ -> []
+    | Ast.PVar (name, ann) -> [ (name, ann) ]
+    | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
+      pattern_bound_names p1 @ [ p2 ]
+    | Ast.PTuple (p1, p2, _) ->
+      pattern_bound_names p1 @ pattern_bound_names p2
+    | Ast.PCtor (_, args, _) ->
+      List.flatten (List.map pattern_bound_names args)
 
 let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
   fun pat ->
@@ -711,12 +733,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                     | Function -> "top-level function: " ^ name_text top_name
                     | Variable -> "top-level binding: " ^ name_text top_name
                   in
-                  let type_block =
-                    match typ_of_ann_opt top_ann with
-                    | None -> ""
-                    | Some t -> Format.asprintf "\nType:\n```rizzo\n%a\n```" Ast.pp_typ t
-                  in
-                  Some { range = name_range; contents = base ^ type_block }
+                  Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
                 else
                   None)
           program
@@ -724,11 +741,102 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
       match top_level_hover with
       | Some _ as hover -> hover
       | None ->
-          collect_expr_ranges program
-          |> List.filter (fun (_, range) -> range_contains_position range position)
-          |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
-          |> first_opt
-          |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
+          let rec find_symbol_hover_in_expr : type s. s Ast.expr -> hover_info option =
+            fun expr ->
+              match expr with
+              | Ast.EConst _ -> None
+              | Ast.EVar var_name ->
+                  let var_range = range_of_name var_name in
+                  if range_contains_position var_range position then
+                    Some { range = var_range; contents = hover_text_for_named_symbol ~label:"variable" var_name }
+                  else
+                    None
+              | Ast.ECtor (ctor_name, args, _) ->
+                  let ctor_range = range_of_name ctor_name in
+                  if range_contains_position ctor_range position then
+                    Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
+                  else
+                    List.find_map find_symbol_hover_in_expr args
+              | Ast.ELet (bound_name, e1, e2, _) ->
+                  let binding_range = range_of_name bound_name in
+                  if range_contains_position binding_range position then
+                    Some { range = binding_range; contents = hover_text_for_named_symbol ~label:"let-binding" bound_name }
+                  else
+                    (match find_symbol_hover_in_expr e1 with
+                     | Some _ as hover -> hover
+                     | None -> find_symbol_hover_in_expr e2)
+              | Ast.EFun (params, body, _) ->
+                  let param_hover =
+                    params
+                    |> List.find_map (fun param ->
+                           let param_range = range_of_name param in
+                           if range_contains_position param_range position then
+                             Some { range = param_range; contents = hover_text_for_named_symbol ~label:"parameter" param }
+                           else
+                             None)
+                  in
+                  (match param_hover with
+                   | Some _ as hover -> hover
+                   | None -> find_symbol_hover_in_expr body)
+              | Ast.EApp (fn, args, _) ->
+                  (match find_symbol_hover_in_expr fn with
+                   | Some _ as hover -> hover
+                   | None -> List.find_map find_symbol_hover_in_expr args)
+              | Ast.EUnary (_, e, _) -> find_symbol_hover_in_expr e
+              | Ast.EBinary (_, e1, e2, _) ->
+                  (match find_symbol_hover_in_expr e1 with
+                   | Some _ as hover -> hover
+                   | None -> find_symbol_hover_in_expr e2)
+              | Ast.ETuple (e1, e2, _) ->
+                  (match find_symbol_hover_in_expr e1 with
+                   | Some _ as hover -> hover
+                   | None -> find_symbol_hover_in_expr e2)
+              | Ast.ECase (scrutinee, branches, _) ->
+                  (match find_symbol_hover_in_expr scrutinee with
+                   | Some _ as hover -> hover
+                   | None ->
+                       List.find_map
+                         (fun (pattern, branch_expr, _) ->
+                           let pattern_hover =
+                             pattern_bound_names pattern
+                             |> List.find_map (fun bound_name ->
+                                    let bound_range = range_of_name bound_name in
+                                    if range_contains_position bound_range position then
+                                      Some {
+                                        range = bound_range;
+                                        contents = hover_text_for_named_symbol ~label:"pattern binding" bound_name;
+                                      }
+                                    else
+                                      None)
+                           in
+                           match pattern_hover with
+                           | Some _ as hover -> hover
+                           | None -> find_symbol_hover_in_expr branch_expr)
+                         branches)
+              | Ast.EIfe (c, t, e, _) ->
+                  (match find_symbol_hover_in_expr c with
+                   | Some _ as hover -> hover
+                   | None ->
+                       match find_symbol_hover_in_expr t with
+                       | Some _ as hover -> hover
+                       | None -> find_symbol_hover_in_expr e)
+              | Ast.EAnno (e, _, _) -> find_symbol_hover_in_expr e
+          in
+          let symbol_hover =
+            List.find_map
+              (fun (top : Ast.typed Ast.top_expr) ->
+                match top with
+                | Ast.TopLet (_, rhs, _) -> find_symbol_hover_in_expr rhs)
+              program
+          in
+          match symbol_hover with
+          | Some _ as hover -> hover
+          | None ->
+              collect_expr_ranges program
+              |> List.filter (fun (_, range) -> range_contains_position range position)
+              |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
+              |> first_opt
+              |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
 
 let completion_symbol_of_name : type s.
     source:completion_source -> kind:semantic_token_kind -> s Ast.name -> completion_symbol =
