@@ -165,11 +165,23 @@ fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
 % we then need to traverse the heap to update signals, (and we need to be careful about how reference counting interacts with this traversal).
 % add a conceptual example (use the one we follow through the paper)
 
-In RizzoLang we have 2 types of constructors: the standard constructors for values (e.g. tuples, strings, user-defined constructors) and the signal constructor \texttt{::}. The semantics of the standard constructors are mostly straightforward: they allocate a new heap object with a reference count of 1, and the fields are initialized with the boxed values of the constructor arguments. The semantics of the signal constructor are more complex, as they must also interact with the heap structure and the reactive semantics. When a signal is constructed with \texttt{e1 :: e2}, the runtime allocates a new signal object, initializes its head with the value of \texttt{e1}, and initializes its tail with the value of \texttt{e2}. The new signal is then inserted into the signal heap just before the current cursor position. This ensures the signals position in the update order is correct, by being placed after the signal it depends on (if any) but before the next signal to be updated. Like any constructor, the new signal starts with a reference count of 1. The reference counts of the head and tail values are incremented accordingly, as the new signal now holds references to them.
+% The important thing here is the way we insert the new signal into the signal heap and why.
+For this section we will refer to the signal heap as the ``heap''.
 
-The important thing here is the way we insert the new signal into the signal heap and why.
+In RizzoLang we have 2 types of constructors: the standard constructors for values (e.g. tuples, strings, sync and so on) and the signal constructor \texttt{::}. The semantics of the standard constructors are mostly straightforward: they allocate a new object with a reference count of 1, and the fields are initialized with the boxed values of the constructor arguments. The semantics of the signal constructor are more complex, as they must also interact with the heap structure and the reactive semantics. When a signal is constructed with \texttt{e1 :: e2}, the runtime allocates a new signal object, initializes its head with the value of \texttt{e1}, and initializes its tail with the value of \texttt{e2}. The new signal is then inserted into the heap just before the current cursor position. This ensures the signals is placed after the signal it depends on (if any), but before the next signal to be updated. Like any constructor, the new signal starts with a reference count of 1. The reference counts of the head and tail values are incremented accordingly, as the new signal now holds references to them.
 
-In Rizzo the reactive semantics require that all signals are traversed when a channel produces a value. 
+Based on this we then know the heap structure needs to support ordered iteration and efficient insertion/removal, while having a way to distinguish between the now and earlier heap during the update and advance semantics \todo{have we mentioned the now and erlier heap yet?}. Based on the acyclic nature of signal dependencies, we also know the heap structure must remain acyclic.
+Based on these requirements we know a simple DAG, directed for the update direction and acyclic as signals can only depend on signals created before them, would be sufficient to represent the heap. We have chosen to implement this DAG as a linked list, which simplifies the implementation of ordered iteration and insertion/removal.
+
+In Rizzo the reactive semantics require that all signals are traversed when a channel produces a value.
+
+% Now that we have a basic understanding of the syntax and type system of Rizzo, we can describe the operational semantics. The semantics of Rizzo are defined in terms of an abstract machine that evaluates expressions and updates signals over time. The key operations are the evaluation of expressions, the update of signals when channels produce values, and the management of memory through reference counting.
+% reorder this section to first introduce the language has 2 layers of semantics from Rizzo, then describe the evaluation semantics, then the reactive semantics, and finally the reference counting semantics.
+Now that we have a way to represent signals in memory, we can describe the operational semantics of Rizzo. The semantics of Rizzo are split into two layers: the standard evaluation semantics for expressions, and the reactive semantics that govern how signals are updated over time. The evaluation semantics are not very interesting in this context, as they follow a standard eager evaluation strategy. The more interesting part is the reactive semantics, which describe how signals evolve over time in response to input on channels.
+
+\subsection{Rizzo Reactive semantics}
+
+
 
 % For RizzoLang we need to adhere to the \texttt{advance} and \texttt{update} semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, but we also need to define the semantics of reference counting for our implementation. In this section we first describe the evaluation strategy of Rizzo, then the reactive semantics for signals, and finally how reference counting interacts with the heap structure.
 
@@ -317,7 +329,7 @@ The runtime maintains two pointers into the heap:
 
 A signal goes through the following lifecycle:
 
-\paragraph{Creation.} When a signal is constructed (via \texttt{::}), it is allocated and inserted into the heap just before the current cursor position. This ensures that newly created signals are considered for update in the current time step. The signal starts with a reference count of 1.
+\paragraph{Creation.} When a signal is constructed (via \texttt{::}), it is allocated and inserted into the heap just before the current cursor position. This ensures that newly created signals are not considered for update in the current time step. The signal starts with a reference count of 1.
 
 \paragraph{Update.} During the heap update phase, if a signal's tail has ticked, the runtime:
 \begin{enumerate}
