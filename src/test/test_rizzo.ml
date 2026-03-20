@@ -78,12 +78,75 @@ let test_warning () =
   Location.report_warning loc "This is a test warning";
   Alcotest.(check pass) "warning reported" () ()
 
+let rec typ_has_tvar = function
+  | Ast.TVar _ -> true
+  | Ast.TError | Ast.TUnit | Ast.TInt | Ast.TString | Ast.TBool | Ast.TName _ | Ast.TParam _ -> false
+  | Ast.TSignal t | Ast.TLater t | Ast.TDelay t | Ast.TOption t | Ast.TChan t -> typ_has_tvar t
+  | Ast.TTuple (t1, t2) | Ast.TSync (t1, t2) -> typ_has_tvar t1 || typ_has_tvar t2
+  | Ast.TFun (Ast.Cons1 (front, rest), ret) -> typ_has_tvar front || List.exists typ_has_tvar rest || typ_has_tvar ret
+
+let ann_has_tvar : type s. s Ast.ann -> bool = function
+  | Ast.Ann_typed (_, typ) -> typ_has_tvar typ
+  | Ast.Ann_parsed _ | Ast.Ann_bound _ -> false
+
+let rec pattern_has_tvar : type s. s Ast.pattern -> bool = function
+  | Ast.PWildcard ann | Ast.PConst (_, ann) | Ast.PVar (_, ann) -> ann_has_tvar ann
+  | Ast.PTuple (p1, p2, ann) -> ann_has_tvar ann || pattern_has_tvar p1 || pattern_has_tvar p2
+  | Ast.PSigCons (p1, (_, ann2), ann) | Ast.PStringCons (p1, (_, ann2), ann) ->
+      ann_has_tvar ann || ann_has_tvar ann2 || pattern_has_tvar p1
+  | Ast.PCtor ((_, ctor_ann), args, ann) ->
+      ann_has_tvar ctor_ann || ann_has_tvar ann || List.exists pattern_has_tvar args
+
+let rec expr_has_tvar : type s. s Ast.expr -> bool = function
+  | Ast.EConst (_, ann) -> ann_has_tvar ann
+  | Ast.EVar (_, ann) -> ann_has_tvar ann
+  | Ast.ECtor ((_, ctor_ann), args, ann) ->
+      ann_has_tvar ctor_ann || ann_has_tvar ann || List.exists expr_has_tvar args
+  | Ast.ELet ((_, name_ann), e1, e2, ann) ->
+      ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2
+  | Ast.EFun (params, body, ann) ->
+      ann_has_tvar ann || List.exists (fun (_, param_ann) -> ann_has_tvar param_ann) params || expr_has_tvar body
+  | Ast.EApp (fn, args, ann) ->
+      ann_has_tvar ann || expr_has_tvar fn || List.exists expr_has_tvar args
+  | Ast.EUnary (_, expr, ann) ->
+      ann_has_tvar ann || expr_has_tvar expr
+  | Ast.EBinary (_, e1, e2, ann) ->
+      ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2
+  | Ast.ETuple (e1, e2, ann) ->
+      ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2
+  | Ast.ECase (scrutinee, branches, ann) ->
+      ann_has_tvar ann
+      || expr_has_tvar scrutinee
+      || List.exists (fun (pattern, branch, branch_ann) ->
+           ann_has_tvar branch_ann || pattern_has_tvar pattern || expr_has_tvar branch) branches
+  | Ast.EIfe (c, t, e, ann) ->
+      ann_has_tvar ann || expr_has_tvar c || expr_has_tvar t || expr_has_tvar e
+  | Ast.EAnno (expr, typ, ann) ->
+      ann_has_tvar ann || typ_has_tvar typ || expr_has_tvar expr
+
+let program_has_tvar (program : _ Ast.program) : bool =
+  List.exists (function
+    | Ast.TopLet ((_, name_ann), expr, ann) ->
+        ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar expr) program
+
+let test_typecheck_normalizes_inner_annotations () =
+  let program =
+    Parser.parse_string
+      "fun entry p =\n\
+      \  let swap_nested_left = fun q -> snd (fst q) in\n\
+      \  swap_nested_left\n"
+  in
+  let typed_program, errors = Rizzoc.typecheck program in
+  Alcotest.(check int) "no type errors" 0 (List.length errors);
+  Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
+
 let location_tests = [
   "location creation", `Quick, test_location_creation;
   "lexer error has location", `Quick, test_lexer_error_has_location;
   "string literal location spans full literal", `Quick, test_string_literal_location_spans_full_literal;
   "error context display", `Quick, test_show_error_context;
   "warning reporting", `Quick, test_warning;
+  "typecheck normalizes inner annotations", `Quick, test_typecheck_normalizes_inner_annotations;
 ]
 
 

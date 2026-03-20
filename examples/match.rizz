@@ -6,12 +6,17 @@ fun mp p = match p with
     | (5, _) -> 1337
     | (_, _) -> 42
 
+fun id x = x
+
 /* Creates 4 tuples, but only mallocs 3 times - 2 tuples for t, and 2 for swap_nested_left
     Question: why does it malloc 3 time and not 2? Why does it not reuse (inner or outer - not sure?)
 */
 fun entry p =
     let t = (("Hello world!", 42), 1337) in
-    snd (fst (swap_nested_left t)) /* ouputs "Hello world!" */
+    let b = snd (fst (swap_nested_left t)) /* ouputs "Hello world!" */ in
+    let b2 = snd (fst (swap_nested_left t)) /* outputs 42 */ in
+    let b3 = snd ("h", 1) in 
+    b + b2
     // let n = match five with
     // | 5 -> 10
     // | _ -> 0 in

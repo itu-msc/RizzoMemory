@@ -251,12 +251,10 @@ let print_unification_env : unit t =
 
 (* return the typ but every TVar which has not been unified with anything(?) is 
   lifted to a TParam ('a) ... *)
-let generalize_type_vars typ : typ t = 
+let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t = 
   let open Operators in
-  let id_to_name = ref IntMap.empty in
   
   let rec go typ = 
-    let* typ = find typ in
     match typ with
     | TError -> return TError
     | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return typ
@@ -274,13 +272,12 @@ let generalize_type_vars typ : typ t =
       let* ret = go ret in
       return (TFun (Cons1(List.hd params, List.tl params), ret))
     | TVar id -> 
-      let* {unification_env; _} = get_state in
-      match IntMap.find_opt id unification_env with
-      | Some t -> go t
-      | None -> match IntMap.find_opt id !id_to_name with
-        | Some name -> return (TParam name)
-        | None -> 
-          let param_name = Utilities.new_name "'inferred" in
-          id_to_name := IntMap.add id param_name !id_to_name;
-          return (TParam param_name)
-  in go typ
+      match IntMap.find_opt id !id_to_name with
+      | Some name -> return (TParam name)
+      | None -> 
+        let param_name = Utilities.new_name "'inferred" in
+        id_to_name := IntMap.add id param_name !id_to_name;
+        return (TParam param_name)
+  in
+  let* typ = apply_subst typ in
+  go typ

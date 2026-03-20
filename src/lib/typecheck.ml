@@ -125,7 +125,8 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     let toplet_expr = TopLet (typed_name, te, Ann_typed (get_location ann, t)) in
     return (toplet_expr :: acc)
   ) (return []) p in
-  return (List.rev checked_program)
+  let* () = Type_env.flatten_unification_env in
+  normalize_typed_program (List.rev checked_program)
 
 (** Infers the type of an expr*)
 and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
@@ -537,3 +538,121 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
     | TSync _ -> 
       let* _ = error ann "Cannot project a sync?" in
       return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
+and normalize_typed_ann : type stage. (string Type_env.IntMap.t ref) -> stage ann -> stage ann Type_env.t =
+  fun id_to_name -> function
+  | Ann_typed (loc, typ) ->
+    let* typ = Type_env.generalize_type_vars ~id_to_name typ in
+    return (Ann_typed (loc, typ))
+  | Ann_parsed loc -> return (Ann_parsed loc)
+  | Ann_bound (loc, scope) -> return (Ann_bound (loc, scope))
+
+and normalize_typed_name id_to_name ((name, ann) : typed name) : typed name Type_env.t =
+  let* ann = normalize_typed_ann id_to_name ann in
+  return (name, ann)
+
+and normalize_typed_pattern id_to_name : typed pattern -> typed pattern Type_env.t = function
+  | PWildcard ann ->
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PWildcard ann)
+  | PVar (name, ann) ->
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PVar (name, ann))
+  | PConst (c, ann) ->
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PConst (c, ann))
+  | PTuple (p1, p2, ann) ->
+    let* p1 = normalize_typed_pattern id_to_name p1 in
+    let* p2 = normalize_typed_pattern id_to_name p2 in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PTuple (p1, p2, ann))
+  | PSigCons (p1, name, ann) ->
+    let* p1 = normalize_typed_pattern id_to_name p1 in
+    let* name = normalize_typed_name id_to_name name in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PSigCons (p1, name, ann))
+  | PStringCons (p1, name, ann) ->
+    let* p1 = normalize_typed_pattern id_to_name p1 in
+    let* name = normalize_typed_name id_to_name name in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PStringCons (p1, name, ann))
+  | PCtor (name, args, ann) ->
+    let* name = normalize_typed_name id_to_name name in
+    let* args = Type_env.collect (List.map (normalize_typed_pattern id_to_name) args) in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PCtor (name, args, ann))
+
+and normalize_typed_expr id_to_name : typed expr -> typed expr Type_env.t = function
+  | EConst (c, ann) ->
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EConst (c, ann))
+  | EVar name ->
+    let* name = normalize_typed_name id_to_name name in
+    return (EVar name)
+  | ECtor (name, args, ann) ->
+    let* name = normalize_typed_name id_to_name name in
+    let* args = Type_env.collect (List.map (normalize_typed_expr id_to_name) args) in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (ECtor (name, args, ann))
+  | ELet (name, rhs, body, ann) ->
+    let* name = normalize_typed_name id_to_name name in
+    let* rhs = normalize_typed_expr id_to_name rhs in
+    let* body = normalize_typed_expr id_to_name body in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (ELet (name, rhs, body, ann))
+  | EFun (params, body, ann) ->
+    let* params = Type_env.collect (List.map (normalize_typed_name id_to_name) params) in
+    let* body = normalize_typed_expr id_to_name body in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EFun (params, body, ann))
+  | EApp (fn, args, ann) ->
+    let* fn = normalize_typed_expr id_to_name fn in
+    let* args = Type_env.collect (List.map (normalize_typed_expr id_to_name) args) in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EApp (fn, args, ann))
+  | EUnary (op, expr, ann) ->
+    let* expr = normalize_typed_expr id_to_name expr in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EUnary (op, expr, ann))
+  | EBinary (op, e1, e2, ann) ->
+    let* e1 = normalize_typed_expr id_to_name e1 in
+    let* e2 = normalize_typed_expr id_to_name e2 in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EBinary (op, e1, e2, ann))
+  | ETuple (e1, e2, ann) ->
+    let* e1 = normalize_typed_expr id_to_name e1 in
+    let* e2 = normalize_typed_expr id_to_name e2 in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (ETuple (e1, e2, ann))
+  | ECase (scrutinee, branches, ann) ->
+    let* scrutinee = normalize_typed_expr id_to_name scrutinee in
+    let* branches =
+      Type_env.collect @@ List.map (fun (pattern, body, branch_ann) ->
+        let* pattern = normalize_typed_pattern id_to_name pattern in
+        let* body = normalize_typed_expr id_to_name body in
+        let* branch_ann = normalize_typed_ann id_to_name branch_ann in
+        return (pattern, body, branch_ann)) branches
+    in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (ECase (scrutinee, branches, ann))
+  | EIfe (cond, if_true, if_false, ann) ->
+    let* cond = normalize_typed_expr id_to_name cond in
+    let* if_true = normalize_typed_expr id_to_name if_true in
+    let* if_false = normalize_typed_expr id_to_name if_false in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EIfe (cond, if_true, if_false, ann))
+  | EAnno (expr, typ, ann) ->
+    let* expr = normalize_typed_expr id_to_name expr in
+    let* typ = Type_env.generalize_type_vars ~id_to_name typ in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EAnno (expr, typ, ann))
+
+and normalize_typed_top_expr id_to_name : typed top_expr -> typed top_expr Type_env.t = function
+  | TopLet (name, expr, ann) ->
+    let* name = normalize_typed_name id_to_name name in
+    let* expr = normalize_typed_expr id_to_name expr in
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (TopLet (name, expr, ann))
+
+and normalize_typed_program (program : typed program) : typed program Type_env.t =
+  let id_to_name = ref Type_env.IntMap.empty in
+  Type_env.collect (List.map (normalize_typed_top_expr id_to_name) program)
