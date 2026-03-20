@@ -297,7 +297,7 @@ and c_app (vars: primitive list) (bs: ownership list) (_f:fn_body) beta_env : fn
     let compiled_f = insert_dec y f beta_env in
     c_app ys' bs' (FnLet (z, e, compiled_f)) beta_env
   | [], _, FnLet(z, e, f) -> FnLet(z, e, f)
-  | _ -> failwith "Not implemented"
+  | _ -> failwith "c_app: mismatch - more variables than ownership annotations"
 
 (** Collects variables of an [fn_body] that can not be marked as [Borrowed].
     Ullirch & De Moura call it 'collect' *)

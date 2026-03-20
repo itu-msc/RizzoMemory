@@ -1,6 +1,6 @@
 \section{Automatically reference counting Rizzo}\label{section:refcount}
 
-\todo{Quick refresh of assumptions from \textit{Reference Counting section}}
+% \todo{Quick refresh of assumptions from \textit{Reference Counting section}}
 
 The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} are defined over the calculi $\lambda_{pure}$ and $\lambda_{RC}$, where the $\lambda_{RC}$ extends $\lambda_{pure}$ with reference counting instructions Figure~\ref{figure:refcount_IR} shows the IR used in our compiler, where Rizzo-specific extensions are highlighted in green.  
 
@@ -25,14 +25,15 @@ In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global
 \end{figure}
 
 Observe that the IR is defined in A-normal form~\cite{flanagan_essence_1993}, where expressions are non-recursive and are only allowed on the right-hand-side of let-bindings. 
-Our representation keeps this shape but introduce \textit{Primitives} such that variables and literals (i.e.~integers, booleans, strings, and \texttt{never}) can appear directly in returns and as arguments in function/constructor application. This makes translation easier and avoids bindings such as $\texttt{let} \; x = 20; \; \texttt{ret} \; x$ when $\texttt{ret}\;20$ is enough.
-We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). Finally, we added top level values represented as mappings from constants to $FnBody$.~\todo{is it worth describing what the $FnBody$ means? Why is there?}
+Our representation keeps this shape but introduces \textit{Primitives} so that variables and literals (i.e.~integers, booleans, strings, and \texttt{never}) can appear directly in returns and as arguments in function/constructor application. This makes translation easier and avoids bindings such as $\texttt{let} \; x = 20; \; \texttt{ret} \; x$ when $\texttt{ret}\;20$ is enough.
+We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). Finally, we add top level values as mappings from constants to $FnBody$.~\todo{is it worth describing what the $FnBody$ means? Why is there? }
 
 \subsection{Transformations}\label{section:refcount:transforms}
 
-The strategy for automatically inserting reference counting is to first transform Rizzo syntax trees into a shape that satisfies the invariants listed in Section~\ref{sec:background:beans:assumptions}, then convert these to the IR, and only then running the algorithms $R$, $collect_{\mathbb{O}}$, and $C$~\cite{ullrich_counting_2021}.
+%Goal of section: pretty little flow chart showing how we chain transformations together and an explanation of why/what in relation the assumptions}
+To apply automatic reference counting, we first transform the source program into a shape that satisfies the invariants from Section~\ref{sec:background:beans:assumptions}, then lower it to the reference counting IR, and finally run the three algorithms $R$, $collect_{\mathbb{O}}$, and $C$~\cite{ullrich_counting_2021}.
 
-In order to get Rizzo programs into the correct shape, the compiler performs a series of transformations as shown in Figure~\ref{figure:refcount:transformations}.
+Figure~\ref{figure:refcount:transformations} shows the transformation pipeline. Most transformations are standard compiler steps, but each contributes to the invariants required by the RC insertion algorithms.
 
 \begin{figure}[h]
 	\centering
@@ -41,12 +42,26 @@ In order to get Rizzo programs into the correct shape, the compiler performs a s
 	\label{figure:refcount:transformations}
 \end{figure}
 
-Although, these transformations are standard, we'll 
-\todo{They all get us closer to the invariants with the exception of consec lambda elim}
+The compiler performs consecutive lambda elimination, lambda lifting, copy propagation, alpha-renaming, pattern lowering, dead let elimination, and A-normalization. Consecutive lambda elimination is not strictly required but reduces the number of lambdas to be lifted. 
 
-\todo{Here comes a pretty little flow chart showing how we chain these transformatiosn together, and a little explanation of why/what in relation the assumptions}
+The lowering of patterns into let-bindings may not directly contribute to any invariant, however it is required since there is no pattern matching in the IR.\@ The result of translating a match such as \lstinline|match mysig with x :: xs -> e| is shown in Listing~\ref{listing:refcount:elim_pattern}. The match expression must be kept around as it is the only point where reset/reuse pairs can be inserted, we will discuss this further in Section~\ref{section:refcount:beans}.
+
+\begin{lstlisting}[caption={Output of lowering a pattern match on a signal value}, label={listing:refcount:elim_pattern}]
+match mysig with
+| _ :: _ -> 
+  let x = head mysig in 
+  let xs = tail mysig in e
+\end{lstlisting}
+
+While some of the invariants are clearly fulfilled by the transformation pipeline, such as the requirement that all lambdas be lifted or that trivial bindings like \lstinline|let x = y| have been eliminated, some of them are not so obvious. 
+In particular, the ones about application shape. The RC IR assumes unary variable applications and that applications on global constants are never over-applied. 
+Variable applications are therefore rewritten when \textit{converting to IR} such that applications \lstinline|x y z| become \lstinline|(x y) z|. 
+In order to avoid over-applied global constants we do \todo{what? We don't do anything yet}.
+
+Another non-obvious point is the \textit{eta-expansion} of constructors. This invariant is enforced by the type checker and so there is no need for a dedicated transformation.
 
 \subsection{Counting Rizzo's beans}\label{section:refcount:beans}
+
 
 \todo{Walk through the 3 steps and explain: Purpose and how have we adapted it for Rizzo?}
 
