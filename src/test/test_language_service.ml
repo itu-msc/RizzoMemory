@@ -442,6 +442,33 @@ let test_hover_and_completion_for_typed_top_level_function () =
   | None -> Alcotest.fail "expected annotated top-level function completion"
   | Some item -> Alcotest.(check int) "completion kind is function" 3 item.Language_service.kind
 
+let test_hover_on_function_parameter_uses_name_range () =
+  let text = "fun pair first second = first\n" in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 0; character = 10 }
+  with
+  | None -> Alcotest.fail "expected hover for function parameter"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover mentions parameter"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"parameter first");
+      Alcotest.(check int)
+        "hover range starts at parameter name"
+        9
+        hover.Language_service.range.start_pos.character;
+      Alcotest.(check int)
+        "hover range ends after parameter name"
+        14
+        hover.Language_service.range.end_pos.character;
+      Alcotest.(check bool)
+        "hover omits sibling parameter text"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"second")
+
 let test_hover_inside_string_literal_uses_full_range () =
   let text = "let greeting = \"Hello World!\"\n" in
   match Language_service.hover_at_position
@@ -589,6 +616,7 @@ let tests = [
    "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
    "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
+  "hover on function parameter uses name range", `Quick, test_hover_on_function_parameter_uses_name_range;
    "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
    "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;

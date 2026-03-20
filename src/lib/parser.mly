@@ -101,8 +101,8 @@ top_expr:
     }
 
 nonempty_id_list:
-  | x=ID { [(x, mkloc $startpos $endpos)] }
-  | x=ID xs=nonempty_id_list { (x, mkloc $startpos $endpos) :: xs }
+  | x=ID { [(x, mkloc $startpos(x) $endpos(x))] }
+  | x=ID xs=nonempty_id_list { (x, mkloc $startpos(x) $endpos(x)) :: xs }
 
 expr:
   | LET x=ID te_opt=option(type_annotation) EQ e1=expr IN e2=expr
