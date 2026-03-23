@@ -11,6 +11,7 @@ let get_typ e = Type_env.get_type e
 
 type scheme = Type_env.scheme
 module StringSet = Set.Make(String)
+module IntSet = Set.Make(Int)
 module StringMap = Type_env.StringMap
 let forall vars t = Type_env.Forall (vars, t)
 
@@ -18,11 +19,94 @@ let forall vars t = Type_env.Forall (vars, t)
 let mono t = forall [] t
 
 (** Generalises a typ -> used for polymorphic let-bindings *)
-let rec generalize : typ -> scheme Type_env.t = fun t -> 
-  let* env_free = free_type_vars_env () in
-  let* t_free = free_type_vars_typ t in
-  let generalized_vars = StringSet.diff t_free env_free in
-  return (forall (StringSet.elements generalized_vars) t)
+let rec generalize : typ -> scheme Type_env.t = fun t ->
+  let* t = Type_env.apply_subst t in
+  let* env_tvars = free_tvar_ids_env () in
+  let* t_tvars = free_tvar_ids_typ t in
+  let generalized_tvars = IntSet.diff t_tvars env_tvars in
+  let id_to_name = ref Type_env.IntMap.empty in
+  let name_index = ref 0 in
+  let fresh_param_name id =
+    match Type_env.IntMap.find_opt id !id_to_name with
+    | Some name -> name
+    | None ->
+      incr name_index;
+      let name = "'inferred" ^ string_of_int !name_index in
+      id_to_name := Type_env.IntMap.add id name !id_to_name;
+      name
+  in
+  let rec replace_generalized_tvars : typ -> typ Type_env.t = function
+    | TError -> return TError
+    | TUnit -> return TUnit
+    | TInt -> return TInt
+    | TString -> return TString
+    | TBool -> return TBool
+    | TName n -> return (TName n)
+    | TParam p -> return (TParam p)
+    | TVar id ->
+      if IntSet.mem id generalized_tvars
+      then return (TParam (fresh_param_name id))
+      else return (TVar id)
+    | TSignal t -> let* t = replace_generalized_tvars t in return (TSignal t)
+    | TLater t -> let* t = replace_generalized_tvars t in return (TLater t)
+    | TDelay t -> let* t = replace_generalized_tvars t in return (TDelay t)
+    | TOption t -> let* t = replace_generalized_tvars t in return (TOption t)
+    | TChan t -> let* t = replace_generalized_tvars t in return (TChan t)
+    | TTuple (t1, t2) ->
+      let* t1 = replace_generalized_tvars t1 in
+      let* t2 = replace_generalized_tvars t2 in
+      return (TTuple (t1, t2))
+    | TSync (t1, t2) ->
+      let* t1 = replace_generalized_tvars t1 in
+      let* t2 = replace_generalized_tvars t2 in
+      return (TSync (t1, t2))
+    | TFun (Cons1 (front, rest), ret) ->
+      let* params = Type_env.collect (List.map replace_generalized_tvars (front :: rest)) in
+      let* ret = replace_generalized_tvars ret in
+      return (TFun (Cons1 (List.hd params, List.tl params), ret))
+  in
+  let* t = replace_generalized_tvars t in
+  let generalized_vars = Type_env.IntMap.bindings !id_to_name |> List.map snd in
+  return (forall generalized_vars t)
+and free_tvar_ids_typ : typ -> IntSet.t Type_env.t = fun t ->
+  let* t = Type_env.apply_subst t in
+  match t with
+  | TError -> return IntSet.empty
+  | TVar id -> return (IntSet.singleton id)
+  | TTuple (t1, t2) | TSync (t1, t2) ->
+    let* t1_free = free_tvar_ids_typ t1 in
+    let* t2_free = free_tvar_ids_typ t2 in
+    return (IntSet.union t1_free t2_free)
+  | TSignal t | TDelay t | TLater t | TOption t | TChan t -> free_tvar_ids_typ t
+  | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return IntSet.empty
+  | TFun (Cons1 (front, rest), ret_type) ->
+    let* param_free =
+      List.fold_left
+        (fun acc t ->
+          let* acc = acc in
+          let* free_in_t = free_tvar_ids_typ t in
+          return (IntSet.union acc free_in_t))
+        (return IntSet.empty)
+        (front :: rest)
+    in
+    let* ret_free = free_tvar_ids_typ ret_type in
+    return (IntSet.union param_free ret_free)
+and free_tvar_ids_scheme : scheme -> IntSet.t Type_env.t = function
+  | Forall (_, t) -> free_tvar_ids_typ t
+and free_tvar_ids_env_scheme : Type_env.scheme_env -> IntSet.t Type_env.t =
+  fun scheme_env ->
+    StringMap.fold
+      (fun _ scheme acc ->
+        let* acc = acc in
+        let* free_in_scheme = free_tvar_ids_scheme scheme in
+        return (IntSet.union acc free_in_scheme))
+      scheme_env
+      (return IntSet.empty)
+and free_tvar_ids_env : unit -> IntSet.t Type_env.t = fun () ->
+  let* env = Type_env.get_state in
+  let* global_free = free_tvar_ids_env_scheme env.global in
+  let* local_free = free_tvar_ids_env_scheme env.local in
+  return (IntSet.union global_free local_free)
 and free_type_vars_typ : typ -> StringSet.t Type_env.t = function
   | TError -> return StringSet.empty
   | TVar _ -> return StringSet.empty
@@ -118,8 +202,8 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     | _ -> Type_env.with_local_scope (infer e)
     in
     let* t = get_typ te in
-    let* t = Type_env.generalize_type_vars t in
     let* generalized_type = generalize t in
+    let* t = Type_env.generalize_type_vars t in
     let* () = Type_env.add_global name_text generalized_type in
     let typed_name = (name_text, Ann_typed (get_location (snd name), t)) in
     let toplet_expr = TopLet (typed_name, te, Ann_typed (get_location ann, t)) in
@@ -140,10 +224,10 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in
-    let* t_rhs = Type_env.generalize_type_vars t_rhs in
     let* t_rhs_generalized = generalize t_rhs in
     let* tbody = Type_env.with_locals [name, t_rhs_generalized] (infer body) in
     let* tbody_type = get_typ tbody in
+    let* t_rhs = get_typ trhs in
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
   | EIfe (cond, e1, e2, ann) ->
@@ -276,10 +360,10 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in
     let* t_rhs = get_typ trhs in
-    let* t_rhs = Type_env.generalize_type_vars t_rhs in
     let* rhs_gen = generalize t_rhs in
     let* tbody = Type_env.with_local name rhs_gen (check body expected) in
     let* tbody_type = get_typ tbody in
+    let* t_rhs = get_typ trhs in
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
   | EFun (params, body, ann) -> 

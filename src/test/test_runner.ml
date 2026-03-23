@@ -7,6 +7,7 @@ let () =
     "INT OPERATOR TESTS", Test_int_ops.int_operator_tests;
     "BOOL OPERATOR TESTS", Test_bool_ops.bool_operator_tests;
     "STRING TESTS", Test_strings.string_tests;
+    "MAP2 TESTS", Test_map2.map2_tests;
     "LANGUAGE SERVICE TESTS", Test_language_service.tests;
     "ANF TESTS", Test_anf.anf_tests;
     "LIFT TESTS", Test_lift.lift_tests;
