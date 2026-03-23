@@ -20,5 +20,5 @@ fun entry p =
     // let n = match five with
     // | 5 -> 10
     // | _ -> 0 in
-    // let x = output_int_signal (n :: never) in
+    // let x = console_out_signal (n :: never) in
     // start_event_loop()

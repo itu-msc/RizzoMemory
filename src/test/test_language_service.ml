@@ -304,7 +304,7 @@ let test_semantic_tokens_include_builtin_operators () =
 let test_semantic_tokens_include_builtin_function_references () =
   let text =
     "fun main s =\n"
-    ^ "  output_int_signal s\n"
+    ^ "  console_out_signal s\n"
   in
   let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check bool)

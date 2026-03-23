@@ -145,7 +145,23 @@ let test_map2_no_annotation_cont_and_x_stay_signal () =
       | None -> Alcotest.fail "unexpected typed AST for map2_no_annotation")
   | _ -> Alcotest.fail "unexpected typed AST shape for map2_no_annotation"
 
+let test_annotated_polymorphic_top_level_instantiates () =
+  let typed =
+    parse_and_typecheck
+      (
+      "fun id x : 'a -> 'a = x\n"
+      ^ "let as_int = id(42)\n"
+      ^ "let as_string = id(\"hello\")\n"
+      )
+  in
+  match typed with
+  | [TopLet (_, _, _); TopLet (("as_int", Ann_typed (_, as_int_t)), _, _); TopLet (("as_string", Ann_typed (_, as_string_t)), _, _)] ->
+      Alcotest.(check bool) "annotated polymorphic function instantiates at Int" true (Ast.eq_typ as_int_t TInt);
+      Alcotest.(check bool) "annotated polymorphic function instantiates at String" true (Ast.eq_typ as_string_t TString)
+  | _ -> Alcotest.fail "unexpected typed AST shape for annotated polymorphic instantiation"
+
 let map2_tests = [
   "map2 annotated keeps cont/x as Signal", `Quick, test_map2_annotated_cont_and_x_stay_signal;
   "map2 no-annotation keeps cont/x as Signal", `Quick, test_map2_no_annotation_cont_and_x_stay_signal;
+  "annotated polymorphic top-level instantiates", `Quick, test_annotated_polymorphic_top_level_instantiates;
 ]

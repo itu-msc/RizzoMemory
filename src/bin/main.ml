@@ -2,8 +2,6 @@ open! Rizzoc
 
 let usage_msg = "Usage: rizzoc <program.rizz>"
 
-let print_section title pp value =
-	Fmt.pr "@[<v>@{<cyan>%s@}@,%a@]@.@." title pp value
 
 let ansi_of_tag = function
 	| "red" -> "\027[31m"
@@ -61,29 +59,4 @@ let () =
 			exit 1
 	in
 	ensure_rizz_extension input_file;
-	try
-		let program = Rizzoc.Parser.parse_file input_file in
-		print_section "------- Parsed -------" Ast.pp_program program;
-		let (typed, errors) = Rizzoc.typecheck program in
-		(match errors with
-		| [] -> print_section "------- Type checked -------" Ast.pp_typed_program typed
-		| _ ->
-			Fmt.pr "@{<yellow>------- Type checking failed, showing partial typechecked program -------@}@.";
-			List.iter (fun err -> 
-				match err with
-				| (loc, msg) -> Location.show_error_context loc msg
-			) errors;
-			exit 1
-		);
-    let transformed = Rizzoc.apply_typed_transforms typed in
-    print_section "------- Transformed -------" Ast.pp_program transformed;
-    let rc_env, rc_program = Rizzoc.ref_count transformed in
-		print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
-		Rizzoc.emit rc_program "output.c"
-	with
-	| Rizzoc.Lexer.Error (loc, msg) ->
-			Location.show_error_context loc msg;
-			exit 1
-	| Rizzoc.Parser.Error (loc, msg) ->
-			Location.show_error_context loc msg;
-			exit 1
+	Rizzoc.compile_from_file input_file "output.c"

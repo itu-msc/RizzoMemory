@@ -17,9 +17,14 @@ let mk name ?(ownership = None) ?(proj_idx = None) ?(public = true) (t: Ast.typ)
   typ = t;
 }
 
+let output_builtins = [
+  mk "console_out_signal" ~ownership:(Some [Refcount.Owned]) (TFun (Cons1(TSignal (TParam "'a"), []), TUnit)) ();
+  mk "quit_at" ~ownership:(Some [Refcount.Owned]) (TFun (Cons1(TLater (TParam "'a"), []), TUnit)) ();
+  (* mk "output_string_signal" ~ownership:(Some [Refcount.Owned]) (TFun (Cons1(TSignal TString, []), TUnit)) (); *)
+]
+
 let builtins = [
-  mk "start_event_loop" ~ownership:(Some [Refcount.Borrowed]) (TFun(Cons1(Ast.TUnit, []), TUnit)) ();
-  mk "output_int_signal" ~ownership:(Some [Refcount.Owned]) (TFun (Cons1(TSignal TInt, []), TUnit)) ();
+  mk "start_event_loop" ~ownership:(Some [Refcount.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
   mk "parse_int" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TOption TInt)) ();
   mk "not" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TBool, []), TBool)) ();
   mk "eq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TParam "'a", [TParam "'a"]), TBool)) ();
@@ -41,13 +46,10 @@ let builtins = [
   mk "head" ~proj_idx:(Some 0) (TFun (Cons1(TSignal (TParam "'a"), []), TParam "'a")) ();
   mk "fst" ~proj_idx: (Some 0) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'a")) ();
   mk "snd" ~proj_idx: (Some 1) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'b")) ();
-  mk "left_elim"      ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'a")) (); 
-  mk "right_elim"     ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'b")) ();
-  mk "both_elim_fst"  ~proj_idx:(Some 0)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'a")) ();
-  mk "both_elim_snd"  ~proj_idx:(Some 1)  (TFun (Cons1(TSync (TParam "'a", TParam "'b"), []), TParam "'b")) ();
 
-  mk "console" (TChan TString) ()
-]
+  mk "console" (TChan TString) ();
+
+] @ output_builtins
 
 let builtins_map = List.map (fun b -> b.name, b) builtins |> M.of_list
 let public_builtins = List.filter (fun ({ public; _ } : builtin_info) -> public) builtins

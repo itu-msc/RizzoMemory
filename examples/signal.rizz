@@ -148,10 +148,10 @@ let entry : Unit -> Unit = fun ignore ->
     let parsed_console_sig = filter_map parse_int ("" :: my_console_sig) in
     let reactive_signal = 42 :: parsed_console_sig in
 
-    let xx = output_int_signal my_int_sig in 
-    let xxx = output_int_signal reactive_signal in
+    let xx = console_out_signal my_int_sig in 
+    let xxx = console_out_signal reactive_signal in
 
     let fourty42_sig = filter (fun x -> x == 42) (0 :: parsed_console_sig) in
-    let zzz = output_int_signal (_switch reactive_signal fourty42_sig) in
+    let zzz = console_out_signal (_switch reactive_signal fourty42_sig) in
 
     start_event_loop ()

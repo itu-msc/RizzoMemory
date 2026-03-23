@@ -6,12 +6,6 @@ fun describeText s =
     | "H" :: rest -> "Starts with H, tail = " + rest
     | first :: _rest -> "Starts with " + first
 
-fun entry x =
-    let summary = describeText greeting in
-    if x == 0 then
-        summary
-    else
-        "Input was not zero."
 
 @effectful
 fun _const x : 'a -> Signal 'a = x :: never
@@ -19,3 +13,12 @@ fun _const x : 'a -> Signal 'a = x :: never
 fun appendSignalToNeverAndAdd1 s a = _const (a |> s)
 
 fun is0 x = x == 0
+
+fun mk_sig later = 
+        (fun a -> a :: mk_sig later) |> later
+
+fun entry x = 
+    let my_console_sig = mk_sig (wait console) in
+    let my_console = console_out_signal ("" :: my_console_sig) in
+    let q = quit_at (my_console_sig) in
+    start_event_loop ()

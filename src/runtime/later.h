@@ -31,7 +31,7 @@ static inline void rz_debug_print_later(rz_box_t later) {
     switch (rz_object_tag(rz_unbox_ptr(later))) {
         case RZ_TAG_LATER_NEVER: { printf("never"); } break;
         case RZ_TAG_LATER_WAIT: { 
-            printf("wait(%d)", rz_unbox_int(rz_object_get_field(rz_unbox_ptr(later), 0))); 
+            printf("wait(%lld)", rz_unbox_int(rz_object_get_field(rz_unbox_ptr(later), 0))); 
         } break;
         case RZ_TAG_LATER_TAIL: { 
             printf("tail(%p)", rz_unbox_ptr(rz_object_get_field(rz_unbox_ptr(later), 0))); 

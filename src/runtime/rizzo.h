@@ -15,25 +15,28 @@
 #include "os.h"
 #include "stdlib.h"
 
-typedef struct rz_signal_list {
+typedef struct rz_signal_list
+{
     size_t count, capacity;
     rz_signal_t *signals[];
 } rz_signal_list_t;
 static rz_signal_list_t *rz_signal_list_create();
-static void rz_signal_list_add(rz_signal_list_t** list, rz_object_t* signal);
+static void rz_signal_list_add(rz_signal_list_t **list, rz_object_t *signal);
 static void rz_print_registered_outputs();
-static void rz_print_registered_output_head(rz_signal_t* sig, bool force);
+static void rz_print_registered_output_head(rz_signal_t *sig, bool force);
 
 rz_signal_list_t *rz_global_output_signals = NULL;
 
 /* initializes the Rizzo runtime. */
-static void rz_init_rizzo() {
+static void rz_init_rizzo()
+{
     rz_global_output_signals = rz_signal_list_create();
 }
 
 /** Steps the Rizzo program one tick forward.
    Additionally, outputs the head of any registered outputs that was updated during heap update. */
-static inline void rz_step(rz_channel_t chan, rz_box_t v) {
+static inline void rz_step(rz_channel_t chan, rz_box_t v)
+{
     rz_heap_update(chan, v);
     rz_print_registered_outputs();
 }
@@ -41,16 +44,23 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v) {
 /* Starts the Rizzo event loop:
    - Listens to input on channels (currently only console input)
    - Then produces a time step by calling `rz_step` (which updates the heap) */
-static rz_box_t rz_start_event_loop() {
+static rz_box_t rz_start_event_loop()
+{
     char buffer[__RZ_INPUT_BUFFER_SIZE];
-    while (true) {
+    while (true)
+    {
         rz_os_result_t status = rz_readline(buffer, sizeof(buffer));
-        if (status == RZ_OK) {
+        if (status == RZ_OK)
+        {
             rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_string_len(buffer, strlen(buffer)));
 #ifdef __RZ_DEBUG_INFO
             printf("AFTER STEP\n");
             rz_debug_print_heap();
 #endif
+        }
+        else if (status == RZ_NO_INPUT)
+        {
+            break;
         }
         else if (status == RZ_INPUT_TOO_LONG)
         {
@@ -61,10 +71,12 @@ static rz_box_t rz_start_event_loop() {
 }
 
 /* registers a boxed signal for output */
-static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args) {
+static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args)
+{
     (void)num_args;
     rz_box_t sig = args[0];
-    if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL) {
+    if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL)
+    {
         rz_debug_print_box(sig);
         fprintf(stderr, "Runtime error: rz_register_output_signal got a non-signal value (%d)\n", sig.kind);
         exit(1);
@@ -79,21 +91,27 @@ static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args
     |         OUTPUT HELPERS       |
     |------------------------------| */
 
-static inline void rz_print_registered_output_head(rz_signal_t *sig, bool force) {
+static inline void rz_print_registered_output_head(rz_signal_t *sig, bool force)
+{
     /*TODO: this assume strings for now - we will want to make it strings */
-    if (rz_unbox_int(sig->updated) || force) {
+    if (rz_unbox_int(sig->updated) || force)
+    {
         rz_debug_print_box(sig->head);
         printf("\n");
+        fflush(stdout);
     }
 }
 
-static inline void rz_print_registered_outputs() {
-    for (size_t i = 0; i < rz_global_output_signals->count; i++) {
+static inline void rz_print_registered_outputs()
+{
+    for (size_t i = 0; i < rz_global_output_signals->count; i++)
+    {
         rz_print_registered_output_head(rz_global_output_signals->signals[i], false);
     }
 }
 
-static rz_signal_list_t *rz_signal_list_create() {
+static rz_signal_list_t *rz_signal_list_create()
+{
     size_t initial_capacity = 10;
     rz_signal_list_t *list = malloc(sizeof(rz_signal_list_t) + initial_capacity * sizeof(rz_signal_t *));
     list->count = 0;
@@ -101,9 +119,11 @@ static rz_signal_list_t *rz_signal_list_create() {
     return list;
 }
 
-static void rz_signal_list_add(rz_signal_list_t **list_ref, rz_object_t *signal) {
-    rz_signal_list_t* list = *list_ref;
-    if (list->count == list->capacity) {
+static void rz_signal_list_add(rz_signal_list_t **list_ref, rz_object_t *signal)
+{
+    rz_signal_list_t *list = *list_ref;
+    if (list->count == list->capacity)
+    {
         size_t new_capacity = list->capacity * 2;
         list = realloc(list, sizeof(rz_signal_list_t) + new_capacity * sizeof(rz_signal_t *));
         list->capacity = new_capacity;

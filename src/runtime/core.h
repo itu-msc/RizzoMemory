@@ -61,7 +61,7 @@ typedef enum {
 typedef struct rz_box {
     rz_box_kind_t kind;
     union {
-        int32_t i32;
+        int64_t i64;
         rz_fun* c_fun_ptr;
         rz_object_t* obj;
         char* str; /*pointer so its keeps the size of the struct */
@@ -72,10 +72,10 @@ bool rz_is_boxed(rz_box_t box) {
     return box.kind == RZ_BOX_INT || box.kind == RZ_BOX_STRING_LITERAL;
 }
 
-#define rz_make_int(v) ((rz_box_t){ .kind = RZ_BOX_INT, .as.i32 = (v) })
+#define rz_make_int(v) ((rz_box_t){ .kind = RZ_BOX_INT, .as.i64 = (v) })
 
-static inline int32_t rz_unbox_int(rz_box_t box) {
-    return (int32_t)box.as.i32;
+static inline int64_t rz_unbox_int(rz_box_t box) {
+    return (int64_t)box.as.i64;
 }
 
 #define rz_make_ptr(target) ((rz_box_t){ .kind = RZ_BOX_PTR, .as.obj = (target) })
@@ -296,7 +296,7 @@ rz_box_t rz_call(rz_fun* f, size_t num_args, rz_box_t* args) {
     return f(num_args, args);
 }
 
-static inline rz_function_t *rz_malloc_func(rz_fun *f, int32_t arity, size_t num_free_vars) {
+static inline rz_function_t *rz_malloc_func(rz_fun *f, int64_t arity, size_t num_free_vars) {
     rz_function_t* fun = (rz_function_t*) rz_malloc(sizeof_function_with(num_free_vars));
     fun->_base.header.num_fields = num_free_vars;
     fun->_base.header.refcount = 1;
@@ -325,7 +325,7 @@ static inline rz_function_t* rz_unbox_fun(rz_box_t box) {
 }
 
 /* const-app-part - partial app of C function */
-rz_box_t rz_lift_c_fun(rz_fun* f, int32_t arity, rz_box_t* free_vars, size_t num_free_vars) {
+rz_box_t rz_lift_c_fun(rz_fun* f, int64_t arity, rz_box_t* free_vars, size_t num_free_vars) {
     rz_function_t* fun = rz_malloc_func(f, arity, num_free_vars);
     rz_function_args_t* fun_args = ARGS_OF(fun);
     for (int i = 0; i < num_free_vars; i++) {
@@ -374,7 +374,7 @@ static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
     }
     if (a.kind != b.kind) return rz_make_ptr( rz_bool_ctor(false) );
     if (a.kind == RZ_BOX_INT) {
-        return rz_make_ptr( rz_bool_ctor(a.as.i32 == b.as.i32) );
+        return rz_make_ptr( rz_bool_ctor(a.as.i64 == b.as.i64) );
     } else {
         rz_object_t* a_obj = a.as.obj;
         rz_object_t* b_obj = b.as.obj;
@@ -398,7 +398,7 @@ static void rz_debug_print_signal(rz_box_t box);
 static inline void rz_debug_print_box(rz_box_t box) {
     switch (box.kind) {
         case RZ_BOX_INT: {
-            printf("%d", box.as.i32);
+            printf("%lld", box.as.i64);
         } break;
         case RZ_BOX_STRING_LITERAL: {
             printf("%s", rz_unbox_str_lit(box));

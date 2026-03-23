@@ -48,7 +48,10 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     |> M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate function name %s" key)) builtin_arity_map
   in
   
-  let mangle = (^) "rizz_" in
+  let mangle s =
+    if String.contains s '\''
+    then (^) "_rizz_" (String.map (function '\'' -> '_' | c -> c) s)
+    else (^) "rizz_" s in
 
   let builtin_c_name name =
     if M.mem name builtin_arity_map then Printf.sprintf "rz_builtin_%s" name 
@@ -145,7 +148,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | RConst c -> emit_primitive (Const c)
     | RCall ("eq", [p1; p2]) -> Printf.sprintf "rz_eq(%s, %s)" (emit_primitive p1) (emit_primitive p2)
     | RCall ("start_event_loop", _) -> "rz_start_event_loop()"
-    | RCall ("output_int_signal", [signal]) -> 
+    | RCall ("console_out_signal", [signal]) -> 
       Printf.sprintf "rz_call(rz_register_output_signal, 1, (rz_box_t[]){%s})" (emit_primitive signal)
     | RCall (f, args) -> 
       Printf.sprintf "rz_call(%s, %d, (rz_box_t[]){%s})" (builtin_c_name f) (List.length args) (mk_args_string args)
@@ -197,5 +200,8 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
         | Var arg -> as_possible_function_access arg [])
     |> String.concat ", "
       
-  in emit_program p
+  in
+  Fun.protect
+    ~finally:(fun () -> close_out out_file)
+    (fun () -> emit_program p; flush out_file)
   

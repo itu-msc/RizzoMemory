@@ -21,7 +21,7 @@ fun nestedFunc x =
 
 fun entry x = 
     let thing = customFunc 4 in
-    let f = output_int_signal thing in
+    let f = console_out_signal thing in
     let tupled = (x, nestedFunc 5, maybeY) in
     (thing, tupled)
 

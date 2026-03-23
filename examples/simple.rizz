@@ -5,7 +5,7 @@ fun map f s =
 @effectful fun entry x = 
     let my_sig = 5 :: never in
     let string_sig = "Hello" :: never in
-    let xx = output_int_signal my_sig in 
+    let xx = console_out_signal my_sig in 
     let synced = sync (tail my_sig) never in
     let x = (fun s -> 
         match s with

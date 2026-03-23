@@ -41,7 +41,7 @@ The current design gets correctness and some type-directed lowering, but it does
 
 Examples of information we currently do **not** exploit much:
 
-- whether a local binding can be stored as a raw `int32_t`
+- whether a local binding can be stored as a raw `int64_t`
 - whether a direct function call can use a typed C signature instead of the boxed closure ABI
 - whether a primitive comparison can avoid generic boxed equality
 - whether a binding participates in reference counting at all
@@ -202,7 +202,7 @@ Conceptually, a representation annotation could classify expressions as somethin
 This would let later passes decide:
 
 - whether a local needs reference counting
-- whether to emit a C local as `int32_t` or `rz_box_t`
+- whether to emit a C local as `int64_t` or `rz_box_t`
 - whether a call can use a direct raw helper or must go through the boxed ABI
 
 ### Why annotations are enough at first

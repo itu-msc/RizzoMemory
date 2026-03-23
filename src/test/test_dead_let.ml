@@ -26,7 +26,7 @@ let test_case_branch_scope_is_respected () =
   Alcotest.(check expr_testable) "removes let when branch x is shadowed" expected transformed
 
 let test_keeps_dead_let_for_effectful_output_call () =
-  let e = let_ "x" (app (var "output_int_signal") [var "my_sig"]) (int 0) in
+  let e = let_ "x" (app (var "console_out_signal") [var "my_sig"]) (int 0) in
   let transformed = eliminate_dead_let e in
   Alcotest.(check expr_testable) "keeps dead let for effectful output call" e transformed
 

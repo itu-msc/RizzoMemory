@@ -105,3 +105,67 @@ let lower_typed_program = Transformations.lower_typed_program
 let apply_typed_transforms p = p |> lower_typed_program |> apply_transforms
 
 let emit = Backend_c.emit_c_code
+
+let rec compile_from_file input_file output_file =
+  try
+    let program = Parser.parse_file input_file in
+    compile program output_file
+  with
+  | Parser.Error (loc, msg) ->
+      Location.show_error_context loc msg;
+      failwith "Parsing failed"
+  | Lexer.Error (loc, msg) ->
+      Location.show_error_context loc msg;
+      failwith "Lexing failed"
+  | exn ->
+      let msg = Printf.sprintf "Unexpected error: %s" (Printexc.to_string exn) in
+      Fmt.epr "@{<red>Error@}: %s@." msg;
+      failwith "Compilation failed"
+  
+and compile_from_string input_string output_file =
+  try
+    let program = Parser.parse_string input_string in
+    compile program output_file
+  with
+  | Parser.Error (loc, msg) ->
+      Location.show_error_context loc msg;
+      failwith "Parsing failed"
+  | Lexer.Error (loc, msg) ->
+      Location.show_error_context loc msg;
+      failwith "Lexing failed"
+  | exn ->
+      let msg = Printf.sprintf "Unexpected error: %s" (Printexc.to_string exn) in
+      Fmt.epr "@{<red>Error@}: %s@." msg;
+      failwith "Compilation failed"
+
+and compile parsed_program output_file =
+  let print_section title pp value =
+	  Fmt.pr "@[<v>@{<cyan>%s@}@,%a@]@.@." title pp value
+  in
+  try
+		print_section "------- Parsed -------" Ast.pp_program parsed_program;
+		let (typed, errors) = typecheck parsed_program in
+		(match errors with
+		| [] -> print_section "------- Type checked -------" Ast.pp_typed_program typed
+		| _ ->
+			Fmt.pr "@{<yellow>------- Type checking failed, showing partial typechecked program -------@}@.";
+			List.iter (fun err -> 
+				match err with
+				| (loc, msg) -> Location.show_error_context loc msg
+			) errors;
+			(* exit 1 *)
+      failwith "Type checking failed"
+		);
+    let transformed = apply_typed_transforms typed in
+    print_section "------- Transformed -------" Ast.pp_program transformed;
+    let rc_env, rc_program = ref_count transformed in
+		print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
+		emit rc_program output_file
+	with
+	| Lexer.Error (loc, msg) ->
+			Location.show_error_context loc msg;
+			failwith "Lexing failed"
+	| Parser.Error (loc, msg) ->
+			Location.show_error_context loc msg;
+			failwith "Parsing failed"
+

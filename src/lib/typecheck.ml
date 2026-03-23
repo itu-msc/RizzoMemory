@@ -22,16 +22,27 @@ let mono t = forall [] t
 let rec generalize : typ -> scheme Type_env.t = fun t ->
   let* t = Type_env.apply_subst t in
   let* env_tvars = free_tvar_ids_env () in
+  let* env_params = free_type_vars_env () in
   let* t_tvars = free_tvar_ids_typ t in
+  let* t_params = free_type_vars_typ t in
   let generalized_tvars = IntSet.diff t_tvars env_tvars in
+  let generalized_params = StringSet.diff t_params env_params in
   let id_to_name = ref Type_env.IntMap.empty in
+  let used_param_names = ref t_params in
   let name_index = ref 0 in
   let fresh_param_name id =
     match Type_env.IntMap.find_opt id !id_to_name with
     | Some name -> name
     | None ->
-      incr name_index;
-      let name = "'inferred" ^ string_of_int !name_index in
+      let rec fresh_name () =
+        incr name_index;
+        let name = "'inferred" ^ string_of_int !name_index in
+        if StringSet.mem name !used_param_names
+        then fresh_name ()
+        else name
+      in
+      let name = fresh_name () in
+      used_param_names := StringSet.add name !used_param_names;
       id_to_name := Type_env.IntMap.add id name !id_to_name;
       name
   in
@@ -66,7 +77,13 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
       return (TFun (Cons1 (List.hd params, List.tl params), ret))
   in
   let* t = replace_generalized_tvars t in
-  let generalized_vars = Type_env.IntMap.bindings !id_to_name |> List.map snd in
+  let generalized_vars =
+    Type_env.IntMap.bindings !id_to_name
+    |> List.map snd
+    |> StringSet.of_list
+    |> StringSet.union generalized_params
+    |> StringSet.elements
+  in
   return (forall generalized_vars t)
 and free_tvar_ids_typ : typ -> IntSet.t Type_env.t = fun t ->
   let* t = Type_env.apply_subst t in
