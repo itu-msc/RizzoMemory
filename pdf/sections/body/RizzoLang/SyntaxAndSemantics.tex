@@ -46,7 +46,7 @@ The signal constructor \texttt{::} is right-associative and constructs a signal 
 
 \subsubsection{Patterns}
 
-For patters we have chosen to keep it simple, by not allowing recursive patterns, but we have included the necessary forms to support destructuring of tuples, signals, and constructors:
+For patterns we have chosen to keep it simple, by not allowing recursive patterns, but we have included the necessary forms to support destructuring of tuples, signals, and constructors:
 
 \begin{verbatim}
 p ::= _                           (* wildcard *)
@@ -99,7 +99,7 @@ t ::= Int | Bool | String | Unit   (* primitive types *)
     | t1 * t2                      (* tuple types *)
     | t1 -> t2                     (* function types *)
     | Later t                      (* later type *)
-    | Delayed t                      (* delay type *)
+    | Delayed t                    (* delay type *)
     | Signal t                     (* signal type *)
     | Sync t1 t2                   (* sync type *)
 \end{verbatim}
@@ -108,18 +108,22 @@ t ::= Int | Bool | String | Unit   (* primitive types *)
 
 % reference back to \ref{section:frp:rizzo}
 
-The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.\citeauthor*{rizzo_modal_2025} introduced a set of constructors for these modal types, for which the constructors for \texttt{Later} values are:
+The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.
+\citeauthor*{rizzo_modal_2025} introduced a set of constructors for these modal types, for which the constructors for \texttt{Later} values are:
 
 \begin{itemize}
     \item \texttt{never : Later a}   (* a computation that never produces a value *)
     \item \texttt{wait c : Later a}   (* waits for input on channel \texttt{c : Chan a} *)
+    \item \texttt{watch s~:~Later a} (* watches a partial signal $\texttt{Signal }(\texttt{Option }a)$ *)
     \item \texttt{tail s : Later (Signal a)}   (* gets the tail of signal *)
     \item \texttt{sync l1 l2 : Later (Sync a b)}   (* synchronizes two later's, producing a value when either or both tick *)
+    \item \texttt{laterapp f x}  (* applies \texttt{f~:~Delayed ($a \to b$)} to \texttt{x~:~Later $a$} whenever \texttt{x} becomes available *)
 \end{itemize}
 
 and the constructor for \texttt{Delayed} values is:
 \begin{itemize}
     \item \texttt{delay e : Delayed a}   (* creates a delayed computation from expression \texttt{e} *)
+    \item \texttt{ostar f x}  (* applies \texttt{f~:~Delayed ($a \to b$)} to a delayed value \texttt{x~:~Delayed a} \todo{when it is advanced in a future time step} *)
 \end{itemize}
 
 % \paragraph{The Delayed Type.} A value of type \texttt{Delayed a} represents a computation that will be available at \emph{all} future time steps. This universally quantified nature makes \texttt{Delayed} values safe to use across time boundaries. The main constructor is \texttt{delay e : Delayed a}, which creates a delayed computation from an expression \texttt{e}. The expression \texttt{e} is not evaluated immediately, but is instead, suspended until the delayed value is applied to a later value.
