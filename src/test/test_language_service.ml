@@ -664,6 +664,19 @@ let tests = [
       | Some defn ->
           Alcotest.(check string) "name" "x" defn.Language_service.name;
           Alcotest.(check int) "def line" 0 defn.Language_service.range.start_pos.line);
+  "stdlib definition lookup returns stdlib filename", `Quick,
+    (fun () ->
+      let text = "fun entry x : Int -> Int =\n  map (fun y -> y) x\n" in
+      match Language_service.definition_at_position
+              ~uri:"file:///test.rizz"
+              ~filename:None
+              ~text
+              ~position:{ Language_service.line = 1; character = 2 }
+      with
+      | None -> Alcotest.fail "expected stdlib definition"
+      | Some defn ->
+          Alcotest.(check string) "name" "map" defn.Language_service.name;
+          Alcotest.(check int) "stdlib line" 12 defn.Language_service.range.start_pos.line);
   "hover returns node info", `Quick,
     (fun () ->
       let text = "let x = 1\nlet y = x\n" in

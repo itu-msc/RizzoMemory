@@ -48,6 +48,31 @@ let path_of_uri (uri : string) : string =
   else
     uri
 
+let is_uri_path_char = function
+  | 'a' .. 'z'
+  | 'A' .. 'Z'
+  | '0' .. '9'
+  | '/'
+  | ':'
+  | '-'
+  | '_'
+  | '.'
+  | '~' -> true
+  | _ -> false
+
+let uri_of_path (path : string) : string =
+  let normalized = String.map (function '\\' -> '/' | c -> c) path in
+  let normalized = if String.length normalized >= 2 && normalized.[1] = ':' then "/" ^ normalized else normalized in
+  let buf = Buffer.create (String.length normalized + 8) in
+  String.iter
+    (fun c ->
+      if is_uri_path_char c then
+        Buffer.add_char buf c
+      else
+        Buffer.add_string buf (Printf.sprintf "%%%02X" (Char.code c)))
+    normalized;
+  "file://" ^ Buffer.contents buf
+
 let read_message () : Yojson.Safe.t option =
   let rec read_headers content_length =
     match input_line stdin with
@@ -341,7 +366,7 @@ let process_request ~method_name ~id ~params =
         in
         Some (
           match definition with
-          | Some defn -> json_of_location ~uri defn.range
+          | Some defn -> json_of_location ~uri:(uri_of_path defn.LS.filename) defn.range
           | None -> `Null)
       in
       response ~id ~result:(match result with Some value -> value | None -> `Null)
