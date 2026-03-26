@@ -116,6 +116,9 @@ and convert_var_apps f args x body : Refcount.fn_body =
         Refcount.FnLet (intermediate_var, Refcount.RVarApp (prev_name, get_name arg), aux intermediate_var args)
   in
   aux f args 
+and constant_needs_split (globals: int option M.t) f args =
+  Option.bind (M.find_opt f globals) (Option.map (fun i -> i < List.length args))
+  |> Option.value ~default: false
 
 and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
   let expr_to_fn_body = expr_to_fn_body globals in
@@ -126,10 +129,25 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
   (* TODO: couldn't we just move this elsewhere? shouldn't we just add this sort of logic to anf? *)
   | EApp (EVar (f, _), args, _) when LocalsEnv.mem f locals -> 
     let final_name = Utilities.new_var () in 
-    convert_var_apps f args final_name (FnRet (Refcount.Var final_name))
+    convert_var_apps f args final_name (FnRet (Var final_name))
   | ELet ((x,_), EApp(EVar (f, _), args, _), body, _) when LocalsEnv.mem f locals ->
     let body = expr_to_fn_body (LocalsEnv.add x locals) body in
     convert_var_apps f args x body
+  | EApp (EVar (f, _), args, _) when constant_needs_split globals f args ->
+    (* assuming constant_needs_split already checked that f exists! *)
+    let arity = M.find_opt f globals |> Option.get |> Option.get in
+    let args_constant = List.take arity args |> List.map get_name in
+    let constant_app_var = Utilities.new_var () in
+    let var_apps_variable = Utilities.new_var () in
+    let var_apps_body = convert_var_apps constant_app_var (List.drop arity args) var_apps_variable (FnRet (Var var_apps_variable)) in
+    FnLet (constant_app_var, Refcount.RCall (f, args_constant), var_apps_body)
+  | ELet ((x, _), EApp (EVar (f, _), args, _), body, _) when constant_needs_split globals f args -> 
+    let arity = M.find_opt f globals |> Option.get |> Option.get in
+    let args_constant = List.take arity args |> List.map get_name in
+    let constant_app_var = Utilities.new_var () in
+    let body = expr_to_fn_body (LocalsEnv.add x locals) body in
+    let var_apps_body = convert_var_apps constant_app_var (List.drop arity args) x body in
+    FnLet (constant_app_var, Refcount.RCall (f, args_constant), var_apps_body) 
   | ELet ((x, _), rhs, e', _) ->
     FnLet(x, expr_to_rexpr locals rhs, expr_to_fn_body (LocalsEnv.add x locals) e')
   | ECase (EVar (x,_), cases, _) -> 

@@ -22,10 +22,10 @@ In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global
   \mid x \; \textcolor{greenadditions}{p}
   \mid \mathbf{ctor}_i\,\textcolor{greenadditions}{\bar p}
   \mid \mathbf{proj}_i\,x \\
-  \qquad\mid \textcolor{greenadditions}{\textbf{signal}\;p\;p}
+  \qquad\mid \textcolor{greenadditions}{\textbf{signal}\;(p,p)}
   \mid \mathbf{reset} \; x
   \mid \mathbf{reuse} \; x \;\mathbf{in}\,\mathbf{ctor}_i \;\textcolor{greenadditions}{\bar p} \\
-  \qquad\mid \textcolor{greenadditions}{\mathbf{reuse}\,x\,\mathbf{in}\,\mathbf{signal}\;p\;p}
+  \qquad\mid \textcolor{greenadditions}{\mathbf{reuse}\,x\,\mathbf{in}\,\mathbf{signal}\;(p,p)}
   \end{array}
   \\[2pt]
   F &\in& FnBody \;::=\; 
@@ -81,13 +81,46 @@ In order to avoid over-applied global constants we do \todo{what? We don't do an
 
 Another non-obvious point is the \textit{eta-expansion} of constructors. This invariant is enforced by the type checker and so there is no need for a dedicated transformation.
 
-\subsection{Counting Rizzo's beans}\label{section:refcount:beans}
+\subsection{Counting Rizzo Beans}\label{section:refcount:beans}
+
+Once the Rizzo has been transformed and converted into the IR form of Figure~\ref{figure:refcount_IR} it is time to automatically insert RC instructions. 
+
+The first step is to insert \textbf{reset}/\textbf{reuse} pairs, \todo{why?}, and is done by the algorithm \verb|insert_reset_and_reuse_pairs_fn| which is based on algorithm $R$ by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. 
+The algorithm works by trying to insert \textbf{reset}/\textbf{reuse} pairs for the scrutinee of each \textbf{match} expression. 
+It does so by going into each branch/arm of the \textbf{match} looking for the first point where the scrutinee is dead, meaning not used in the rest of function body, and then trying to find a \textit{suitable} constructor expression such as $\textbf{ctor}_i \; \bar p$. 
+The shape of a constructor is \textit{suitable} when the number of arguments $|\bar p|$ is equal to the number of fields of the scrutinee in the particular branch. Note the distinction between arguments and fields, here an argument is the value given to the application (creation) of the constructor while a field is a place where a value is stored inside of a heap allocated object. 
+As an example consider a \textbf{match} on a value $x : \texttt{Sync}$. In the first two branches on $\texttt{Left }a$/$\texttt{Right }a$ respectively, it is possible to reuse the memory of $x$ (assuming $x$ is unique) in other constructors taking only a single argument, but in the second branch on $\texttt{Both }(a * b)$, it is possible to reuse the memory for constructors taking two arguments.
+
+Signals are handled exactly like the ordinary constructor. 
+The number of fields of signals is always $5$ and similarly, the constructor $\textbf{signal} \; (p,p)$ is only considered \textit{suitable} when the scrutinee has $5$ fields available.\@ \todo{Currently, the only way a constructor can have 5 fields is if it is a single, since we currently only allow tuples of 2 elements and no user-defined types.}
+
+Consider the example in Listing~\ref{listing:refcount:reuse_example}
+
+\begin{lstlisting}[caption={some program}, label={listing:refcount:reuse_example}]
+sync_fold f s = 
+    case s of
+    (let x = proj_0 s in let s' = reset s in
+     let x_just = reuse s' in Ctor1(x) in 
+     let nothing = Ctor0() in ret (f x_just) nothing)
+    (...)
+    (let x = proj_0 s in let y = proj_1 s in
+     let x_just = Ctor1(x) in let y_just = Ctor1(y) in 
+     ret (f x_just) y_just)
+\end{lstlisting}
+
+\todo{Vi kan ikke bare altid reuse, det afhænger af reference count på objektet.}
 
 
 \todo{Walk through the 3 steps and explain: Purpose and how have we adapted it for Rizzo?}
 
+\todo{Mention: Signal is the usual constructor but we hard code its size to 5. Our primitives, how it changes logic for insertion}
 
 
 \todo{Our adaptation of the immutable bean algorithm. Our modifications. How do we insert these refcount-instructions}
 
 \todo{How do we capture/model the Rizzo constructors, i.e. Delay, Later, Signal, \dots}
+
+\subsection{compile time vs. runtime}
+
+
+
