@@ -28,6 +28,7 @@
   menhir
   dune
   fmt
+  unix
   yojson
   (alcotest :with-test))
  (tags

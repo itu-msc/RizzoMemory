@@ -117,6 +117,12 @@ let range_of_name ((_, ann) : _ Ast.name) : range =
 
 let name_text ((name, _) : _ Ast.name) : string = name
 
+let ann_filename (ann : _ Ast.ann) : string =
+  (Ast.get_location ann).Location.start_pos.Lexing.pos_fname
+
+let ann_in_file ~(filename : string) (ann : _ Ast.ann) : bool =
+  String.equal (ann_filename ann) filename
+
 let range_contains_position (range : range) (position : position) : bool =
   let after_start =
     position.line > range.start_pos.line
@@ -295,13 +301,15 @@ let diagnostic_of_type_error ((loc, msg) : Location.t * string) : diagnostic =
   }
 
 let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_result, diagnostic) result =
-  let lexbuf = Lexing.from_string text in
-  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = filename };
   try
-    let parsed = Parser.main Lexer.read lexbuf in
-    let typed_program, type_errors = Typecheck.typecheck parsed in
-    let diagnostics = List.map diagnostic_of_type_error type_errors in
-    Ok { typed_program; diagnostics }
+    let parsed = Source_units.parse_document_with_default_prelude ~exclude_paths:[filename] ~filename text in
+    let validation_errors = Source_units.validate_program parsed in
+    if validation_errors <> [] then
+      Ok { typed_program = []; diagnostics = List.map diagnostic_of_type_error validation_errors }
+    else
+      let typed_program, type_errors = Typecheck.typecheck parsed in
+      let diagnostics = List.map diagnostic_of_type_error type_errors in
+      Ok { typed_program; diagnostics }
   with
   | Lexer.Error (loc, msg) ->
       Error
@@ -311,18 +319,15 @@ let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_res
           message = friendly_lexer_message msg;
           source = "rizzoc";
         }
-  | Parser.Error ->
-      let loc = Location.mk lexbuf.Lexing.lex_start_p lexbuf.Lexing.lex_curr_p in
-      let range_override, msg = parse_error_details ~text loc in
-      let range = match range_override with Some r -> r | None -> range_of_location loc in
-      Error { range; severity = Error; message = msg; source = "rizzoc" }
-  | exn when is_menhir_parse_error exn ->
-      let loc = Location.mk lexbuf.Lexing.lex_start_p lexbuf.Lexing.lex_curr_p in
-      let range_override, msg = parse_error_details ~text loc in
-      let range = match range_override with Some r -> r | None -> range_of_location loc in
-      Error { range; severity = Error; message = msg; source = "rizzoc" }
+  | Source_units.Parser.Error (loc, msg) ->
+      if String.equal loc.Location.start_pos.Lexing.pos_fname filename then
+        let range_override, friendly_msg = parse_error_details ~text loc in
+        let range = match range_override with Some r -> r | None -> range_of_location loc in
+        Error { range; severity = Error; message = friendly_msg; source = "rizzoc" }
+      else
+        Error { range = range_of_location loc; severity = Error; message = msg; source = "rizzoc" }
   | exn ->
-      let loc = Location.mk lexbuf.Lexing.lex_start_p lexbuf.Lexing.lex_curr_p in
+      let loc = Location.mk Lexing.dummy_pos Lexing.dummy_pos in
       let msg = Printf.sprintf "Parse error: %s" (Printexc.to_string exn) in
       Error { range = range_of_location loc; severity = Error; message = msg; source = "rizzoc" }
 
@@ -344,17 +349,20 @@ let symbol_kind_of_expr : type s. s Ast.expr -> symbol_kind =
   fun expr -> if expr_is_function expr then Function else Variable
 
 let top_level_declarations : type s.
-    text:string -> s Ast.program -> (string * symbol_kind * range * range) list =
-  fun ~text program ->
+    text:string -> filename:string option -> s Ast.program -> (string * symbol_kind * range * range) list =
+  fun ~text ~filename program ->
   let _ = text in
   let declaration_of_top : s Ast.top_expr -> (string * symbol_kind * range * range) option = fun top ->
     match top with
     | Ast.TopLet (top_name, rhs, ann) ->
-        let kind = symbol_kind_of_expr rhs in
-        let name = name_text top_name in
-        let top_range = range_of_ann ann in
-        let selection_range = range_of_name top_name in
-        Some (name, kind, top_range, selection_range)
+        if Option.is_some filename && not (ann_in_file ~filename:(Option.get filename) ann) then
+          None
+        else
+          let kind = symbol_kind_of_expr rhs in
+          let name = name_text top_name in
+          let top_range = range_of_ann ann in
+          let selection_range = range_of_name top_name in
+          Some (name, kind, top_range, selection_range)
   in
   List.filter_map declaration_of_top program
 
@@ -388,15 +396,16 @@ let top_level_declarations : type s.
         iter_expr f e
       | Ast.EAnno (e, _, _) -> iter_expr f e
 
-    let collect_expr_ranges : type s. s Ast.program -> (s Ast.expr * range) list =
-      fun program ->
+    let collect_expr_ranges : type s. filename:string -> s Ast.program -> (s Ast.expr * range) list =
+      fun ~filename program ->
         let acc = ref [] in
         let push expr =
           let expr_range = range_of_ann (Ast.expr_get_ann expr) in
           acc := (expr, expr_range) :: !acc
         in
         let visit_top = function
-          | Ast.TopLet (_, rhs, _) -> iter_expr push rhs
+          | Ast.TopLet (_, rhs, ann) when ann_in_file ~filename ann -> iter_expr push rhs
+          | Ast.TopLet _ -> ()
         in
         List.iter visit_top program;
         !acc
@@ -622,18 +631,20 @@ let analyze_document ~(uri : string) ~(filename : string option) ~(text : string
   | Error diagnostic -> { diagnostics = [diagnostic] }
 
 let document_symbols ~(uri : string) ~(filename : string option) ~(text : string) : document_symbol list =
-  match parse_with_filename ~filename:(file_name ~uri ~filename) text with
+  let active_filename = file_name ~uri ~filename in
+  match parse_with_filename ~filename:active_filename text with
   | Error _ -> []
   | Ok { typed_program = program; _ } ->
-      top_level_declarations ~text program
+      top_level_declarations ~text ~filename:(Some active_filename) program
       |> List.map (fun (name, kind, top_range, selection_range) ->
              { name; kind; range = top_range; selection_range })
 
 let definition_at_position ~(uri : string) ~(filename : string option) ~(text : string) ~(position : position) : definition option =
-  match parse_with_filename ~filename:(file_name ~uri ~filename) text with
+  let active_filename = file_name ~uri ~filename in
+  match parse_with_filename ~filename:active_filename text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
-      let top_decls = top_level_declarations ~text program in
+      let top_decls = top_level_declarations ~text ~filename:None program in
       let top_env =
         top_decls
         |> List.fold_left
@@ -742,22 +753,26 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
       let rec find_in_tops tops =
         match tops with
         | [] -> None
-        | Ast.TopLet (top_name, rhs, _) :: rest ->
-            let name = name_text top_name in
-            let name_range = range_of_name top_name in
-            if range_contains_position name_range position then
-              Some { name; range = name_range }
+        | Ast.TopLet (top_name, rhs, ann) :: rest ->
+            if not (ann_in_file ~filename:active_filename ann) then
+              find_in_tops rest
             else
-              let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
-              let env' = StringMap.add name { kind; range = name_range } top_env in
-              match find_in_expr env' rhs with
-              | Some _ as found -> found
-              | None -> find_in_tops rest
+              let name = name_text top_name in
+              let name_range = range_of_name top_name in
+              if range_contains_position name_range position then
+                Some { name; range = name_range }
+              else
+                let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
+                let env' = StringMap.add name { kind; range = name_range } top_env in
+                match find_in_expr env' rhs with
+                | Some _ as found -> found
+                | None -> find_in_tops rest
       in
       find_in_tops program
 
 let hover_at_position ~(uri : string) ~(filename : string option) ~(text : string) ~(position : position) : hover_info option =
-  match parse_with_filename ~filename:(file_name ~uri ~filename) text with
+  let active_filename = file_name ~uri ~filename in
+  match parse_with_filename ~filename:active_filename text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
       let top_level_hover =
@@ -765,16 +780,19 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
           (fun (top : Ast.typed Ast.top_expr) ->
             match top with
             | Ast.TopLet (top_name, rhs, top_ann) ->
-                let name_range = range_of_name top_name in
-                if range_contains_position name_range position then
-                  let base =
-                    match symbol_kind_of_expr rhs with
-                    | Function -> "top-level function: " ^ name_text top_name
-                    | Variable -> "top-level binding: " ^ name_text top_name
-                  in
-                  Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
+                if not (ann_in_file ~filename:active_filename top_ann) then
+                  None
                 else
-                  None)
+                  let name_range = range_of_name top_name in
+                  if range_contains_position name_range position then
+                    let base =
+                      match symbol_kind_of_expr rhs with
+                      | Function -> "top-level function: " ^ name_text top_name
+                      | Variable -> "top-level binding: " ^ name_text top_name
+                    in
+                    Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
+                  else
+                    None)
           program
       in
       match top_level_hover with
@@ -854,13 +872,17 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
             List.find_map
               (fun (top : Ast.typed Ast.top_expr) ->
                 match top with
-                | Ast.TopLet (_, rhs, _) -> find_symbol_hover_in_expr rhs)
+                | Ast.TopLet (_, rhs, top_ann) ->
+                    if ann_in_file ~filename:active_filename top_ann then
+                      find_symbol_hover_in_expr rhs
+                    else
+                      None)
               program
           in
           match symbol_hover with
           | Some _ as hover -> hover
           | None ->
-              collect_expr_ranges program
+              collect_expr_ranges ~filename:active_filename program
               |> List.filter (fun (_, range) -> range_contains_position range position)
               |> List.sort (fun (_, r1) (_, r2) -> compare (range_span_score r1) (range_span_score r2))
               |> first_opt
@@ -1039,7 +1061,8 @@ let completions_at_position
     ~(filename : string option)
     ~(text : string)
     ~(position : position) : completion_list =
-  match parse_with_filename ~filename:(file_name ~uri ~filename) text with
+  let active_filename = file_name ~uri ~filename in
+  match parse_with_filename ~filename:active_filename text with
   | Error _ -> completion_empty_list
   | Ok { typed_program = program; _ } ->
       let _ = uri in
@@ -1188,7 +1211,9 @@ let completions_at_position
       let rec env_in_tops = function
         | [] -> None
         | Ast.TopLet (top_name, rhs, top_ann) :: rest ->
-            if range_contains_position (range_of_ann top_ann) position then
+            if not (ann_in_file ~filename:active_filename top_ann) then
+              env_in_tops rest
+            else if range_contains_position (range_of_ann top_ann) position then
               if range_contains_position (range_of_name top_name) position then
                 Some base_env
               else
@@ -1206,22 +1231,29 @@ let completions_at_position
       completion_items_of_env ~text ~position env
 
 let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string) : semantic_token list =
-  match parse_with_filename ~filename:(file_name ~uri ~filename) text with
+  let active_filename = file_name ~uri ~filename in
+  match parse_with_filename ~filename:active_filename text with
   | Error _ -> []
   | Ok { typed_program = program; _ } ->
-      let top_decls = top_level_declarations ~text program in
+      let top_decls = top_level_declarations ~text ~filename:None program in
+      let visible_top_decls = top_level_declarations ~text ~filename:(Some active_filename) program in
       let tokens : semantic_token list ref = ref [] in
       let push_token ~(kind : semantic_token_kind) ~(range : range) =
         tokens := { range; kind; declaration = false } :: !tokens
       in
       let top_env =
-        top_decls
+        visible_top_decls
         |> List.fold_left
              (fun env (name, kind, _top_range, selection_range) ->
                let semantic_kind = semantic_kind_of_symbol_kind kind in
                push_token ~kind:semantic_kind ~range:selection_range;
                StringMap.add name { kind = semantic_kind; range = selection_range } env)
-             builtin_scoped_symbols
+             (top_decls
+              |> List.fold_left
+                   (fun env (name, kind, _top_range, selection_range) ->
+                     let semantic_kind = semantic_kind_of_symbol_kind kind in
+                     StringMap.add name { kind = semantic_kind; range = selection_range } env)
+                   builtin_scoped_symbols)
       in
       let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.typed Ast.expr) : unit =
         (match expr with
@@ -1315,12 +1347,15 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
       in
       List.iter
         (function
-          | Ast.TopLet (top_name, rhs, _) ->
-              let name = name_text top_name in
-              let name_range = range_of_name top_name in
-              let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
-              let env' = StringMap.add name { kind; range = name_range } top_env in
-              walk_expr env' rhs)
+          | Ast.TopLet (top_name, rhs, ann) ->
+              if ann_in_file ~filename:active_filename ann then
+                let name = name_text top_name in
+                let name_range = range_of_name top_name in
+                let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
+                let env' = StringMap.add name { kind; range = name_range } top_env in
+                walk_expr env' rhs
+              else
+                ())
         program;
       !tokens
       |> List.filter (fun (token : semantic_token) -> valid_single_line_range token.range)

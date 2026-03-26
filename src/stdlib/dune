@@ -1,0 +1,6 @@
+(install
+ (section lib)
+ (package rizzoc)
+ (files
+  (manifest.txt as rizzoc/stdlib/manifest.txt)
+  (signal.rizz as rizzoc/stdlib/signal.rizz)))

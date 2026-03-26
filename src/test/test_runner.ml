@@ -9,6 +9,7 @@ let () =
     "STRING TESTS", Test_strings.string_tests;
     "MAP2 TESTS", Test_map2.map2_tests;
     "LANGUAGE SERVICE TESTS", Test_language_service.tests;
+    "SOURCE UNIT TESTS", Test_source_units.tests;
     "ANF TESTS", Test_anf.anf_tests;
     "LIFT TESTS", Test_lift.lift_tests;
     "LAMBDA TESTS", Test_lambda.lambda_tests;

@@ -2,7 +2,7 @@
 
 (library
  (name rizzoc)
- (libraries fmt))
+ (libraries fmt unix))
 
 (menhir
  (modules parser))

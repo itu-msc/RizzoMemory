@@ -18,6 +18,22 @@ let test_valid_document_has_no_diagnostics () =
   let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check int) "diagnostic count" 0 (List.length result.Language_service.diagnostics)
 
+let test_document_can_use_implicit_signal_prelude () =
+  let text =
+    "fun entry x : Int -> Int =\n"
+    ^ "  head (map (fun y -> y) (x :: never))\n"
+  in
+  let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check int) "signal prelude diagnostic count" 0 (List.length result.Language_service.diagnostics)
+
+let test_stdlib_document_excludes_itself_from_implicit_prelude () =
+  match Source_units.default_source_units () with
+  | [] -> Alcotest.fail "expected at least one stdlib source"
+  | Source_units.Source_text { filename; text } :: _ ->
+      let result = Language_service.analyze_document ~uri:"" ~filename:(Some filename) ~text in
+      Alcotest.(check int) "stdlib file diagnostic count" 0 (List.length result.Language_service.diagnostics)
+  | Source_units.Source_file _ :: _ -> Alcotest.fail "expected stdlib source text units"
+
 let test_invalid_document_reports_diagnostic () =
   let text = "let x = @\n" in
   let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
@@ -599,6 +615,8 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
 
 let tests = [
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
+  "implicit signal prelude diagnostics", `Quick, test_document_can_use_implicit_signal_prelude;
+  "stdlib document excludes self from implicit prelude", `Quick, test_stdlib_document_excludes_itself_from_implicit_prelude;
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
   "missing paren gives friendly diagnostic", `Quick, test_missing_paren_reports_friendly_message;
   "malformed match branch gives hint", `Quick, test_malformed_match_branch_reports_hint;

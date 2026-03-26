@@ -14,6 +14,7 @@ depends: [
   "menhir"
   "dune" {>= "3.20"}
   "fmt"
+  "unix"
   "yojson"
   "alcotest" {with-test}
   "odoc" {with-doc}

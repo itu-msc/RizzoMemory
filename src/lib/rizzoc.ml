@@ -8,37 +8,11 @@ include Lexer
 end
 
 module Parser = struct
-include Parser
+include Source_units.Parser
+end
 
-exception Error of Location.t * string
-
-let parse_with lexbuf =
-  Effectful.reset_custom ();
-  try Parser.main Lexer.read lexbuf 
-  with
-  | Lexer.Error _ as exn ->
-      raise exn
-  | exn ->
-      let loc = Location.mk lexbuf.Lexing.lex_start_p lexbuf.Lexing.lex_curr_p in
-      let msg = Printf.sprintf "Menhir parse error: %s" (Printexc.to_string exn) in
-      raise (Error (loc, msg))
-
-let parse_string (s : string) =
-  let lexbuf = Lexing.from_string s in
-  parse_with lexbuf
-
-let parse_string_with_filename ~(filename : string) (s : string) =
-  let lexbuf = Lexing.from_string s in
-  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = filename };
-  parse_with lexbuf
-
-let parse_file (filename : string) =
-  let ic = open_in filename in
-  let lexbuf = Lexing.from_channel ic in
-  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with Lexing.pos_fname = filename };
-  let result = parse_with lexbuf in
-  close_in ic;
-  result
+module Source_units = struct
+include Source_units
 end
 
 module Ast = struct 
@@ -106,11 +80,19 @@ let apply_typed_transforms p = p |> lower_typed_program |> apply_transforms
 
 let emit = Backend_c.emit_c_code
 
-let rec compile_from_file input_file output_file =
+let source_units_for_compile ?executable_path ?stdlib_path ?(include_paths = []) input_files =
+  Source_units.default_source_units ?executable_path ?stdlib_path ()
+  @ Source_units.included_source_units include_paths
+  @ List.map Source_units.source_file input_files
+
+let rec compile_from_files ?executable_path ?stdlib_path ?(include_paths = []) input_files output_file =
   try
-    let program = Parser.parse_file input_file in
+    let program = Source_units.parse_source_units (source_units_for_compile ?executable_path ?stdlib_path ~include_paths input_files) in
     compile program output_file
   with
+  | Source_units.Validation_failed errors ->
+      Source_units.report_validation_errors errors;
+      failwith "Validation failed"
   | Parser.Error (loc, msg) ->
       Location.show_error_context loc msg;
       failwith "Parsing failed"
@@ -121,12 +103,18 @@ let rec compile_from_file input_file output_file =
       let msg = Printf.sprintf "Unexpected error: %s" (Printexc.to_string exn) in
       Fmt.epr "@{<red>Error@}: %s@." msg;
       failwith "Compilation failed"
+
+and compile_from_file ?executable_path ?stdlib_path ?(include_paths = []) input_file output_file =
+  compile_from_files ?executable_path ?stdlib_path ~include_paths [input_file] output_file
   
 and compile_from_string input_string output_file =
   try
     let program = Parser.parse_string input_string in
     compile program output_file
   with
+  | Source_units.Validation_failed errors ->
+      Source_units.report_validation_errors errors;
+      failwith "Validation failed"
   | Parser.Error (loc, msg) ->
       Location.show_error_context loc msg;
       failwith "Parsing failed"
@@ -143,6 +131,11 @@ and compile parsed_program output_file =
 	  Fmt.pr "@[<v>@{<cyan>%s@}@,%a@]@.@." title pp value
   in
   try
+    let validation_errors = Source_units.validate_program parsed_program in
+    (match validation_errors with
+    | [] -> ()
+    | _ -> raise (Source_units.Validation_failed validation_errors)
+    );
 		print_section "------- Parsed -------" Ast.pp_program parsed_program;
 		let (typed, errors) = typecheck parsed_program in
 		(match errors with

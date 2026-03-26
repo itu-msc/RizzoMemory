@@ -7,15 +7,10 @@ fun describeText s =
     | first :: _rest -> "Starts with " + first
 
 
-@effectful
-fun _const x : 'a -> Signal 'a = x :: never
 
 fun appendSignalToNeverAndAdd1 s a = _const (a |> s)
 
 fun is0 x = x == 0
-
-fun mk_sig later = 
-        (fun a -> a :: mk_sig later) |> later
 
 fun entry x = 
     let my_console_sig = mk_sig (wait console) in

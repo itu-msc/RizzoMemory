@@ -16,15 +16,15 @@ MSc thesis project implementing **Rizzo**, a programming language based on the w
 ## Development
 
 - Build: `opam exec -- dune build`
-- Run compiler on a source file: `opam exec -- dune exec rizzoc ./examples/first.rizz`
+- Run compiler on one or more source files: `opam exec -- dune exec rizzoc ./examples/first.rizz`
 
 ## Full flow: compile and run a `.rizz` file
 
-The full pipeline compiles a Rizzo source file to C and then runs it:
+The full pipeline compiles one or more Rizzo source files to C and then runs them:
 
 ```bash
 # 1. Compile .rizz → output.c
-opam exec -- dune exec rizzoc <file.rizz>
+opam exec -- dune exec rizzoc <file.rizz> [more-files.rizz ...]
 
 # 2. Compile output.c with the C runtime headers
 gcc -I./src/runtime output.c -o output
@@ -40,6 +40,14 @@ npm run rizzo
 ```
 
 > **Windows**: The extension automatically handles Windows-specific details (`.exe` extension, `-m64` flag). Both GCC and Clang are supported.
+
+### Implicit stdlib
+
+File-based compilation and editor analysis now prepend a compiler-owned stdlib before user files are typechecked. The default stdlib lives in [src/stdlib](src/stdlib) in the repository and installs next to the compiler under `lib/rizzoc/stdlib`. That means user `.rizz` files can use combinators such as `map`, `zip`, `scan`, and `filter_map` without copy-pasting their definitions first.
+
+You can replace the default stdlib with `--overwrite-stdpath <path>`, where `<path>` can point to either a single `.rizz` file or a stdlib directory. You can also prepend extra files or directories with repeated `-I <path>` flags.
+
+Multiple input files are compiled left-to-right after that implicit stdlib and any `-I` includes. Later files can refer to earlier files, but the reverse order is not supported yet.
 
 ### Running from VS Code
 

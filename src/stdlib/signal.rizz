@@ -1,7 +1,7 @@
 fun _const x : 'a -> Signal 'a = x :: never
 //must be _const, otherwise it ouptuts 'const' which is a keyword, oops.
 
-fun mk_sig later = 
+fun mk_sig later =
     (fun a -> a :: mk_sig later) |> later
 
 fun mk_sig_of_channel c =
@@ -10,22 +10,9 @@ fun mk_sig_of_channel c =
 fun init_signal c x =
     x :: mk_sig_of_channel c
 
-fun map f s = 
+fun map f s =
     match s with
     | x :: xs -> f x :: (map f |> xs)
-    /*  let x = head s in
-        inc x;
-        inc s;                              -> refcount of s is at least 2 now?
-        let xs = tail s in                  -> ctor2(s)
-        let s' = reset s in
-        inc f;
-        let fx = f x in
-        let map_pap = pap map(f) in
-        let map_delayed = delay map_pap in
-        let new_tail = laterapp map_delayed xs in
-        let r = reuse s' in (fx :: new_tail) in 
-        r
-    */
 
 fun map_l f s =
     (map f) |> s
@@ -52,19 +39,19 @@ fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =
     f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))
 
 fun _switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
-    | x :: xs -> 
+    | x :: xs ->
         let cont= fun mysync -> match mysync with
             | Left (xs_)   -> _switch xs_ d
             | Right (d_)   -> d_
             | Both (_, d_) -> d_
-        in 
+        in
         let tl  = sync xs d in
         x :: (cont |> sync xs d)
 
-fun switch_s s d : Signal 'a -> Later ('a -> Signal 'a) -> Signal 'a = 
+fun switch_s s d : Signal 'a -> Later ('a -> Signal 'a) -> Signal 'a =
     match s with
     | x :: xs ->
-        let cont = fun mysync -> 
+        let cont = fun mysync ->
             match mysync with
             | Left (xs_)    -> switch_s xs_ d
             | Right (f)     -> f x
@@ -88,7 +75,7 @@ fun scan_l f b s =
     (scan f b) |> s
 
 fun interleave_from f current xs ys =
-    let cont = fun mysync -> 
+    let cont = fun mysync ->
         match mysync with
         | Left (xs_)      -> interleave_from f (head xs_) xs_ ys
         | Right (ys_)     -> interleave_from f (head ys_) xs ys_
@@ -119,7 +106,7 @@ fun filterL p s =
 fun jump f s : ('a -> Option (Signal 'a)) -> Signal 'a -> Signal 'a =
     match s with
     | x :: xs ->
-        let cont = fun s_ -> 
+        let cont = fun s_ ->
             match f (head s_) with
             | Just (y) -> y
             | Nothing  -> jump f s_
@@ -138,20 +125,3 @@ fun trigger f s1 s2 =
 
 fun trigger_l f s1 s2 =
     (fun s1' -> trigger f s1' s2) |> s1
-
-fun mytail s = match s with
-    | x :: xs -> let x_delayed = delay x in xs
-
-let entry : Unit -> Unit = fun ignore -> 
-    let my_int_sig = _const 5 in
-    let my_console_sig = mk_sig (wait console) in
-    let parsed_console_sig = filter_map parse_int ("" :: my_console_sig) in
-    let reactive_signal = 42 :: parsed_console_sig in
-
-    let xx = console_out_signal my_int_sig in 
-    let xxx = console_out_signal reactive_signal in
-
-    let fourty42_sig = filter (fun x -> x == 42) (0 :: parsed_console_sig) in
-    let zzz = console_out_signal (_switch reactive_signal fourty42_sig) in
-
-    start_event_loop ()

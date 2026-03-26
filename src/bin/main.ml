@@ -1,6 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc <program.rizz>"
+let usage_msg = "Usage: rizzoc [--overwrite-stdpath <path>] [-I <path>] <program.rizz> [more-files.rizz ...]"
 
 
 let ansi_of_tag = function
@@ -44,19 +44,30 @@ let ensure_rizz_extension path =
 
 let () =
 	setup_tty ();
-	let input_file = ref None in
-	let set_input_file path =
-		match !input_file with
-		| None -> input_file := Some path
-		| Some _ -> raise (Arg.Bad "Only one input file is allowed")
+	let stdlib_path = ref None in
+	let include_paths = ref [] in
+	let input_files = ref [] in
+	let set_stdlib_path path =
+		stdlib_path := Some path
 	in
-	Arg.parse [] set_input_file usage_msg;
-	let input_file =
-		match !input_file with
-		| Some path -> path
-		| None ->
+	let add_include_path path =
+		include_paths := !include_paths @ [path]
+	in
+	let add_input_file path =
+		input_files := !input_files @ [path]
+	in
+	Arg.parse
+		[ ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
+		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
+		]
+		add_input_file
+		usage_msg;
+	let input_files =
+		match !input_files with
+		| _ :: _ -> !input_files
+		| [] ->
 			Arg.usage [] usage_msg;
 			exit 1
 	in
-	ensure_rizz_extension input_file;
-	Rizzoc.compile_from_file input_file "output.c"
+	List.iter ensure_rizz_extension input_files;
+	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files "output.c"
