@@ -11,6 +11,9 @@
 #include "heap.h"
 #include "later.h"
 #include "channel.h"
+
+static bool rz_should_quit = false;
+
 #include "builtins.h"
 #include "os.h"
 #include "stdlib.h"
@@ -31,6 +34,7 @@ rz_signal_list_t *rz_global_output_signals = NULL;
 static void rz_init_rizzo()
 {
     rz_global_output_signals = rz_signal_list_create();
+    rz_should_quit = false;
 }
 
 /** Steps the Rizzo program one tick forward.
@@ -47,7 +51,7 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
 static rz_box_t rz_start_event_loop()
 {
     char buffer[__RZ_INPUT_BUFFER_SIZE];
-    while (true)
+    while (!rz_should_quit)
     {
         rz_os_result_t status = rz_readline(buffer, sizeof(buffer));
         if (status == RZ_OK)

@@ -57,5 +57,5 @@ let test_simple_console_identity () =
     Alcotest.failf "Compilation failed with exception: %s" (Printexc.to_string exn)
 
 let end_to_end_tests = [
-  (* "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity; *)
+  "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity;
 ]

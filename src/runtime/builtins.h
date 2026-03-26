@@ -75,8 +75,8 @@ static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *
 static inline rz_box_t rz_quit(size_t num_args, rz_box_t *args)
 {
 	rz_builtin_expect_arity("quit", 1, num_args);
-	(void)args;
-	exit(0);
+	rz_should_quit = true;
+	return args[0];
 }
 
 /* This function takes a Later and constructs a signal 
