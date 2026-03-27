@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <inttypes.h>
 
 #ifdef _WIN32
 #include <malloc.h>
@@ -398,7 +399,7 @@ static void rz_debug_print_signal(rz_box_t box);
 static inline void rz_debug_print_box(rz_box_t box) {
     switch (box.kind) {
         case RZ_BOX_INT: {
-            printf("%lld", box.as.i64);
+            printf("%" PRId64 "", box.as.i64);
         } break;
         case RZ_BOX_STRING_LITERAL: {
             printf("%s", rz_unbox_str_lit(box));

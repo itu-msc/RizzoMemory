@@ -152,7 +152,7 @@ static void rz_debug_print_signal(rz_box_t box)
     rz_debug_print_box(signal->head);
     printf(", tail: ");
     rz_debug_print_box(signal->tail);
-    printf(", updated: %lld)", signal->updated.as.i64);
+    printf(", updated: %"PRId64")", signal->updated.as.i64);
 }
 
 /*   |------------------------------|
