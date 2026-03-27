@@ -123,7 +123,7 @@ static inline rz_box_t rz_builtin_clock(size_t num_args, rz_box_t *args)
 	interval_ms = rz_builtin_expect_int("clock", 0, args[0]);
 	if (interval_ms <= 0)
 	{
-		fprintf(stderr, "Runtime error: builtin 'clock' expected a positive interval in milliseconds, got %lld\n", interval_ms);
+		fprintf(stderr, "Runtime error: builtin 'clock' expected a positive interval in milliseconds, got %"PRId64"\n", interval_ms);
 		exit(1);
 	}
 	chan = rz_timer_register(interval_ms);

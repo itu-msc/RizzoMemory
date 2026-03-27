@@ -23,6 +23,7 @@
 \definecolor{types}{rgb}{0.17,0.57,0.68}
 \definecolor{backcolour}{RGB}{248,246,240}
 \definecolor{methods}{RGB}{255,193,7}
+\definecolor{beans}{RGB}{128, 0, 128}
 
 \lstdefinestyle{full}{
   language=[Objective]Caml,
@@ -51,10 +52,10 @@
     % N, sum, result, arr
   },
   morekeywords=[2]{1,2,3,4,5,6,7,8,9,0},
-  % morekeywords=[3]{scan,filter},
+  morekeywords=[3]{reset,reuse,ret,pap},
   keywordstyle=\color{bluekeywords},
   keywordstyle=[2]{\color{greencomments}},
-  keywordstyle=[3]{\color{methods}},
+  keywordstyle=[3]{\color{beans}},
   stringstyle=\color{redstrings},
   basicstyle=\linespread{1.1}\ttfamily\small,
 }

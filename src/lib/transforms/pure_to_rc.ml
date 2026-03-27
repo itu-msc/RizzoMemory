@@ -122,19 +122,10 @@ and constant_needs_split (globals: int option M.t) f args =
   Option.bind (M.find_opt f globals) (Option.map (fun i -> i < List.length args))
   |> Option.value ~default: false
 
-and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
-  let expr_to_fn_body = expr_to_fn_body globals in
-  let expr_to_rexpr = expr_to_rexpr globals in
-  match e with
-  | EVar (x, _) -> FnRet (Var x)
-  | EConst (c, _) -> FnRet (Const c)
-  (* TODO: couldn't we just move this elsewhere? shouldn't we just add this sort of logic to anf? *)
+and app_to_fn_body globals locals = function
   | EApp (EVar (f, _), args, _) when LocalsEnv.mem f locals -> 
     let final_name = Utilities.new_var () in 
-    convert_var_apps f args final_name (FnRet (Var final_name))
-  | ELet ((x,_), EApp(EVar (f, _), args, _), body, _) when LocalsEnv.mem f locals ->
-    let body = expr_to_fn_body (LocalsEnv.add x locals) body in
-    convert_var_apps f args x body
+    convert_var_apps f args final_name (FnRet (Var final_name)) 
   | EApp (EVar (f, _), args, _) when constant_needs_split globals f args ->
     (* assuming constant_needs_split already checked that f exists! *)
     let arity = M.find_opt f globals |> Option.get |> Option.get in
@@ -143,15 +134,43 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
     let var_apps_variable = Utilities.new_var () in
     let var_apps_body = convert_var_apps constant_app_var (List.drop arity args) var_apps_variable (FnRet (Var var_apps_variable)) in
     FnLet (constant_app_var, Refcount.RCall (f, args_constant), var_apps_body)
+  | EApp (EVar (f, _), EVar (x, _) :: (_ :: _ as rest), _) when Rizzo_builtins.is_builtin_projection f ->
+    let proj_idx = (Rizzo_builtins.get f).projection_index |> Option.get in
+    let proj_var = Utilities.new_var () in
+    let apps_variable = Utilities.new_var () in
+    let var_apps_body = convert_var_apps proj_var rest apps_variable (FnRet (Var apps_variable)) in
+    FnLet (proj_var, Refcount.RProj (proj_idx, x), var_apps_body)
+  | ELet ((x,_), EApp(EVar (f, _), args, _), body, _) when LocalsEnv.mem f locals ->
+    let body = expr_to_fn_body globals (LocalsEnv.add x locals) body in
+    convert_var_apps f args x body
   | ELet ((x, _), EApp (EVar (f, _), args, _), body, _) when constant_needs_split globals f args -> 
     let arity = M.find_opt f globals |> Option.get |> Option.get in
     let args_constant = List.take arity args |> List.map get_name in
     let constant_app_var = Utilities.new_var () in
-    let body = expr_to_fn_body (LocalsEnv.add x locals) body in
+    let body = expr_to_fn_body globals (LocalsEnv.add x locals) body in
     let var_apps_body = convert_var_apps constant_app_var (List.drop arity args) x body in
     FnLet (constant_app_var, Refcount.RCall (f, args_constant), var_apps_body) 
-  | ELet ((x, _), rhs, e', _) ->
-    FnLet(x, expr_to_rexpr locals rhs, expr_to_fn_body (LocalsEnv.add x locals) e')
+  | ELet ((vx,_), EApp (EVar (f, _), EVar (x, _) :: (_ :: _ as rest), _), body, _) when Rizzo_builtins.is_builtin_projection f ->
+    let proj_idx = (Rizzo_builtins.get f).projection_index |> Option.get in
+    let proj = Refcount.RProj (proj_idx, x) in
+    let proj_var = Utilities.new_var () in
+    let body = expr_to_fn_body globals (LocalsEnv.add vx locals) body in
+    let var_apps_body = convert_var_apps proj_var rest vx body in
+    FnLet (proj_var, proj, var_apps_body)
+  | ELet ((x, _), rhs, body, _) -> 
+    FnLet(x, expr_to_rexpr globals locals rhs, expr_to_fn_body globals (LocalsEnv.add x locals) body)
+  | e -> 
+    let x = Utilities.new_var () in
+    FnLet (x, expr_to_rexpr globals locals e, FnRet (Refcount.Var x))
+    
+and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
+  let expr_to_fn_body = expr_to_fn_body globals in
+  let expr_to_rexpr = expr_to_rexpr globals in
+  match e with
+  | EVar (x, _) -> FnRet (Var x)
+  | EConst (c, _) -> FnRet (Const c)
+  (* TODO: couldn't we just move this elsewhere? shouldn't we just add this sort of logic to anf? *)
+  | EApp _ | ELet _ -> app_to_fn_body globals locals e
   | ECase (EVar (x,_), cases, _) -> 
     let get_fields_of_pattern = function (* Causion: are we counting the nested part correctly? *)
     | PVar _ | PWildcard _ | PConst _ -> 0
@@ -181,9 +200,9 @@ let to_rc_intermediate_representation (builtins: Refcount.ownership list M.t) (p
     | TopLet(name, EAnno(EFun (params, _, _), _, _), _) -> (fst name, Some (List.length params))
     | TopLet(name, _, _) -> (fst name, None)
     in
+    let toplevel_arity = M.of_list (List.map mapper p) in
     let builtins_arity = M.map (fun b -> Some (List.length b)) builtins in
-    List.map mapper p |> M.of_list 
-    |> M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate global name %s" key)) builtins_arity
+    M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate global name %s" key)) builtins_arity toplevel_arity
   in
   let to_fun names body =
     let params = List.map fst names in
