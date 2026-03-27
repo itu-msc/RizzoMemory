@@ -34,6 +34,7 @@ rz_signal_list_t *rz_global_output_signals = NULL;
 /* initializes the Rizzo runtime. */
 static void rz_init_rizzo()
 {
+    rz_heap_init();
     rz_global_output_signals = rz_signal_list_create();
     rz_should_quit = false;
     rz_timer_reset();
@@ -43,9 +44,11 @@ static void rz_init_rizzo()
    Additionally, outputs the head of any registered outputs that was updated during heap update. */
 static inline void rz_step(rz_channel_t chan, rz_box_t v)
 {
+#ifdef __RZ_DEBUG_INFO
+    rz_debug_print_heap();
+#endif
     rz_heap_update(chan, v);
     rz_print_registered_outputs();
-    // rz_debug_print_heap();
 }
 
 /* Starts the Rizzo event loop:
@@ -72,10 +75,6 @@ static rz_box_t rz_start_event_loop()
         if (status == RZ_OK)
         {
             rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_string_len(buffer, strlen(buffer)));
-#ifdef __RZ_DEBUG_INFO
-            printf("AFTER STEP\n");
-            rz_debug_print_heap();
-#endif
         }
         else if (status == RZ_NO_INPUT)
         {

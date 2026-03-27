@@ -43,8 +43,8 @@ let dedupe_preserving_order paths =
 let candidate_stdlib_roots ?executable_path:maybe_executable_path () =
     let resolved_executable_path = Option.value maybe_executable_path ~default:(executable_path ()) in
     let executable_dir = Filename.dirname resolved_executable_path in
-    [ join_path executable_dir installed_stdlib_relative_parts;
-        join_path executable_dir dev_stdlib_relative_parts;
+    [ join_path executable_dir dev_stdlib_relative_parts;
+        join_path executable_dir installed_stdlib_relative_parts;
     ]
     |> List.map realpath
     |> dedupe_preserving_order

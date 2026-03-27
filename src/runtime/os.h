@@ -27,8 +27,17 @@ static rz_os_result_t rz_readline(char* buffer, size_t size) {
     }
 
     size_t len = strlen(buffer);
+    bool had_line_ending = false;
     if(len > 0 && buffer[len - 1] == '\n') {
         buffer[len - 1] = '\0';
+        len--;
+        had_line_ending = true;
+    }
+    if (len > 0 && buffer[len - 1] == '\r') {
+        buffer[len - 1] = '\0';
+        had_line_ending = true;
+    }
+    if (had_line_ending) {
         return RZ_OK;
     }
 

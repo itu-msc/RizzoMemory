@@ -18,25 +18,50 @@ typedef struct rz_signal
     rz_box_t prev, next; /* holders a pointer (of rz_signal_t) to the prev/next signal in the heap */
 } rz_signal_t;
 
-rz_signal_t *rz_heap_base = NULL;
-rz_signal_t *rz_heap_cursor = NULL;
+#define RZ_HEAP_SENTINEL_TAG 255
+
+static rz_signal_t rz_heap_head = {
+    ._base = {.num_fields = 0, .tag = RZ_HEAP_SENTINEL_TAG, .obj_type = RZ_SIGNAL, .refcount = -1},
+    .head = {.kind = RZ_BOX_INT, .as.i64 = 0},
+    .tail = {.kind = RZ_BOX_PTR, .as.obj = &RZ_NEVER_OBJ},
+    .updated = {.kind = RZ_BOX_INT, .as.i64 = 0},
+    .prev = {.kind = RZ_BOX_PTR, .as.obj = NULL},
+    .next = {.kind = RZ_BOX_PTR, .as.obj = NULL},
+};
+
+static rz_signal_t rz_heap_tail = {
+    ._base = {.num_fields = 0, .tag = RZ_HEAP_SENTINEL_TAG, .obj_type = RZ_SIGNAL, .refcount = -1},
+    .head = {.kind = RZ_BOX_INT, .as.i64 = 0},
+    .tail = {.kind = RZ_BOX_PTR, .as.obj = &RZ_NEVER_OBJ},
+    .updated = {.kind = RZ_BOX_INT, .as.i64 = 0},
+    .prev = {.kind = RZ_BOX_PTR, .as.obj = NULL},
+    .next = {.kind = RZ_BOX_PTR, .as.obj = NULL},
+};
+
+rz_signal_t *rz_heap_base = &rz_heap_head;
+rz_signal_t *rz_heap_cursor = &rz_heap_tail;
 size_t rz_heap_size = 0;
+
+static inline void rz_heap_init(void)
+{
+    rz_heap_head.next = rz_make_ptr((rz_object_t *)&rz_heap_tail);
+    rz_heap_tail.prev = rz_make_ptr((rz_object_t *)&rz_heap_head);
+
+    rz_heap_base = &rz_heap_head;
+    rz_heap_cursor = &rz_heap_tail;
+    rz_heap_size = 0;
+}
 
 static inline void rz_remove_signal_node(rz_signal_t *sig)
 {
     rz_signal_t *prev = (rz_signal_t *)sig->prev.as.obj;
     rz_signal_t *next = (rz_signal_t *)sig->next.as.obj;
 
-    if (prev)
-        prev->next.as.obj = (rz_object_t *)next;
-    /* if sig.prev is null, then sig must be the heap_base (first element of heap), so move heap_base forward */
-    else
-        rz_heap_base = next;
-    if (next)
-        next->prev.as.obj = (rz_object_t *)prev;
+    prev->next.as.obj = (rz_object_t *)next;
+    next->prev.as.obj = (rz_object_t *)prev;
 
     if (rz_heap_cursor == sig)
-        rz_heap_cursor = next ? next : prev;
+        rz_heap_cursor = next;
 }
 
 static inline void rz_insert_signal_node(rz_signal_t *sig)
@@ -47,13 +72,8 @@ static inline void rz_insert_signal_node(rz_signal_t *sig)
     sig->prev.as.obj = (rz_object_t *)prev;
     sig->next.as.obj = (rz_object_t *)next;
 
-    if (next)
-        next->prev.as.obj = (rz_object_t *)sig;
-    if (prev)
-        prev->next.as.obj = (rz_object_t *)sig;
-    /* if cursor is pointing to the first element (heap size) then we should become the first */
-    if (rz_heap_cursor == rz_heap_base)
-        rz_heap_base = sig;
+    next->prev.as.obj = (rz_object_t *)sig;
+    prev->next.as.obj = (rz_object_t *)sig;
 }
 
 /* constructs a new signal AND inserts it into the global heap.
@@ -73,14 +93,7 @@ static rz_object_t *rz_signal_ctor(rz_box_t head, rz_box_t tail)
     rz_signal_t *new_sig = (rz_signal_t *)rz_ctor(0, 5, args);
     new_sig->_base.obj_type = RZ_SIGNAL;
 
-    if (rz_heap_base == NULL)
-    {
-        rz_heap_cursor = rz_heap_base = new_sig;
-    }
-    else
-    {
-        rz_insert_signal_node(new_sig);
-    }
+    rz_insert_signal_node(new_sig);
 
     return (rz_object_t *)new_sig;
 }
@@ -110,6 +123,21 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
     rz_signal_t *sig = (rz_signal_t *)obj;
     rz_refcount_dec_box(sig->head);
     rz_refcount_dec_box(sig->tail);
+
+    /* Keep the currently processed source signal in place.
+       Removing it would advance rz_heap_cursor to the next node, and reinserting
+       relative to that cursor would move the source behind its dependents. */
+    if (rz_heap_cursor == sig)
+    {
+        sig->updated.as.i64 = 0;
+        sig->_base.num_fields = 5;
+        sig->_base.tag = 0;
+        sig->_base.obj_type = RZ_SIGNAL;
+        sig->head = head;
+        sig->tail = tail;
+        return obj;
+    }
+
     rz_remove_signal_node(sig);
 
     sig->updated.as.i64 = 0;
@@ -119,30 +147,46 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
     sig->head = head;
     sig->tail = tail;
 
-    /* rz_insert_signal_node will update the prev/next ptr,
-       so the signal is correctly placed just before the heap cursor */
+     /* rz_insert_signal_node will update the prev/next ptr,
+         so the signal is correctly placed just before the heap cursor */
     rz_insert_signal_node(sig);
     return obj;
 }
 
 static void rz_debug_print_heap()
 {
-    if (rz_heap_base == NULL)
+    printf("| ");
+
+    rz_signal_t *sig = &rz_heap_head;
+    size_t index = 0;
+
+    while (sig)
     {
-        printf("Heap is empty\n");
-        return;
+        if (sig == &rz_heap_head || sig == &rz_heap_tail)
+        {
+            if (sig == rz_heap_cursor)
+                printf("(|) ");
+            else
+                printf("| ");
+        }
+        else if (rz_unbox_int(sig->updated))
+        {
+            printf("[%zu] ", index);
+        }
+        else
+        {
+            if (sig == rz_heap_cursor)
+                printf("(%zu) ", index);
+            else
+                printf("%zu ", index);
+        }
+
+        sig = (rz_signal_t *)rz_unbox_ptr(sig->next);
+        if (sig != &rz_heap_tail && sig != NULL)
+            index++;
     }
-    rz_signal_t *cursor = rz_heap_base;
-    printf("Heap size: %zu\n", rz_heap_size);
-    for (int i = 0; cursor; cursor = (rz_signal_t *)cursor->next.as.obj, i++)
-    {
-        printf("%d:(ref:%d) (", i, cursor->_base.refcount);
-        rz_debug_print_box(cursor->head);
-        printf(", ");
-        rz_debug_print_later(cursor->tail);
-        const char *updated_str = rz_unbox_int(cursor->updated) ? "true" : "false";
-        printf(", U: %s, prev: %p, next: %p);\n", updated_str, rz_unbox_ptr(cursor->prev), rz_unbox_ptr(cursor->next));
-    }
+
+    printf("|\n");
 }
 
 static void rz_debug_print_signal(rz_box_t box)
@@ -167,12 +211,11 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v);
 
 static void rz_heap_update(rz_channel_t chan, rz_box_t v)
 {
-    if (!rz_heap_base)
+    if (rz_unbox_ptr(rz_heap_head.next) == (rz_object_t *)&rz_heap_tail)
         return;
-    rz_signal_t *cur = rz_heap_cursor = rz_heap_base;
-    while (cur)
+    rz_heap_cursor = (rz_signal_t *)rz_unbox_ptr(rz_heap_head.next);
+    while (rz_heap_cursor != &rz_heap_tail)
     {
-        rz_heap_cursor = cur;
         rz_object_t *tl = rz_unbox_ptr(rz_heap_cursor->tail);
         if (!rz_ticked(tl, chan, v))
         {
@@ -189,9 +232,10 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v)
             rz_refcount_dec_box(rz_heap_cursor->tail);
             rz_heap_cursor->head = l->head;
             rz_heap_cursor->tail = l->tail;
+
             rz_refcount_dec_box(l_boxed);
         }
-        cur = (rz_signal_t *)rz_unbox_ptr(rz_heap_cursor->next);
+        rz_heap_cursor = (rz_signal_t *)rz_unbox_ptr(rz_heap_cursor->next);
     }
 }
 
