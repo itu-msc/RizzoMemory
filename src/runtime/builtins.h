@@ -66,6 +66,15 @@ static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *ar
 	return rz_start_event_loop();
 }
 
+static inline rz_box_t rz_builtin_string_of_int(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("string_of_int", 1, num_args);
+	int64_t value = rz_builtin_expect_int("string_of_int", 0, args[0]);
+	char buffer[21]; // enough to hold -2^63 and null terminator
+	snprintf(buffer, sizeof(buffer), "%" PRId64, value);
+	return rz_make_string_len(buffer, strlen(buffer));
+}
+
 static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *args)
 {
 	rz_builtin_expect_arity("console_out_signal", 1, num_args);

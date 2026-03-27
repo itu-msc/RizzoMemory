@@ -41,6 +41,7 @@ let builtins = [
   mk "string_is_empty" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TBool)) ();
   mk "string_head" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TString)) ();
   mk "string_tail" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TString)) ();
+  mk "string_of_int" ~public:true ~ownership: (Some [Refcount.Borrowed]) (TFun (Cons1(TInt, []), TString)) ();
   mk "match_fail" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TParam "'a")) ();
 
   mk "head" ~proj_idx:(Some 0) (TFun (Cons1(TSignal (TParam "'a"), []), TParam "'a")) ();
