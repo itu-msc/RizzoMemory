@@ -26,7 +26,20 @@ let test_parse_int_has_expected_type () =
         (Ast.eq_typ result_t (TOption TInt))
   | _ -> Alcotest.fail "unexpected typed AST shape for parse_int builtin"
 
+let test_clock_has_expected_type () =
+  let typed = parse_and_typecheck "let ticks = clock(100)\n" in
+  match typed with
+  | [TopLet (_, EApp (EVar ("clock", Ann_typed (_, builtin_t)), [_], Ann_typed (_, result_t)), _)] ->
+      Alcotest.(check bool) "clock builtin type"
+        true
+        (Ast.eq_typ builtin_t (TFun (Cons1 (TInt, []), TSignal TInt)));
+      Alcotest.(check bool) "clock return type"
+        true
+        (Ast.eq_typ result_t (TSignal TInt))
+  | _ -> Alcotest.fail "unexpected typed AST shape for clock builtin"
+
 let builtin_tests = [
   "console is a string channel", `Quick, test_console_is_string_channel;
   "parse_int returns option int", `Quick, test_parse_int_has_expected_type;
+  "clock returns signal int", `Quick, test_clock_has_expected_type;
 ]

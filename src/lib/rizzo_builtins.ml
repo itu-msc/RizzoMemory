@@ -25,6 +25,7 @@ let output_builtins = [
 
 let builtins = [
   mk "start_event_loop" ~ownership:(Some [Refcount.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
+  mk "clock" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TInt, []), TSignal TInt)) ();
   mk "parse_int" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TOption TInt)) ();
   mk "not" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TBool, []), TBool)) ();
   mk "eq" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TParam "'a", [TParam "'a"]), TBool)) ();

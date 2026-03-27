@@ -5,6 +5,10 @@
 #include <stdlib.h>
 
 #include "core.h"
+#include "channel.h"
+#include "heap.h"
+#include "later.h"
+#include "timer.h"
 
 static rz_box_t rz_start_event_loop();
 static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args);
@@ -59,6 +63,35 @@ static inline rz_box_t rz_builtin_make_just(rz_box_t value)
 	return rz_make_ptr(rz_ctor_var(1, 1, value));
 }
 
+static inline rz_box_t rz_builtin_make_wait_later(rz_channel_t chan)
+{
+	return rz_make_ptr(rz_ctor_var(RZ_TAG_LATER_WAIT, 1, rz_make_channel(chan)));
+}
+
+static inline rz_box_t rz_builtin_clock_step(size_t num_args, rz_box_t *args);
+
+static inline rz_box_t rz_builtin_make_clock_signal(rz_channel_t chan, rz_box_t head)
+{
+	rz_box_t delayed_step;
+	rz_box_t wait_later;
+	rz_box_t tail;
+	delayed_step = rz_make_ptr(rz_ctor_var(
+		RZ_TAG_DELAY,
+		1,
+		rz_lift_c_fun(rz_builtin_clock_step, 2, (rz_box_t[]){rz_make_channel(chan)}, 1)));
+	wait_later = rz_builtin_make_wait_later(chan);
+	tail = rz_make_ptr(rz_ctor_var(RZ_TAG_LATER_APP, 2, delayed_step, wait_later));
+	return rz_make_ptr_sig(rz_signal_ctor(head, tail));
+}
+
+static inline rz_box_t rz_builtin_clock_step(size_t num_args, rz_box_t *args)
+{
+	rz_channel_t chan;
+	rz_builtin_expect_arity("clock_step", 2, num_args);
+	chan = rz_builtin_expect_int("clock_step", 0, args[0]);
+	return rz_builtin_make_clock_signal(chan, args[1]);
+}
+
 static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *args)
 {
 	rz_builtin_expect_arity("start_event_loop", 1, num_args);
@@ -79,6 +112,23 @@ static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *
 {
 	rz_builtin_expect_arity("console_out_signal", 1, num_args);
 	return rz_register_output_signal(num_args, args);
+}
+
+static inline rz_box_t rz_builtin_clock(size_t num_args, rz_box_t *args)
+{
+	int64_t interval_ms;
+	rz_channel_t chan;
+	rz_box_t head;
+	rz_builtin_expect_arity("clock", 1, num_args);
+	interval_ms = rz_builtin_expect_int("clock", 0, args[0]);
+	if (interval_ms <= 0)
+	{
+		fprintf(stderr, "Runtime error: builtin 'clock' expected a positive interval in milliseconds, got %lld\n", interval_ms);
+		exit(1);
+	}
+	chan = rz_timer_register(interval_ms);
+	head = rz_make_int(0);
+	return rz_builtin_make_clock_signal(chan, head);
 }
 
 static inline rz_box_t rz_quit(size_t num_args, rz_box_t *args)

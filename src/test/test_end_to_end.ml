@@ -60,6 +60,62 @@ let test_simple_console_identity () =
   with exn ->
     Alcotest.failf "Compilation failed with exception: %s" (Printexc.to_string exn)
 
+let test_clock_signal_outputs_ticks () =
+  let progam =
+    {|
+      fun entry x =
+        let ticks = clock(20) in
+        let out = console_out_signal(ticks) in
+        let q = quit_at(tail ticks) in
+        start_event_loop ()
+    |}
+  in
+  let normalize_line line =
+    if String.ends_with ~suffix:"\r" line
+    then String.sub line 0 (String.length line - 1)
+    else line
+  in
+  let output_file = Filename.temp_file "clock" ".c" in
+  let binary_file = Filename.temp_file "clock" ".exe" in
+  let original_cwd = Sys.getcwd () in
+  try
+    Fun.protect
+      ~finally:(fun () -> Sys.chdir original_cwd)
+      (fun () ->
+        Rizzoc.compile_from_string progam output_file;
+        Sys.chdir "../../../..";
+        let command =
+          Rizzoc.to_shell_command
+            (Rizzoc.generated_c_compiler_invocation ~input_file:output_file
+               ~output_file:binary_file ())
+        in
+        let status = Sys.command command in
+        if status <> 0
+        then
+          let dir = Sys.getcwd () in
+          Alcotest.failf "C compile failed with status %d.\nCommand: %s,\nat dir: %s" status command dir
+        else
+          let (in_chan, out_chan) = Unix.open_process binary_file in
+          close_out out_chan;
+          let rec read_all acc =
+            match input_line in_chan with
+            | line -> read_all (normalize_line line :: acc)
+            | exception End_of_file -> List.rev acc
+          in
+          let outputs = read_all [] in
+          close_in in_chan;
+          let process_status = Unix.close_process (in_chan, out_chan) in
+          Alcotest.(check bool) "initial clock output appears" true (List.mem "0" outputs);
+          Alcotest.(check bool) "first clock tick appears" true (List.mem "20" outputs);
+          Alcotest.(check int) "process exit code" 0
+            (match process_status with
+            | Unix.WEXITED code -> code
+            | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+            | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal))
+  with exn ->
+    Alcotest.failf "Clock compilation failed with exception: %s" (Printexc.to_string exn)
+
 let end_to_end_tests = [
   "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity;
+  "Clock signal outputs ticks", `Quick, test_clock_signal_outputs_ticks;
 ]

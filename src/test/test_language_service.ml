@@ -196,6 +196,10 @@ let test_completions_include_builtins_and_constructors () =
     true
     (completion_has_label ~labels ~name:"add");
   Alcotest.(check bool)
+    "includes clock builtin"
+    true
+    (completion_has_label ~labels ~name:"clock");
+  Alcotest.(check bool)
     "does not include internal string intrinsic"
     false
     (completion_has_label ~labels ~name:"string_concat");

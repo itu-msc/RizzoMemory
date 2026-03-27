@@ -11,6 +11,7 @@
 #include "heap.h"
 #include "later.h"
 #include "channel.h"
+#include "timer.h"
 
 static bool rz_should_quit = false;
 
@@ -35,6 +36,7 @@ static void rz_init_rizzo()
 {
     rz_global_output_signals = rz_signal_list_create();
     rz_should_quit = false;
+    rz_timer_reset();
 }
 
 /** Steps the Rizzo program one tick forward.
@@ -43,6 +45,7 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
 {
     rz_heap_update(chan, v);
     rz_print_registered_outputs();
+    // rz_debug_print_heap();
 }
 
 /* Starts the Rizzo event loop:
@@ -51,9 +54,21 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
 static rz_box_t rz_start_event_loop()
 {
     char buffer[__RZ_INPUT_BUFFER_SIZE];
+    rz_channel_t timer_channel;
+    rz_box_t timer_value;
     while (!rz_should_quit)
     {
-        rz_os_result_t status = rz_readline(buffer, sizeof(buffer));
+        double now = rz_timer_now_seconds();
+        uint32_t timeout_ms = UINT32_MAX;
+        bool has_timers = rz_timer_next_timeout_ms(now, &timeout_ms);
+        rz_os_result_t status = has_timers
+            ? rz_readline_timeout(buffer, sizeof(buffer), timeout_ms)
+            : rz_readline(buffer, sizeof(buffer));
+        now = rz_timer_now_seconds();
+        while (rz_timer_take_due(now, &timer_channel, &timer_value))
+        {
+            rz_step(timer_channel, timer_value);
+        }
         if (status == RZ_OK)
         {
             rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_string_len(buffer, strlen(buffer)));
@@ -64,11 +79,21 @@ static rz_box_t rz_start_event_loop()
         }
         else if (status == RZ_NO_INPUT)
         {
-            break;
+            if (!rz_timer_has_registered_channels())
+            {
+                break;
+            }
+            if (!rz_should_quit && timeout_ms > 0 && timeout_ms != UINT32_MAX)
+            {
+                rz_sleep_ms(timeout_ms);
+            }
         }
         else if (status == RZ_INPUT_TOO_LONG)
         {
             printf("Input too long, try again.\n");
+        }
+        else if (status == RZ_TIMEOUT)
+        {
         }
     }
     return rz_make_int(0);

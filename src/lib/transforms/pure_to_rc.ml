@@ -4,6 +4,8 @@ let get_name =
   function
   | EVar (x, _) -> Refcount.Var x
   | EConst (c, _) -> Refcount.Const c
+  | EAnno (EVar (x, _), _, _) -> Refcount.Var x
+  | EAnno (EConst (c, _), _, _) -> Refcount.Const c
   | _ -> failwith "get_name failed: expected variable or constant"
 
 module M = Map.Make(String)

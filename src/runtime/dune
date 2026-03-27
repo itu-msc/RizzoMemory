@@ -8,4 +8,5 @@
   (heap.h as rizzoc/runtime/heap.h)
   (later.h as rizzoc/runtime/later.h)
   (os.h as rizzoc/runtime/os.h)
+  (timer.h as rizzoc/runtime/timer.h)
   (rizzo.h as rizzoc/runtime/rizzo.h)))

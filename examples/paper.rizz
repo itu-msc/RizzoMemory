@@ -1,0 +1,68 @@
+
+
+// fun nats init = scan (fun n x -> n + 1) init 
+
+// let entry =
+//   let debug = false in
+// //   let (every_second, every_second_stop) = clock_signal 1.0 in
+// //   let port_input = mkSig_of_channel @@ port_input 9000 in
+//   let read_int = parse_int in
+
+//   let console_sig = mk_sig (wait console) in
+  
+
+//   start_event_loop ()
+
+
+let cc = console 
+let console  = mk_sig (wait cc)
+let quit_sig = filterL (fun x -> x == "quit") console 
+let show_sig = filterL (fun x -> x == "show") console 
+let neg_sig  = filterL (fun x -> x == "negate") console
+let num_sig  = filter_mapL parse_int console 
+let clock_sig = clock 10000 
+let nats = fun init -> scan (fun x y -> x + 1) init clock_sig
+let interleaved = 
+  interleave 
+    (fun f g x -> f (g x)) 
+    (map (fun x n -> 0 - n) ("" :: neg_sig)) 
+    (map (fun m n -> m + n : Int -> Int -> Int) (0  :: num_sig))
+
+fun nats' init =
+    switchS (nats init) ((fun s n -> nats' ((head s) n)) |> tail interleaved)
+
+fun entry x = 
+    let n = 0 in
+    let nats_prim = nats' n in
+    let show_nat = trigger_l (fun x n -> n) show_sig (nats_prim) in
+
+    let _x = console_out_signal ("" :: map_l string_of_int show_nat) in
+
+
+    let _x = quit_at quit_sig in
+    start_event_loop ()
+
+
+
+//   let quit_sig = filterL ((=) "quit") console_sig in
+//   let show_sig = filterL ((=) "show") console_sig in
+//   let neg_sig  = filterL ((=) "negate") console_sig in
+//   let num_sig  = filter_mapL read_int console_sig in
+//   let interleaved =
+//     interleave
+//       Fun.compose
+//       (map (fun _ n -> -n   ) ("" @: neg_sig))
+//       (map (fun m n -> m + n) (0  @: num_sig))
+//   in
+//   let rec nats' init =
+//     switchS (nats init) ((fun s n -> nats' (head s n)) <<| tail interleaved)
+//   in
+//   let nats_prim = nats' 0 in
+//   if debug then
+//    console_output (map (fun n -> "tick: " ^ string_of_int n) nats_prim);
+//   let show_nat = triggerL (fun _ n -> n) show_sig (nats_prim) in
+// //   port_outputL Unix.inet_addr_loopback 9000 (mapL string_of_int show_nat);
+//   console_outputL (mapL (fun s -> "Number is: " ^ s) port_input);
+//   set_quit quit_sig;
+//   start_event_loop ();
+//   every_second_stop ()

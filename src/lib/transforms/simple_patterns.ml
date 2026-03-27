@@ -104,7 +104,10 @@ and compile_simple_pattern scrutinee case_body = function
     let tl_proj = EUnary (UTail, scrutinee, ann) in
     let body = sink_until_first_use tail tl_proj ann (case_body ()) in
     Some (body)
-  | _ -> failwith "Only simple patterns - variables !"
+  | _ -> 
+    let ann = expr_get_ann scrutinee in
+    let location = Ast.get_location ann in
+    Location.report_error location "compile_simple_pattern: unexpected non-simple pattern in match"
 
 and compile_string_case scrutinee cases ann =
   let scrutinee = compile_match scrutinee in

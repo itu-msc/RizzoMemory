@@ -30,8 +30,10 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
     | ELet ((s, _) as x, e1, e2, ann) ->
         let e1' = aux env e1 in
         (match e1' with
-          | EVar y -> (* let x = y *)
-            let env' = (s, EVar y) :: env in 
+          | EVar _ (* let x = y *)
+          | EConst _ (* let x = 3 *)
+          | EAnno ((EVar _ | EConst _), _,_) -> (* let x = (y : t) or let x = (3 : t) *) 
+            let env' = (s, e1') :: env in 
             aux env' e2
           | _ -> ELet (x, e1', aux env e2, ann)
         )
