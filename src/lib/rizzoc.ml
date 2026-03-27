@@ -62,6 +62,39 @@ type generated_c_compiler_invocation = {
 
 let c_compiler_candidates = ["gcc"; "clang"]
 
+let runtime_installed_relative_parts = [".."; "runtime"]
+let runtime_dev_relative_parts = [".."; ".."; ".."; ".."; "src"; "runtime"]
+
+let path_exists path =
+  Sys.file_exists path
+
+let is_directory path =
+  try Sys.is_directory path with Sys_error _ -> false
+
+let join_path base parts =
+  List.fold_left Filename.concat base parts
+
+let realpath path =
+  try Unix.realpath path with Unix.Unix_error (_, _, _) -> path
+
+let executable_path () =
+  realpath Sys.executable_name
+
+let candidate_runtime_roots ?executable_path:maybe_executable_path () =
+  let resolved_executable_path = Option.value maybe_executable_path ~default:(executable_path ()) in
+  let executable_dir = Filename.dirname resolved_executable_path in
+  [ join_path executable_dir runtime_installed_relative_parts;
+    join_path executable_dir runtime_dev_relative_parts;
+  ]
+  |> List.map realpath
+
+let resolve_default_runtime_root ?executable_path () =
+  match List.find_opt is_directory (candidate_runtime_roots ?executable_path ()) with
+  | Some root -> root
+  | None ->
+      let tried = String.concat ", " (candidate_runtime_roots ?executable_path ()) in
+      failwith (Printf.sprintf "Could not locate runtime directory. Looked in: %s" tried)
+
 let is_executable_file path =
   Sys.file_exists path && not (Sys.is_directory path)
 
@@ -112,6 +145,10 @@ let resolve_c_compiler ?compiler () =
 let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
     ?(is_windows = Sys.win32) ~input_file ~output_file () =
   let compiler = resolve_c_compiler ?compiler () in
+  let runtime_include =
+    if runtime_include = "src/runtime" then resolve_default_runtime_root ()
+    else runtime_include
+  in
   let arguments =
     (if is_windows then ["-m64"] else [])
     @ ["-I"; runtime_include; input_file; "-o"; output_file]

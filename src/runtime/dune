@@ -1,0 +1,11 @@
+(install
+ (section lib)
+ (files
+  (allocation.h as rizzoc/runtime/allocation.h)
+  (builtins.h as rizzoc/runtime/builtins.h)
+  (channel.h as rizzoc/runtime/channel.h)
+  (core.h as rizzoc/runtime/core.h)
+  (heap.h as rizzoc/runtime/heap.h)
+  (later.h as rizzoc/runtime/later.h)
+  (os.h as rizzoc/runtime/os.h)
+  (rizzo.h as rizzoc/runtime/rizzo.h)))

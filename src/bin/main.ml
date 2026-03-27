@@ -70,4 +70,17 @@ let () =
 			exit 1
 	in
 	List.iter ensure_rizz_extension input_files;
-	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files "output.c"
+	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files "output.c";
+	let runtime_include = "src/runtime" in
+	let output_c = "output.c" in
+	let output_file = "output.exe" in
+	let shellCommand = Rizzoc.to_shell_command (Rizzoc.generated_c_compiler_invocation ~runtime_include ~input_file:output_c ~output_file ()) in
+	let returnCode = Sys.command shellCommand in
+	if returnCode <> 0 then (
+		Fmt.epr "@{<red>Error@}: C compilation failed with exit code %d.@." returnCode;
+		Fmt.epr "Command: %s@." shellCommand;
+		exit 1
+	) else (
+		Fmt.pr "Compilation successful! Executable generated at: %s@." output_file
+	)
+
