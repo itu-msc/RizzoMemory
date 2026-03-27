@@ -1,6 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc [--overwrite-stdpath <path>] [-I <path>] <program.rizz> [more-files.rizz ...]"
+let usage_msg = "Usage: rizzoc [--overwrite-stdpath <path>] [--print-ast] [-I <path>] <program.rizz> [more-files.rizz ...]"
 
 
 let ansi_of_tag = function
@@ -47,8 +47,12 @@ let () =
 	let stdlib_path = ref None in
 	let include_paths = ref [] in
 	let input_files = ref [] in
+	let print_ast = ref false in
 	let set_stdlib_path path =
 		stdlib_path := Some path
+	in
+	let set_print_ast () =
+		print_ast := true
 	in
 	let add_include_path path =
 		include_paths := !include_paths @ [path]
@@ -58,6 +62,7 @@ let () =
 	in
 	Arg.parse
 		[ ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
+		; ("--print-ast", Arg.Unit set_print_ast, "Print parsed, typed, transformed, and reference-counted ASTs during compilation")
 		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
 		]
 		add_input_file
@@ -70,6 +75,7 @@ let () =
 			exit 1
 	in
 	List.iter ensure_rizz_extension input_files;
+	print_ast_dumps := !print_ast;
 	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files "output.c";
 	let runtime_include = "src/runtime" in
 	let output_c = "output.c" in

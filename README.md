@@ -18,6 +18,8 @@ MSc thesis project implementing **Rizzo**, a programming language based on the w
 - Build: `opam exec -- dune build`
 - Run compiler on one or more source files: `opam exec -- dune exec rizzoc ./examples/first.rizz`
 
+By default the compiler is quiet and only emits `output.c`. To inspect the intermediate ASTs while compiling, pass `--print-ast` to `rizzoc`.
+
 ## Full flow: compile and run a `.rizz` file
 
 The full pipeline compiles one or more Rizzo source files to C and then runs them:

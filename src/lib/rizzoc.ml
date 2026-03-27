@@ -188,6 +188,8 @@ let source_units_for_compile ?executable_path ?stdlib_path ?(include_paths = [])
   @ Source_units.included_source_units include_paths
   @ List.map Source_units.source_file input_files
 
+let print_ast_dumps = ref false
+
 let rec compile_from_files ?executable_path ?stdlib_path ?(include_paths = []) input_files output_file =
   try
     let program = Source_units.parse_source_units (source_units_for_compile ?executable_path ?stdlib_path ~include_paths input_files) in
@@ -239,10 +241,10 @@ and compile parsed_program output_file =
     | [] -> ()
     | _ -> raise (Source_units.Validation_failed validation_errors)
     );
-		print_section "------- Parsed -------" Ast.pp_program parsed_program;
+    if !print_ast_dumps then print_section "------- Parsed -------" Ast.pp_program parsed_program;
 		let (typed, errors) = typecheck parsed_program in
 		(match errors with
-		| [] -> print_section "------- Type checked -------" Ast.pp_typed_program typed
+    | [] -> if !print_ast_dumps then print_section "------- Type checked -------" Ast.pp_typed_program typed
 		| _ ->
 			Fmt.pr "@{<yellow>------- Type checking failed, showing partial typechecked program -------@}@.";
 			List.iter (fun err -> 
@@ -253,9 +255,9 @@ and compile parsed_program output_file =
       failwith "Type checking failed"
 		);
     let transformed = apply_typed_transforms typed in
-    print_section "------- Transformed -------" Ast.pp_program transformed;
+    if !print_ast_dumps then print_section "------- Transformed -------" Ast.pp_program transformed;
     let rc_env, rc_program = ref_count transformed in
-		print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
+    if !print_ast_dumps then print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
 		emit rc_program output_file
 	with
 	| Lexer.Error (loc, msg) ->
