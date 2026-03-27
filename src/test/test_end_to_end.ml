@@ -27,7 +27,11 @@ let test_simple_console_identity () =
       (fun () ->
         Rizzoc.compile_from_string progam output_file;
         Sys.chdir "../../../..";
-        let command = Printf.sprintf "clang -m64 -Isrc/runtime -o %s %s" binary_file output_file in
+        let command =
+          Rizzoc.to_shell_command
+            (Rizzoc.generated_c_compiler_invocation ~runtime_include:"src/runtime"
+               ~input_file:output_file ~output_file:binary_file ())
+        in
         let status = Sys.command command in
         if status <> 0
         then

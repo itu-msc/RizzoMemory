@@ -55,6 +55,72 @@ end
 
 module Utilities = struct include Utilities end
 
+type generated_c_compiler_invocation = {
+  compiler : string;
+  arguments : string list;
+}
+
+let c_compiler_candidates = ["gcc"; "clang"]
+
+let is_executable_file path =
+  Sys.file_exists path && not (Sys.is_directory path)
+
+let split_search_path value =
+  let separator = if Sys.win32 then ';' else ':' in
+  value
+  |> String.split_on_char separator
+  |> List.map (fun segment -> if segment = "" then "." else segment)
+
+let command_candidates command =
+  let has_dir_separator =
+    String.contains command '/' || (Sys.win32 && String.contains command '\\')
+  in
+  let suffixes = if Sys.win32 then [""; ".exe"; ".cmd"; ".bat"] else [""] in
+  if Filename.is_relative command && not has_dir_separator then
+    let search_paths =
+      Sys.getenv_opt "PATH"
+      |> Option.value ~default:""
+      |> split_search_path
+    in
+    List.concat_map
+      (fun search_path ->
+        List.map (fun suffix -> Filename.concat search_path (command ^ suffix)) suffixes)
+      search_paths
+  else
+    List.map (fun suffix -> command ^ suffix) suffixes
+
+let command_exists command =
+  List.exists is_executable_file (command_candidates command)
+
+let find_available_c_compiler () =
+  match List.find_opt command_exists c_compiler_candidates with
+  | Some compiler -> compiler
+  | None ->
+      failwith
+        "No supported C compiler found. Expected gcc or clang to be available on PATH."
+
+let resolve_c_compiler ?compiler () =
+  match compiler with
+  | Some compiler when String.trim compiler <> "" ->
+      let compiler = String.trim compiler in
+      if command_exists compiler then compiler
+      else
+        failwith
+          (Printf.sprintf "Configured C compiler is not available on PATH: %s" compiler)
+  | _ -> find_available_c_compiler ()
+
+let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
+    ?(is_windows = Sys.win32) ~input_file ~output_file () =
+  let compiler = resolve_c_compiler ?compiler () in
+  let arguments =
+    (if is_windows then ["-m64"] else [])
+    @ ["-I"; runtime_include; input_file; "-o"; output_file]
+  in
+  { compiler; arguments }
+
+let to_shell_command { compiler; arguments } =
+  Printf.sprintf "%s %s" compiler (String.concat " " (List.map Filename.quote (arguments)))
+
 module Language_service = struct
 include Language_service
 end
