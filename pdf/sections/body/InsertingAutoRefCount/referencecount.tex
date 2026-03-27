@@ -1,4 +1,5 @@
-\section{Automatically reference counting Rizzo}\label{section:refcount}
+\section{Automatically reference counting Rizzo}
+\label{section:refcount}
 
 % \todo{Quick refresh of assumptions from \textit{Reference Counting section}}
 
@@ -6,7 +7,7 @@ The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021
 
 In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global constant $c$, $\texttt{ctor}_i \; \bar p$ constructs a value of some erased type with tag $i$, and $\texttt{proj}_i \; x$ projects the $i\text{-th}$ field from constructor value $x$. Fully applied calls and partial applications may only happen on global constants and variable application is defined separately for only a single argument.
 
-\begin{figure}[h]
+\begin{figure}[ht]
   \centering
   \small
   \[
@@ -39,8 +40,7 @@ In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global
   \delta &\in& Program \;=\; Const \to Fn \mid \textcolor{greenadditions}{Const \to FnBody}
   \end{array}
   \]
-  \caption{The reference counting IR by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} with modifications for Rizzo marked in green.}
-  \label{figure:refcount_IR}
+  \caption{The reference counting IR by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} with modifications for Rizzo marked in green.}\label{figure:refcount_IR}
 \end{figure}
 
 Observe that the IR is defined in A-normal form~\cite{flanagan_essence_1993}, where expressions are non-recursive and are only allowed on the right-hand-side of let-bindings. 
@@ -59,8 +59,7 @@ Figure~\ref{figure:refcount:transformations} shows the transformation pipeline. 
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=\textwidth]{flowchart_transformations.png}
-	\caption{\todo{Transformations}}
-	\label{figure:refcount:transformations}
+	\caption{Compiler passes that a Rizzo program goes through when running the compiler. Transformations inside the green (upper) box receive Rizzo programs as input and in the blue (lower) box they operate on the RC IR.}\label{figure:refcount:transformations}
 \end{figure}
 
 The compiler performs consecutive lambda elimination, lambda lifting, copy propagation, alpha-renaming, pattern lowering, dead let elimination, and A-normalization. Consecutive lambda elimination is not strictly required but reduces the number of lambdas to be lifted. 
@@ -76,28 +75,31 @@ match mysig with
 
 While some of the invariants are clearly fulfilled by the transformation pipeline, such as the requirement that all lambdas be lifted or that trivial bindings like \lstinline|let x = y| have been eliminated, some of them are not so obvious. 
 In particular, the ones about application shape. The RC IR assumes unary variable applications and that applications on global constants are never over-applied. 
-Variable applications are therefore rewritten when \textit{converting to IR} such that applications \lstinline|x y z| become \lstinline|(x y) z|. 
-In order to avoid over-applied global constants we do \todo{what? We don't do anything yet}.
+Therefore, when \textit{converting to IR} variable applications are rewritten such that \lstinline|x y z| becomes \lstinline|(x y) z| and over-applied global constants are rewritten to a call followed by a series of unary variable applications.
 
 Another non-obvious point is the \textit{eta-expansion} of constructors. This invariant is enforced by the type checker and so there is no need for a dedicated transformation.
 
 \subsection{Counting Rizzo Beans}\label{section:refcount:beans}
+% \todo{Walk through the 3 steps and explain: Purpose and how have we adapted it for Rizzo?}
 
-Once the Rizzo has been transformed and converted into the IR form of Figure~\ref{figure:refcount_IR} it is time to automatically insert RC instructions. 
+Once the Rizzo program has been transformed and converted into the IR form of Figure~\ref{figure:refcount_IR} it is time to insert RC instructions. 
 
-The first step is to insert \textbf{reset}/\textbf{reuse} pairs, \todo{why?}, and is done by the algorithm \verb|insert_reset_and_reuse_pairs_fn| which is based on algorithm $R$ by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. 
-The algorithm works by trying to insert \textbf{reset}/\textbf{reuse} pairs for the scrutinee of each \textbf{match} expression. 
+\subsubsection{Reusing memory}\label{section:refcount:beans:reuse}
+
+The first step of this process is to insert \textbf{reset}/\textbf{reuse} pairs, \todo{why?}. The approach to inserting such pairs is based on the $R$ algorithm by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. 
+The algorithm will try to insert \textbf{reset}/\textbf{reuse} pairs for the scrutinee of each \textbf{match} expression. 
 It does so by going into each branch/arm of the \textbf{match} looking for the first point where the scrutinee is dead, meaning not used in the rest of function body, and then trying to find a \textit{suitable} constructor expression such as $\textbf{ctor}_i \; \bar p$. 
+
 The shape of a constructor is \textit{suitable} when the number of arguments $|\bar p|$ is equal to the number of fields of the scrutinee in the particular branch. Note the distinction between arguments and fields, here an argument is the value given to the application (creation) of the constructor while a field is a place where a value is stored inside of a heap allocated object. 
-As an example consider a \textbf{match} on a value $x : \texttt{Sync}$. In the first two branches on $\texttt{Left }a$/$\texttt{Right }a$ respectively, it is possible to reuse the memory of $x$ (assuming $x$ is unique) in other constructors taking only a single argument, but in the second branch on $\texttt{Both }(a * b)$, it is possible to reuse the memory for constructors taking two arguments.
 
-Signals are handled exactly like the ordinary constructor. 
-The number of fields of signals is always $5$ and similarly, the constructor $\textbf{signal} \; (p,p)$ is only considered \textit{suitable} when the scrutinee has $5$ fields available.\@ \todo{Currently, the only way a constructor can have 5 fields is if it is a single, since we currently only allow tuples of 2 elements and no user-defined types.}
+% The goal of the example is to show the field vs. argument point. When a scrutinee can be reused/when it cannot 
+Consider the example program shown in Listing~\ref{listing:refcount:reuse_example}. The \texttt{sync\_fold} programs applies a function $f$ to a \texttt{Sync}, passing the arguments as optional values. 
+The code is shown as it would be after inserting \textbf{reset}/\textbf{reuse} pairs.
+In the first branch $s$ is a $\texttt{Left}(x)$ value, so it has a single field, making it is possible to reuse $s$ when wrapping $x$ in a \texttt{Just}. 
+In the third branch $s$ is a $\texttt{Both}(x,y)$ value with two fields. The algorithm will try to reuse $s$ in a constructor taking exactly two arguments but there is no such expression, so $s$ isn't reused.
 
-Consider the example in Listing~\ref{listing:refcount:reuse_example}
-
-\begin{lstlisting}[caption={some program}, label={listing:refcount:reuse_example}]
-sync_fold f s = 
+\begin{lstlisting}[caption={A fold on sync values. The program is shown using the IR but with a type annotation for readability.}, label={listing:refcount:reuse_example}]
+sync_fold f s : (Option 'a -> Option 'b -> 'c) -> Sync 'a 'b -> 'c = 
     case s of
     (let x = proj_0 s in let s' = reset s in
      let x_just = reuse s' in Ctor1(x) in 
@@ -108,19 +110,46 @@ sync_fold f s =
      ret (f x_just) y_just)
 \end{lstlisting}
 
-\todo{Vi kan ikke bare altid reuse, det afhænger af reference count på objektet.}
+
+%Goal: mention that signals are CTOR, but hard-coded to 5. This is our main modification to this algorithm :) 
+The special-case constructor $\textbf{signal} \; (p,p)$ is treated as a $\textbf{ctor}_i$ with the exception that when matched upon it makes five fields available and similarly it is only suitable when five fields are available from the scrutinee.
+\todo{Currently, the only way a constructor can have 5 fields is if it is a signal, since we currently only allow tuples of 2 elements and no user-defined types.} 
+%Goal of example: To show reuse on signals and say that we will return to limitations later
+Listing~\ref{listing:refcount:reuse_map} shows the map combinator from Section~\ref{section:frp:rizzo} after transformations and inserting \textbf{reset}/\textbf{reuse}. 
 
 
-\todo{Walk through the 3 steps and explain: Purpose and how have we adapted it for Rizzo?}
+\begin{lstlisting}[
+  caption={The map combinator from Section~\ref{section:frp:rizzo} after transformations into IR form},
+  label={listing:refcount:reuse_map}
+]
+fun map f s : ('a -> 'b) -> Signal 'a -> Signal 'b =
+  case s of  
+  (let x = proj_0 s in let xs = Ctor2(s) in
+   let s' = reset s in let hd = f x in 
+   let map' = pap map(f) in 
+   let delayed_map = Ctor0(map') in
+   let tl = Ctor6(delayed_map, xs) in
+   let res = reuse s' in Signal(hd, tail) in
+   ret res)
+\end{lstlisting}
 
-\todo{Mention: Signal is the usual constructor but we hard code its size to 5. Our primitives, how it changes logic for insertion}
+Notice, that the algorithm has added instructions for reusing the input signal. 
+In here lies a subtle detail, namely that the $xs$ (which represents a $tail$ constructor) needs the original input $s$ to live which makes it problematic to reuse the memory of $s$. We return to this shortcoming later in Section~\ref{section:refcount:beans:counting} when discussing \textbf{inc}/\textbf{dec} instructions. 
+For now, the important part is that a $\textbf{reuse} \; x \; \textbf{in ctor}_i \; \bar p$ instruction may fail to reuse $x$ when $x$ is not unique at the time of \textbf{reset}. In map function $s$ cannot be unique at $\textbf{reset} \; s$ because both $xs$ and the caller need $s$.
 
+\subsubsection{Can I borrow that?}\label{section:refcount:beans:collect}
+
+\todo{How do we infer parameter ownerships? Is this even worth mentioning as we don't do anything special.}
+
+\subsubsection{Learning to count}\label{section:refcount:beans:counting}
 
 \todo{Our adaptation of the immutable bean algorithm. Our modifications. How do we insert these refcount-instructions}
 
-\todo{How do we capture/model the Rizzo constructors, i.e. Delay, Later, Signal, \dots}
+\todo{Our primitives and how they change the logic for \textbf{inc}/\textbf{dec} insertion}
 
-\subsection{compile time vs. runtime}
+\todo{Should this section include: How do we capture/model the Rizzo constructors, i.e. Delay, Later, Signal, \dots}
 
+\subsection{compile time versus runtime}
 
+\todo{Explain that instructions are inserted at compile time but the actual counts are runtime?}
 
