@@ -336,21 +336,24 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
 let insert_owned_partial_app_wrapper func_ownership (RefProg{functions; globals}: program) = 
   
   let all_owned_funcs = ref [] in
+  let wrapper_params c =
+    match List.find_opt (fun (name, _) -> name = c) functions with
+    | Some (_, Fun (params, _)) -> params
+    | None ->
+      lookup_params func_ownership c
+      |> List.mapi (fun i _ -> Printf.sprintf "%s_arg%d" c i)
+  in
   let rec aux f = 
     match f with
     | FnRet _ -> f
     | FnLet (x, RPartialApp (c, args), let_body) when List.exists (fun b -> not (is_owned b)) (lookup_params func_ownership c) -> 
-      let opt = List.find_opt (fun (name, _) -> name = c) functions in
-      (match opt with
-      | None -> failwith ("prepare_for_collect: missing function " ^ c)
-      | Some (_, Fun (params, _)) ->
-        let function_name = Utilities.new_name (c ^ "_ALL_OWNED") in
-        let ret = Utilities.new_var () in
-        let body = FnLet (ret, RCall (c, List.map (fun p -> Var p) params), FnRet (Var ret)) in
-        let ownerships = List.map (fun _ -> Owned) params in
-        all_owned_funcs := (function_name, Fun (params, body), ownerships) :: !all_owned_funcs;
-        FnLet (x, RPartialApp (function_name, args), aux let_body)
-      )
+      let params = wrapper_params c in
+      let function_name = Utilities.new_name (c ^ "_ALL_OWNED") in
+      let ret = Utilities.new_var () in
+      let body = FnLet (ret, RCall (c, List.map (fun p -> Var p) params), FnRet (Var ret)) in
+      let ownerships = List.map (fun _ -> Owned) params in
+      all_owned_funcs := (function_name, Fun (params, body), ownerships) :: !all_owned_funcs;
+      FnLet (x, RPartialApp (function_name, args), aux let_body)
     | FnLet (x, rhs, f)  -> FnLet (x, rhs, aux f)
     | FnDec (x, f) -> FnDec (x, aux f)
     | FnInc (x, f) -> FnInc (x, aux f)
@@ -358,8 +361,8 @@ let insert_owned_partial_app_wrapper func_ownership (RefProg{functions; globals}
       FnCase (x, List.map (fun (fields, body) -> (fields, aux body)) cases)
   in 
   let functions' = List.map (fun (name, Fun(params, body)) -> name, Fun(params, aux body)) functions in
-  let functions' = (List.map (fun (name, f, _) -> name, f) !all_owned_funcs) @ functions' in
   let globals' = List.map (fun (name, body) -> name, aux body) globals in
+  let functions' = (List.map (fun (name, f, _) -> name, f) !all_owned_funcs) @ functions' in
   let func_ownership' = List.fold_left (fun m (name, _, ownerships) -> StringMap.add name ownerships m) func_ownership !all_owned_funcs in
   RefProg { functions = functions'; globals = globals' }, func_ownership'
 
