@@ -215,20 +215,20 @@ and free_vars_fn = function
 (** Helper function to prepare [x] for use in an owned context. *)
 let insert_inc (x:primitive) v f beta_env = 
   match x with
-  | Var x -> 
-    (match lookup beta_env x with
-    | Owned when not (StringSet.mem x v) -> f
-    | _ -> FnInc (x, f))
   | Const _ -> f
+  | Var x -> 
+    match lookup beta_env x with
+    | Owned when not (StringSet.mem x v) -> f
+    | _ -> FnInc (x, f)
 
 (** Inserts a decrement instruction if [x] is owned and no longer needed in [f] *)
 let insert_dec (x:primitive) f env =
   match x with
-  | Var x ->
-    (match lookup env x with
-    | Owned when not (StringSet.mem x (free_vars f)) -> FnDec (x, f)
-    | _ -> f)
   | Const _ -> f
+  | Var x ->
+    match lookup env x with
+    | Owned when not (StringSet.mem x (free_vars f)) -> FnDec (x, f)
+    | _ -> f
 
 (** calls [insert_dec] multiple times :) *)
 let rec insert_dec_many xs f beta_env = 
@@ -270,7 +270,7 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
   | FnLet (z, RVarApp (x,y), f) ->
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app [Var x;y] [Owned; Owned] (FnLet (z, RVarApp(x,y), compiled_f)) var_ownerships
-  | FnLet (z, (RCtor Ctor { tag = _; fields} as ctor), f) ->
+  | FnLet (z, (RCtor Ctor { fields; _ } as ctor), f) ->
     let bs = List.map (fun _ -> Owned) fields in
     let compiled_f = insert_rc f var_ownerships func_ownerships in
     c_app fields bs (FnLet (z, ctor, compiled_f)) var_ownerships
@@ -332,6 +332,36 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
     match StringSet.mem z fcol with
       | true -> StringSet.add x fcol
       | false -> fcol
+
+let insert_owned_partial_app_wrapper func_ownership (RefProg{functions; globals}: program) = 
+  
+  let all_owned_funcs = ref [] in
+  let rec aux f = 
+    match f with
+    | FnRet _ -> f
+    | FnLet (x, RPartialApp (c, args), let_body) when List.exists (fun b -> not (is_owned b)) (lookup_params func_ownership c) -> 
+      let opt = List.find_opt (fun (name, _) -> name = c) functions in
+      (match opt with
+      | None -> failwith ("prepare_for_collect: missing function " ^ c)
+      | Some (_, Fun (params, _)) ->
+        let function_name = Utilities.new_name (c ^ "_ALL_OWNED") in
+        let ret = Utilities.new_var () in
+        let body = FnLet (ret, RCall (c, List.map (fun p -> Var p) params), FnRet (Var ret)) in
+        let ownerships = List.map (fun _ -> Owned) params in
+        all_owned_funcs := (function_name, Fun (params, body), ownerships) :: !all_owned_funcs;
+        FnLet (x, RPartialApp (function_name, args), aux let_body)
+      )
+    | FnLet (x, rhs, f)  -> FnLet (x, rhs, aux f)
+    | FnDec (x, f) -> FnDec (x, aux f)
+    | FnInc (x, f) -> FnInc (x, aux f)
+    | FnCase (x, cases) -> 
+      FnCase (x, List.map (fun (fields, body) -> (fields, aux body)) cases)
+  in 
+  let functions' = List.map (fun (name, Fun(params, body)) -> name, Fun(params, aux body)) functions in
+  let functions' = (List.map (fun (name, f, _) -> name, f) !all_owned_funcs) @ functions' in
+  let globals' = List.map (fun (name, body) -> name, aux body) globals in
+  let func_ownership' = List.fold_left (fun m (name, _, ownerships) -> StringMap.add name ownerships m) func_ownership !all_owned_funcs in
+  RefProg { functions = functions'; globals = globals' }, func_ownership'
 
 let infer_all_simple (RefProg{functions; _}:program) : parameter_ownership =
   let func_ownership = ref StringMap.empty in
@@ -498,9 +528,12 @@ and insert_reuse w num_fields fn_body: fn_body =
 
 let reference_count_program builtins (RefProg{globals; functions} as p:program) =
   global_names := StringSet.of_list (List.map fst globals @ List.map fst functions @ (StringMap.to_list builtins |> List.map fst));
-  let RefProg{globals = g; functions = f} as reset_reuse_program = insert_reset_and_reuse_pairs_program p in
+  let reset_reuse_program = insert_reset_and_reuse_pairs_program p in
   let func_ownerships = infer_all ~builtins:builtins reset_reuse_program in
-
+  
+  let RefProg{globals = g; functions = f}, func_ownerships = insert_owned_partial_app_wrapper func_ownerships reset_reuse_program in
+  global_names := StringSet.of_list (List.map fst g @ List.map fst f @ (StringMap.to_list builtins |> List.map fst));
+  
   (* make all global variables borrowed ?*)
   let globals_env = List.fold_left (fun env (name, _) -> StringMap.add name Borrowed env) StringMap.empty globals in
 

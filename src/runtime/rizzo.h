@@ -48,6 +48,7 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
     rz_debug_print_heap();
 #endif
     rz_heap_update(chan, v);
+    rz_refcount_dec_box(v);
     rz_print_registered_outputs();
 }
 
