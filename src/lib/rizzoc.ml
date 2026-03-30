@@ -181,7 +181,7 @@ let typecheck = Typecheck.typecheck
 let lower_typed_program = Transformations.lower_typed_program
 let apply_typed_transforms p = p |> lower_typed_program |> apply_transforms
 
-let emit = Backend_c.emit_c_code
+let emit ?ownerships program output_file = Backend_c.emit_c_code ?ownerships program output_file
 
 let source_units_for_compile ?executable_path ?stdlib_path ?(include_paths = []) input_files =
   Source_units.default_source_units ?executable_path ?stdlib_path ()
@@ -258,7 +258,7 @@ and compile parsed_program output_file =
     if !print_ast_dumps then print_section "------- Transformed -------" Ast.pp_program transformed;
     let rc_env, rc_program = ref_count transformed in
     if !print_ast_dumps then print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
-		emit rc_program output_file
+		emit ~ownerships:rc_env rc_program output_file
 	with
 	| Lexer.Error (loc, msg) ->
 			Location.show_error_context loc msg;

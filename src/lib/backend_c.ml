@@ -35,7 +35,7 @@ and collect_primitive_string_const p = match p with
   | _ -> None
 
 
-let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
+let emit_c_code ?(ownerships : parameter_ownership = StringMap.empty) (RefProg{functions; _} as p:program) (filename:string) =
   let module M = Map.Make(String) in
   let builtin_arity_map =
     Rizzo_builtins.builtins
@@ -53,10 +53,42 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     then (^) "_rizz_" (String.map (function '\'' -> '_' | c -> c) s)
     else (^) "rizz_" s in
 
+  let ownership_of name =
+    match StringMap.find_opt name ownerships with
+    | Some ownerships -> Some ownerships
+    | None ->
+      (match List.find_opt (fun ({ name = builtin_name; _ } : Rizzo_builtins.builtin_info) -> builtin_name = name) Rizzo_builtins.builtins with
+      | Some ({ param_ownership; _ } : Rizzo_builtins.builtin_info) -> param_ownership
+      | None -> None)
+  in
+
   let builtin_c_name name =
     if M.mem name builtin_arity_map then Printf.sprintf "rz_builtin_%s" name 
     else (mangle name)
   in
+
+  let owned_wrapper_c_name name = mangle (name ^ "_owned") in
+
+  let needs_owned_wrapper name =
+    match ownership_of name with
+    | Some ownerships -> List.exists (( = ) Borrowed) ownerships
+    | None -> false
+  in
+
+  let lifted_c_name name =
+    if needs_owned_wrapper name then owned_wrapper_c_name name else builtin_c_name name
+  in
+
+  let owned_wrapper_targets =
+    (List.map fst functions)
+    @ (Rizzo_builtins.builtins
+      |> List.filter_map (fun ({ name; param_ownership; _ } : Rizzo_builtins.builtin_info) ->
+             match param_ownership with
+             | Some ownerships when List.exists (( = ) Borrowed) ownerships -> Some name
+             | _ -> None))
+    |> List.sort_uniq String.compare
+  in
+
   let out_file = open_out filename in
   let write ?(indent = 0) out = output_string out_file ((String.make indent ' ') ^ out) in
 
@@ -74,11 +106,13 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
 
     (* forward declare functions *)
     List.iter (fun (name, _) -> write @@ make_fun_decl ~ending:";\n" (mangle name)) functions;
+    List.iter (fun name -> write @@ make_fun_decl ~ending:";\n" (owned_wrapper_c_name name)) owned_wrapper_targets;
     write "\n";
 
     let needs_init = declare_globals globals in
     if List.length needs_init > 0 then write ~indent:standard_indent "\n";
 
+    List.iter emit_owned_wrapper owned_wrapper_targets;
     List.iter emit_fn functions;
     let entry_name = mangle "entry" in
     match List.assoc_opt "entry" functions with
@@ -108,6 +142,22 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     ) params;
     emit_fn_body standard_indent body;
     write "}\n\n"
+  and emit_owned_wrapper name : unit =
+    match M.find_opt name arity_map, ownership_of name with
+    | Some arity, Some param_ownership ->
+        write (make_fun_decl (owned_wrapper_c_name name));
+        write ~indent:standard_indent
+          (Printf.sprintf "rz_box_t %s = rz_call(%s, %d, args);\n" (mangle "wrapper_res") (builtin_c_name name) arity);
+        List.iteri
+          (fun i ownership ->
+            match ownership with
+            | Borrowed -> write ~indent:standard_indent (Printf.sprintf "rz_refcount_dec_box(args[%d]);\n" i)
+            | Owned -> ())
+          param_ownership;
+        write ~indent:standard_indent (Printf.sprintf "return %s;\n" (mangle "wrapper_res"));
+        write "}\n\n"
+    | _ ->
+        failwith (Printf.sprintf "Missing arity or ownership for owned wrapper target %s" name)
   and emit_fn_body ?return_to:(return_to = None) indent fn = 
     let emit_fn_body = emit_fn_body ~return_to in
     match fn with
@@ -163,7 +213,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
         | Some arity -> 
           let num_args = List.length args in
           let args = mk_args_string args in
-          Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" (builtin_c_name f) arity args num_args
+          Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" (lifted_c_name f) arity args num_args
       )
     | RProj (i, x) -> Printf.sprintf "rz_object_get_field(rz_unbox_ptr(%s), %d)" (mangle x) i
     | RCtor Signal {head; tail} -> Printf.sprintf "rz_make_ptr_sig(rz_signal_ctor(%s, %s))" (emit_primitive head) (emit_primitive tail)
@@ -188,11 +238,11 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | None -> mangle name  (* was just a regular name - output as such *)
     | Some arity -> (* was the name of a function - output as such? *)
       match args with
-      | [] -> Printf.sprintf "rz_lift_c_fun(%s, %d, NULL, 0)" (builtin_c_name name) arity
+      | [] -> Printf.sprintf "rz_lift_c_fun(%s, %d, NULL, 0)" (lifted_c_name name) arity
       | _ ->
         let num_args = List.length args in
         let args = mk_args_string args in
-        Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" (builtin_c_name name) arity args num_args
+        Printf.sprintf "rz_lift_c_fun(%s, %d, (rz_box_t[]){%s}, %d)" (lifted_c_name name) arity args num_args
   and mk_args_string args = 
     args
     |> List.map (function 

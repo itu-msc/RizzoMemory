@@ -44,11 +44,15 @@ static void rz_init_rizzo()
    Additionally, outputs the head of any registered outputs that was updated during heap update. */
 static inline void rz_step(rz_channel_t chan, rz_box_t v)
 {
-#ifdef __RZ_DEBUG_INFO
+#ifdef RZ_DEBUG
     rz_debug_print_heap();
 #endif
     rz_heap_update(chan, v);
+    rz_refcount_dec_box(v);
     rz_print_registered_outputs();
+#ifdef RZ_DEBUG
+    rz_debug_print_heap();
+#endif
 }
 
 /* Starts the Rizzo event loop:
@@ -64,9 +68,14 @@ static rz_box_t rz_start_event_loop()
         double now = rz_timer_now_seconds();
         uint32_t timeout_ms = UINT32_MAX;
         bool has_timers = rz_timer_next_timeout_ms(now, &timeout_ms);
+        printf("Next timer in %u ms\n", timeout_ms);
+        printf("Has timers? %d\n", has_timers);
+        fflush(stdout);
         rz_os_result_t status = has_timers
             ? rz_readline_timeout(buffer, sizeof(buffer), timeout_ms)
             : rz_readline(buffer, sizeof(buffer));
+        printf("Readline status: %d\n", status);
+        fflush(stdout);
         now = rz_timer_now_seconds();
         while (rz_timer_take_due(now, &timer_channel, &timer_value))
         {

@@ -28,47 +28,79 @@ static rz_box_t RZ_NEVER = { .kind = RZ_BOX_INT, .as.obj = &RZ_NEVER_OBJ }; /* s
 static inline void rz_debug_print_delayed(rz_box_t delay);
 
 static inline void rz_debug_print_later(rz_box_t later) {
-    switch (rz_object_tag(rz_unbox_ptr(later))) {
+    rz_object_t *obj = rz_unbox_ptr(later);
+    if (!obj) {
+        printf("later(null)");
+        return;
+    }
+    if (rz_debug_print_object_is_active(obj)) {
+        printf("<cycle@%p>", (void *)obj);
+        return;
+    }
+    if (!rz_debug_print_object_push(obj)) {
+        printf("<depth-limit@%p>", (void *)obj);
+        return;
+    }
+
+    switch (rz_object_tag(obj)) {
         case RZ_TAG_LATER_NEVER: { printf("never"); } break;
         case RZ_TAG_LATER_WAIT: { 
-            printf("wait(%"PRId64")", rz_unbox_int(rz_object_get_field(rz_unbox_ptr(later), 0))); 
+            printf("wait(%"PRId64")", rz_unbox_int(rz_object_get_field(obj, 0))); 
         } break;
         case RZ_TAG_LATER_TAIL: { 
-            printf("tail(%p)", rz_unbox_ptr(rz_object_get_field(rz_unbox_ptr(later), 0))); 
+            printf("tail(%p)", rz_unbox_ptr(rz_object_get_field(obj, 0))); 
         } break;
         case RZ_TAG_LATER_SYNC: { 
             printf("sync ("); 
-            rz_debug_print_later(rz_object_get_field(rz_unbox_ptr(later), 0));
+            rz_debug_print_later(rz_object_get_field(obj, 0));
             printf(", ");
-            rz_debug_print_later(rz_object_get_field(rz_unbox_ptr(later), 0));
+            rz_debug_print_later(rz_object_get_field(obj, 1));
             printf(")"); 
         } break;
         case RZ_TAG_LATER_WATCH: {
-            printf("watch(%p)", rz_unbox_ptr(rz_object_get_field(rz_unbox_ptr(later), 0))); 
+            printf("watch(%p)", rz_unbox_ptr(rz_object_get_field(obj, 0))); 
         } break;
         case RZ_TAG_LATER_APP: {
             printf("laterapp("); 
-            rz_debug_print_delayed(rz_object_get_field(rz_unbox_ptr(later), 0));
+            rz_debug_print_delayed(rz_object_get_field(obj, 0));
             printf(", ");
-            rz_debug_print_later(rz_object_get_field(rz_unbox_ptr(later), 1));
+            rz_debug_print_later(rz_object_get_field(obj, 1));
             printf(")");
         } break;
-        default: printf("Unknown later tag: %d", rz_object_tag(rz_unbox_ptr(later))); break;
+        default: printf("Unknown later tag: %d", rz_object_tag(obj)); break;
     }
+
+    rz_debug_print_object_pop();
 }
 
 static inline void rz_debug_print_delayed(rz_box_t delay) {
-    switch (rz_object_tag(rz_unbox_ptr(delay))) {
+    rz_object_t *obj = rz_unbox_ptr(delay);
+    if (!obj) {
+        printf("delay(null)");
+        return;
+    }
+    if (rz_debug_print_object_is_active(obj)) {
+        printf("<cycle@%p>", (void *)obj);
+        return;
+    }
+    if (!rz_debug_print_object_push(obj)) {
+        printf("<depth-limit@%p>", (void *)obj);
+        return;
+    }
+
+    switch (rz_object_tag(obj)) {
         case RZ_TAG_DELAY: { 
-            printf("delay("); rz_debug_print_box(rz_object_get_field(rz_unbox_ptr(delay), 0)); printf(")"); 
+            printf("delay("); rz_debug_print_box(rz_object_get_field(obj, 0)); printf(")"); 
         } break;
         case RZ_TAG_OSTAR: { 
             printf("delayedapp(");
-            rz_debug_print_delayed(rz_object_get_field(rz_unbox_ptr(delay), 0));
+            rz_debug_print_delayed(rz_object_get_field(obj, 0));
             printf(", ");
-            rz_debug_print_delayed(rz_object_get_field(rz_unbox_ptr(delay), 1));
+            rz_debug_print_delayed(rz_object_get_field(obj, 1));
             printf(")"); 
         } break;
-        default: printf("Unknown delay tag: %d", rz_object_tag(rz_unbox_ptr(delay))); break;
+        default: printf("Unknown delay tag: %d", rz_object_tag(obj)); break;
     }
+
+    rz_debug_print_object_pop();
 }

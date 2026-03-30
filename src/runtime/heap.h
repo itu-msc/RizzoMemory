@@ -6,6 +6,8 @@
 #include "channel.h"
 #include "os.h"
 
+// #define RZ_DEBUG // TODO remove when done with debugging
+
 /* TODO: assume some has tag 1 */
 #define RZ_TAG_SOME 1
 
@@ -16,7 +18,14 @@ typedef struct rz_signal
     rz_box_t head, tail; /* could be any (boxed) value   */
     rz_box_t updated;    /* an integer, either 0 or 1    */
     rz_box_t prev, next; /* holders a pointer (of rz_signal_t) to the prev/next signal in the heap */
+#ifdef RZ_DEBUG
+    size_t debug_index;
+#endif
 } rz_signal_t;
+
+#ifdef RZ_DEBUG
+static size_t rz_signal_debug_index = 0;
+#endif
 
 #define RZ_HEAP_SENTINEL_TAG 255
 
@@ -88,12 +97,26 @@ STATEFUL: updates the global heap, mutates the heap cursor, and prev/next pointe
 static rz_object_t *rz_signal_ctor(rz_box_t head, rz_box_t tail)
 {
     rz_heap_size++;
-
+#ifdef RZ_DEBUG
+    int signal_arguments = 6;
+    rz_box_t args[6] = {head, tail, rz_make_int(1), rz_make_ptr(NULL), rz_make_ptr(NULL), rz_signal_debug_index++};
+#else
+    int signal_arguments = 5;
     rz_box_t args[5] = {head, tail, rz_make_int(0), rz_make_ptr(NULL), rz_make_ptr(NULL)};
-    rz_signal_t *new_sig = (rz_signal_t *)rz_ctor(0, 5, args);
+#endif
+
+    rz_signal_t *new_sig = (rz_signal_t *)rz_ctor(0, signal_arguments, args);
     new_sig->_base.obj_type = RZ_SIGNAL;
 
     rz_insert_signal_node(new_sig);
+
+#ifdef RZ_DEBUG
+    // printf("Created signal %zu\n\thead: ", new_sig->debug_index);
+    // rz_debug_print_box(head);
+    // printf("\n\ttail: ");
+    // rz_debug_print_box(tail);
+    // printf("\n\n");
+#endif
 
     return (rz_object_t *)new_sig;
 }
@@ -155,10 +178,8 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
 
 static void rz_debug_print_heap()
 {
-    printf("| ");
-
+#ifdef RZ_DEBUG
     rz_signal_t *sig = &rz_heap_head;
-    size_t index = 0;
 
     while (sig)
     {
@@ -171,32 +192,55 @@ static void rz_debug_print_heap()
         }
         else if (rz_unbox_int(sig->updated))
         {
-            printf("[%zu] ", index);
+            printf("[%zu] ", sig->debug_index);
         }
         else
         {
             if (sig == rz_heap_cursor)
-                printf("(%zu) ", index);
+                printf("(%zu) ", sig->debug_index);
             else
-                printf("%zu ", index);
+                printf("%zu ", sig->debug_index);
         }
 
         sig = (rz_signal_t *)rz_unbox_ptr(sig->next);
-        if (sig != &rz_heap_tail && sig != NULL)
-            index++;
     }
 
-    printf("|\n");
+    printf("\n");
+#endif
 }
 
 static void rz_debug_print_signal(rz_box_t box)
 {
     rz_signal_t *signal = (rz_signal_t *)box.as.obj;
-    printf("signal(ref: %d, head: ", signal->_base.refcount);
+    if (!signal) {
+        printf("signal(null)");
+        return;
+    }
+    if (rz_debug_print_object_is_active((rz_object_t *)signal)) {
+        printf("<cycle@%p>", (void *)signal);
+        return;
+    }
+    if (!rz_debug_print_object_push((rz_object_t *)signal)) {
+        printf("<depth-limit@%p>", (void *)signal);
+        return;
+    }
+
+    printf("signal(ref=%d, updated=%s)", signal->_base.refcount, rz_unbox_int(signal->updated) ? "true" : "false");
+    printf(" {\n");
+
+    rz_debug_print_indent(rz_debug_print_depth());
+    printf("head = ");
     rz_debug_print_box(signal->head);
-    printf(", tail: ");
+    printf("\n");
+
+    rz_debug_print_indent(rz_debug_print_depth());
+    printf("tail = ");
     rz_debug_print_box(signal->tail);
-    printf(", updated: %"PRId64")", signal->updated.as.i64);
+    printf("\n");
+
+    rz_debug_print_indent(rz_debug_print_depth() - 1);
+    printf("}");
+    rz_debug_print_object_pop();
 }
 
 /*   |------------------------------|

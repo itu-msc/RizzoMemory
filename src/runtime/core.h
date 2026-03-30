@@ -91,6 +91,82 @@ static inline char* rz_unbox_str_lit(rz_box_t box) {
     return box.as.str;
 }
 
+#define RZ_DEBUG_PRINT_MAX_DEPTH 64
+
+static rz_object_t *rz_debug_print_stack[RZ_DEBUG_PRINT_MAX_DEPTH];
+static size_t rz_debug_print_stack_size = 0;
+
+static inline size_t rz_debug_print_depth(void) {
+    return rz_debug_print_stack_size;
+}
+
+static inline void rz_debug_print_indent(size_t depth) {
+    for (size_t i = 0; i < depth; i++) {
+        fputs("  ", stdout);
+    }
+}
+
+static inline void rz_debug_print_escaped_bytes(const char *bytes, size_t len) {
+    putchar('"');
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)bytes[i];
+        switch (ch) {
+            case '\\': {
+                fputs("\\\\", stdout);
+            } break;
+            case '"': {
+                fputs("\\\"", stdout);
+            } break;
+            case '\n': {
+                fputs("\\n", stdout);
+            } break;
+            case '\r': {
+                fputs("\\r", stdout);
+            } break;
+            case '\t': {
+                fputs("\\t", stdout);
+            } break;
+            case '\0': {
+                fputs("\\0", stdout);
+            } break;
+            default: {
+                if (ch < 0x20 || ch == 0x7f) {
+                    printf("\\x%02X", ch);
+                } else {
+                    putchar(ch);
+                }
+            }
+        }
+    }
+    putchar('"');
+}
+
+static inline bool rz_debug_print_object_is_active(rz_object_t *obj) {
+    for (size_t i = 0; i < rz_debug_print_stack_size; i++) {
+        if (rz_debug_print_stack[i] == obj) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline bool rz_debug_print_object_push(rz_object_t *obj) {
+    if (!obj) {
+        return false;
+    }
+    if (rz_debug_print_stack_size >= RZ_DEBUG_PRINT_MAX_DEPTH) {
+        return false;
+    }
+    rz_debug_print_stack[rz_debug_print_stack_size++] = obj;
+    return true;
+}
+
+static inline void rz_debug_print_object_pop(void) {
+    if (rz_debug_print_stack_size > 0) {
+        rz_debug_print_stack_size--;
+    }
+}
+
 /* TODO: double check that booleans are never reference counted */
 static rz_object_t RZ_BOOL_TRUE = { .header = { .num_fields = 0, .tag = 0, .refcount = -1 } };
 static rz_object_t RZ_BOOL_FALSE = { .header = { .num_fields = 0, .tag = 1, .refcount = -1 } };
@@ -223,6 +299,10 @@ static inline void rz_refcount_dec(rz_object_t* obj) {
                 rz_free(obj);
             } break;
             case RZ_STRING: {
+#ifdef RZ_DEBUG
+                rz_string_t *str = (rz_string_t *)obj;
+                printf("free string(len=%zu) at %p: \"%.*s\"\n", str->byte_length, (void *)str, (int)str->byte_length, str->bytes);
+#endif
                 rz_free(obj);
             }
         }
@@ -399,35 +479,90 @@ static void rz_debug_print_signal(rz_box_t box);
 static inline void rz_debug_print_box(rz_box_t box) {
     switch (box.kind) {
         case RZ_BOX_INT: {
-            printf("%" PRId64 "", box.as.i64);
+            printf("%" PRId64, box.as.i64);
         } break;
         case RZ_BOX_STRING_LITERAL: {
-            printf("%s", rz_unbox_str_lit(box));
+            const char *text = rz_unbox_str_lit(box);
+#ifdef RZ_DEBUG
+            rz_debug_print_escaped_bytes(text, strlen(text));
+#else
+            printf("%s", text);
+#endif
         } break;
         case RZ_BOX_PTR: {
-            switch (rz_object_get_type(rz_unbox_ptr(box))) {
+            rz_object_t *obj = rz_unbox_ptr(box);
+            if (!obj) {
+                printf("null");
+                break;
+            }
+            if (rz_debug_print_object_is_active(obj)) {
+                printf("<cycle@%p>", (void *)obj);
+                break;
+            }
+            switch (rz_object_get_type(obj)) {
                 case RZ_STRING: {
+                    rz_string_t *str = (rz_string_t *)obj;
+#ifdef RZ_DEBUG
+                    printf("string(len=%zu, ref=%d) ", str->byte_length, str->_base.header.refcount);
+                    rz_debug_print_escaped_bytes(str->bytes, str->byte_length);
+#else
                     printf("%s", ((rz_string_t*)rz_unbox_ptr(box))->bytes);
+#endif
                 } break;
                 case RZ_SIGNAL: { rz_debug_print_signal(box); } break;
                 case RZ_OBJECT: {
-                    rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
-                    printf("ctor(%d, ref: %d)", fields->_base.header.tag, fields->_base.header.refcount);
-                    if(fields->_base.header.num_fields > 0) {
-                        printf("{ ");
-                        for (size_t i = 0; i < fields->_base.header.num_fields; i++)
-                        {
-                            rz_debug_print_box(fields->fields[i]); printf(", ");
-                        }
-                        printf("}");
+                    rz_object_fields_t *fields = (rz_object_fields_t *)obj;
+                    if (!rz_debug_print_object_push(obj)) {
+                        printf("<depth-limit@%p>", (void *)obj);
+                        break;
                     }
+                    printf("ctor(tag=%u, ref=%d, fields=%u)", fields->_base.header.tag, fields->_base.header.refcount, fields->_base.header.num_fields);
+                    if (fields->_base.header.num_fields == 0) {
+                        rz_debug_print_object_pop();
+                        break;
+                    }
+                    printf(" {\n");
+                    for (size_t i = 0; i < fields->_base.header.num_fields; i++) {
+                        rz_debug_print_indent(rz_debug_print_depth());
+                        printf("[%zu] = ", i);
+                        rz_debug_print_box(fields->fields[i]);
+                        if (i + 1 < fields->_base.header.num_fields) {
+                            printf(",");
+                        }
+                        printf("\n");
+                    }
+                    rz_debug_print_indent(rz_debug_print_depth() - 1);
+                    printf("}");
+                    rz_debug_print_object_pop();
                 }break;
                 case RZ_PARTIAL_APP: {
-                    rz_function_t* fun = (rz_function_t*)box.as.obj;
-                    printf("pap(ref: %d, arity: %d, applied_vars: %d)", fun->_base.header.refcount, fun->_base.header.tag, fun->_base.header.num_fields);
+                    rz_function_t *fun = (rz_function_t *)obj;
+                    rz_function_args_t *fun_args = ARGS_OF(fun);
+                    if (!rz_debug_print_object_push(obj)) {
+                        printf("<depth-limit@%p>", (void *)obj);
+                        break;
+                    }
+                    printf("pap(ref=%d, arity=%d, free=%d, fun=%p)", fun->_base.header.refcount, fun->_base.header.tag, fun->_base.header.num_fields, (void *)fun->fun);
+                    if (fun->_base.header.num_fields == 0) {
+                        rz_debug_print_object_pop();
+                        break;
+                    }
+                    printf(" {\n");
+                    for (size_t i = 0; i < fun->_base.header.num_fields; i++) {
+                        rz_debug_print_indent(rz_debug_print_depth());
+                        printf("[%zu] = ", i);
+                        rz_debug_print_box(fun_args->args[i]);
+                        if (i + 1 < fun->_base.header.num_fields) {
+                            printf(",");
+                        }
+                        printf("\n");
+                    }
+                    rz_debug_print_indent(rz_debug_print_depth() - 1);
+                    printf("}");
+                    rz_debug_print_object_pop();
                 } break;
                 default: {
-                    printf("Unknown object type: '%d'", rz_object_get_type(rz_unbox_ptr(box)));
+                    printf("Unknown object type: '%d'", rz_object_get_type(obj));
                     exit(1);
                 }
             }
