@@ -8,7 +8,7 @@ fun describeText s =
 
 
 
-fun appendSignalToNeverAndAdd1 s a = _const (a |> s)
+fun appendSignalToNeverAndAdd1 s a = const (a |> s)
 
 fun is0 x = x == 0
 

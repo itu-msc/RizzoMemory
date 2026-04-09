@@ -1,5 +1,4 @@
-fun _const x : 'a -> Signal 'a = x :: never
-//must be _const, otherwise it ouptuts 'const' which is a keyword, oops.
+fun const x : 'a -> Signal 'a = x :: never
 
 fun mk_sig later =
     (fun a -> a :: mk_sig later) |> later
@@ -38,10 +37,10 @@ fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =
     in
     f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))
 
-fun _switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
+fun switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
     | x :: xs ->
         let cont= fun mysync -> match mysync with
-            | Left (xs_)   -> _switch xs_ d
+            | Left (xs_)   -> switch xs_ d
             | Right (d_)   -> d_
             | Both (_, d_) -> d_
         in
