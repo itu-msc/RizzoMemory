@@ -55,7 +55,9 @@ jobs:
                   ocaml-compiler: 5
 
             - name: Install OCaml dependencies
-              run: opam install . --deps-only --with-test --yes
+              run: | 
+                opam option sandboxing=false
+                opam install . --deps-only --with-test --yes
 
             - name: Build
               run: opam exec -- dune build
