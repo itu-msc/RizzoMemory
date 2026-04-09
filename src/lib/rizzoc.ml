@@ -36,6 +36,7 @@ module Transformations = struct
   let eliminate_consecutive_lambdas_program = Transforms.Consecutive_lambda.eliminate_consecutive_lambdas_program
   let remove_duplicate_names = Transforms.Remove_dup_names.subst_program
   let lift = Transforms.Lambda_lifting.lift
+  let explicit_lift_function_values_program = Transforms.Explicit_lifts.make_explicit
 
   let eliminate_copy_propagation = Transforms.Copy_propagation.eliminate_copy_propagation
   let eliminate_copy_propagation_program = Transforms.Copy_propagation.copy_propagate
@@ -169,6 +170,7 @@ let apply_transforms p =
   p
   |> Transformations.eliminate_consecutive_lambdas_program
   |> Transformations.lift
+  |> Transformations.explicit_lift_function_values_program
   |> Transformations.eliminate_copy_propagation_program
   (* |> Transformations.eliminate_dead_let_program *)
   (* |> Transformations.eliminate_patterns *)
@@ -269,4 +271,3 @@ and compile parsed_program output_file =
 	| Parser.Error (loc, msg) ->
 			Location.show_error_context loc msg;
 			failwith "Parsing failed"
-

@@ -110,6 +110,24 @@ let test_nested_string_literal_pattern_typechecks () =
   in
   ()
 
+let test_explicit_lifts_wrap_builtin_function_values () =
+  let program =
+    [
+      toplet "map_l" (fun_ ["f"; "s"] (var "s"));
+      toplet "show_nat" (const CUnit);
+      toplet "entry" (fun_ ["x"] (app (var "map_l") [var "string_of_int"; var "show_nat"]));
+    ]
+  in
+  let expected =
+    [
+      toplet "map_l" (fun_ ["f"; "s"] (var "s"));
+      toplet "show_nat" (const CUnit);
+      toplet "entry" (fun_ ["x"] (app (var "map_l") [app (var "string_of_int") []; var "show_nat"]));
+    ]
+  in
+  let actual = Transformations.explicit_lift_function_values_program program in
+  Alcotest.check program_testable "builtin function value becomes explicit zero-arg app" expected actual
+
 let string_tests = [
   "string cons pattern binds strings", `Quick, test_string_cons_pattern_binds_strings;
   "ambiguous string cons defaults to string", `Quick, test_ambiguous_string_cons_defaults_to_string;
@@ -117,4 +135,5 @@ let string_tests = [
   "string add lowers to intrinsic", `Quick, test_lower_typed_program_rewrites_string_add;
   "string match lowers in pipeline", `Quick, test_apply_typed_transforms_eliminates_string_match;
   "nested string literal pattern typechecks", `Quick, test_nested_string_literal_pattern_typechecks;
+  "function values become explicit lifts", `Quick, test_explicit_lifts_wrap_builtin_function_values;
 ]

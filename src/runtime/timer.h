@@ -112,7 +112,8 @@ static inline bool rz_timer_take_due(double now_seconds, rz_channel_t *channel_o
     {
         if (timer->next_fire_seconds <= now_seconds)
         {
-            int64_t elapsed_ms = (int64_t)((timer->next_fire_seconds - timer->start_seconds) * 1000.0);
+            // added 0.5 to acount for double -> int rounding
+            int64_t elapsed_ms = (int64_t)(((timer->next_fire_seconds - timer->start_seconds) * 1000.0) + 0.5); 
             *channel_out = timer->channel;
             *value_out = rz_make_int(elapsed_ms);
             timer->next_fire_seconds += timer->interval_seconds;
