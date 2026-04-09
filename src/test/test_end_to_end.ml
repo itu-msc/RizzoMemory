@@ -1,4 +1,4 @@
-let run_console_program ?(delay_s = 0.) ~program ~input () =
+let run_console_program ?(delay_s = 0.) ?(debug_malloc = false) ~program ~input () =
   let normalize_line line =
     if String.ends_with ~suffix:"\r" line
     then String.sub line 0 (String.length line - 1)
@@ -41,9 +41,12 @@ let run_console_program ?(delay_s = 0.) ~program ~input () =
         Rizzoc.compile_from_file input_file output_file;
         Sys.chdir "../../../..";
         let command =
-          Rizzoc.to_shell_command
-            (Rizzoc.generated_c_compiler_invocation ~input_file:output_file
-               ~output_file:binary_file ())
+          let command =
+            Rizzoc.to_shell_command
+              (Rizzoc.generated_c_compiler_invocation ~input_file:output_file
+                 ~output_file:binary_file ~debug_malloc ())
+          in
+          if debug_malloc then command ^ " -D__RZ_DEBUG_INFO" else command
         in
         let status = Sys.command command in
         if status <> 0
@@ -99,6 +102,40 @@ let run_console_program ?(delay_s = 0.) ~program ~input () =
             outputs, process_status)
   with exn ->
     Alcotest.failf "Compilation failed with exception: %s" (Printexc.to_string exn)
+
+let contains_substring ~text ~substring =
+  let text_length = String.length text in
+  let substring_length = String.length substring in
+  let rec loop index =
+    if index + substring_length > text_length then false
+    else if String.sub text index substring_length = substring then true
+    else loop (index + 1)
+  in
+  substring_length = 0 || loop 0
+
+let test_console_signal_input_string_is_freed () =
+  let program =
+    {|
+      fun entry x =
+        let console_sig = mk_sig (wait console) in
+        let _echo = console_out_signal ("" :: console_sig) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status =
+    run_console_program ~debug_malloc:true ~program ~input:"hello\nworld" ()
+  in
+  Alcotest.(check bool) "console echo includes first input" true (List.mem "hello" outputs);
+  Alcotest.(check bool) "console echo includes second input" true (List.mem "world" outputs);
+  Alcotest.(check bool) "first input is freed" true
+    (List.exists
+       (fun line -> contains_substring ~text:line ~substring:"Freeing string: hello")
+       outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
 
 let test_simple_console_identity () =
   let program = 
@@ -239,5 +276,6 @@ let end_to_end_tests = [
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
   "Issue filterL variant outputs quit after non-match", `Quick, test_issue_filterl_variant_outputs_quit_after_non_match;
   "Issue map_l variant outputs Hello world", `Quick, test_issue_map_l_variant_outputs_hello_world;
+  "Console signal input string is freed", `Quick, test_console_signal_input_string_is_freed;
   "Clock signal outputs ticks", `Quick, test_clock_signal_outputs_ticks;
 ]

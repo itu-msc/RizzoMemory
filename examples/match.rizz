@@ -2,9 +2,9 @@ fun swap_nested_left p =
     match p with
     | ((x,y), z) -> ((y,x), z)
 
-fun mp p = match p with
-    | (5, _) -> 1337
-    | (_, _) -> 42
+// fun mp p = match p with
+//     | (5, _) -> 1337
+//     | (_, _) -> 42
 
 fun id x = x
 
