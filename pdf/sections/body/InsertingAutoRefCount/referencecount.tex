@@ -1,5 +1,4 @@
-\section{Automatically reference counting Rizzo}
-\label{section:refcount}
+\section{Automatically reference counting Rizzo}\label{section:refcount}
 
 % \todo{Quick refresh of assumptions from \textit{Reference Counting section}}
 
@@ -14,7 +13,7 @@ In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global
   \begin{array}{rcl}
   w,x,y,z &\in& Var\\
   c &\in& Const\\
-  l &\in& \textcolor{greenadditions}{Literal \;::=\; \mathbb{Z} \mid \text{true} \mid \text{false} \mid \text{never} \mid string}\\
+  l &\in& \textcolor{greenadditions}{Literal \;::=\; \mathbb{Z} \mid \text{true} \mid \text{false} \mid \text{never} \mid \text{unit} \mid string}\\
   p &\in& \textcolor{greenadditions}{Primitive \;::=\; x \mid l}\\[2pt]
   e &\in&
   \begin{array}[t]{@{}l@{}}
@@ -84,19 +83,21 @@ Another non-obvious point is the \textit{eta-expansion} of constructors. This in
 
 Once the Rizzo program has been transformed and converted into the IR form of Figure~\ref{figure:refcount_IR} it is time to insert RC instructions. 
 
+\todo{Should we include a subsection that explains how algorithms are tied together? And that they are run on every global value and function? Or maybe just a `by the way' we run it like so and so.}
+
 \subsubsection{Reusing memory}\label{section:refcount:beans:reuse}
 
 The first step of this process is to insert \textbf{reset}/\textbf{reuse} pairs, \todo{why?}. The approach to inserting such pairs is based on the $R$ algorithm by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. 
 The algorithm will try to insert \textbf{reset}/\textbf{reuse} pairs for the scrutinee of each \textbf{match} expression. 
 It does so by going into each branch/arm of the \textbf{match} looking for the first point where the scrutinee is dead, meaning not used in the rest of function body, and then trying to find a \textit{suitable} constructor expression such as $\textbf{ctor}_i \; \bar p$. 
 
-The shape of a constructor is \textit{suitable} when the number of arguments $|\bar p|$ is equal to the number of fields of the scrutinee in the particular branch. Note the distinction between arguments and fields, here an argument is the value given to the application (creation) of the constructor while a field is a place where a value is stored inside of a heap allocated object. 
+The shape of a constructor is \textit{suitable} when the number of arguments $|\bar p|$ is equal to the number of fields of the scrutinee in the particular branch. Note the distinction between arguments and fields, here an argument is the value given to the application of the constructor (creation) while a field is a place where a value is stored inside of a heap allocated object. 
 
 % The goal of the example is to show the field vs. argument point. When a scrutinee can be reused/when it cannot 
 Consider the example program shown in Listing~\ref{listing:refcount:reuse_example}. The \texttt{sync\_fold} programs applies a function $f$ to a \texttt{Sync}, passing the arguments as optional values. 
-The code is shown as it would be after inserting \textbf{reset}/\textbf{reuse} pairs.
-In the first branch $s$ is a $\texttt{Left}(x)$ value, so it has a single field, making it is possible to reuse $s$ when wrapping $x$ in a \texttt{Just}. 
-In the third branch $s$ is a $\texttt{Both}(x,y)$ value with two fields. The algorithm will try to reuse $s$ in a constructor taking exactly two arguments but there is no such expression, so $s$ isn't reused.
+The program is shown after inserting \textbf{reset}/\textbf{reuse} pairs.
+In the first branch $s$ is a $\texttt{Left}(x)$ value with a single field $x$, meaning $s$ can be reused when wrapping $x$ in a \texttt{Just}. 
+In the third branch $s$ is a $\texttt{Both}(x,y)$ with two fields. The algorithm will try to reuse $s$ in a constructor taking exactly two arguments but there is no such expression, so $s$ isn't reused.
 
 \begin{lstlisting}[caption={A fold on sync values. The program is shown using the IR but with a type annotation for readability.}, label={listing:refcount:reuse_example}]
 sync_fold f s : (Option 'a -> Option 'b -> 'c) -> Sync 'a 'b -> 'c = 
@@ -116,6 +117,7 @@ The special-case constructor $\textbf{signal} \; (p,p)$ is treated as a $\textbf
 \todo{Currently, the only way a constructor can have 5 fields is if it is a signal, since we currently only allow tuples of 2 elements and no user-defined types.} 
 %Goal of example: To show reuse on signals and say that we will return to limitations later
 Listing~\ref{listing:refcount:reuse_map} shows the map combinator from Section~\ref{section:frp:rizzo} after transformations and inserting \textbf{reset}/\textbf{reuse}. 
+We see that the algorithm has added instructions for reusing the input signal.
 
 
 \begin{lstlisting}[
@@ -132,22 +134,66 @@ fun map f s : ('a -> 'b) -> Signal 'a -> Signal 'b =
    let res = reuse s' in Signal(hd, tail) in
    ret res)
 \end{lstlisting}
+ 
+However, all is not good with this $map$, since the $xs$ (the constructor $tail \; s$) needs the original input $s$ to live, meaning it would be unsafe to overwrite and reuse the memory of $s$ inside $map$. We will return to this in Section~\ref{section:refcount:beans:counting} when discussing \textbf{inc}/\textbf{dec} instructions. 
+For now, recall that a $\textbf{reuse} \; x \; \textbf{in ctor}_i \; \bar p$ instruction may fail to reuse $x$ when $x$ is not unique at the time of \textbf{reset}. In the $map$ function $s$ cannot be unique at the time of $\textbf{reset} \; s$ because $xs$ needs a valid reference to $s$.
 
-Notice, that the algorithm has added instructions for reusing the input signal. 
-In here lies a subtle detail, namely that the $xs$ (which represents a $tail$ constructor) needs the original input $s$ to live which makes it problematic to reuse the memory of $s$. We return to this shortcoming later in Section~\ref{section:refcount:beans:counting} when discussing \textbf{inc}/\textbf{dec} instructions. 
-For now, the important part is that a $\textbf{reuse} \; x \; \textbf{in ctor}_i \; \bar p$ instruction may fail to reuse $x$ when $x$ is not unique at the time of \textbf{reset}. In map function $s$ cannot be unique at $\textbf{reset} \; s$ because both $xs$ and the caller need $s$.
 
 \subsubsection{Can I borrow that?}\label{section:refcount:beans:collect}
 
-\todo{How do we infer parameter ownerships? Is this even worth mentioning as we don't do anything special.}
+%GOAL OF SECTION: How do we infer parameter ownerships. We didn't change much.
+We distinguish between two kinds of references, $\mathbb{B}\text{orrrowed}$ and $\mathbb{O}\text{wned}$. Owned references participate in reference counting in the usual way, so the number of live references matches the counter stored in the object. Borrowed references, by contrast, are not counted, they are instead assumed to be kept alive by some surrounding owned reference.
+
+%CONSIDER: why is it safe to have the user always assign? If I make everything borrowed, then reset becomes problematic, no?
+The distinction exists is to reduce the number of \textbf{inc}/\textbf{dec} instructions generated by the algorithm in Section~\ref{section:refcount:beans:counting}. 
+To insert those instructions, we first need \textit{borrow signature} for every function. 
+A borrow signature tells us the type of reference that a function expects for each of its parameters. Signatures are captured in a mapping $\delta : Const \to \{\mathbb{O}, \mathbb{B}\}^*$~\cite{ullrich_counting_2021} which maps each function name to a sequence of reference kinds. 
+Although these signatures could be declared by programmers, it is more convenient to infer them automatically and \citeauthor*{ullrich_counting_2021} gives a heuristic for doing so. 
+
+%GOAL: explain the heuristic
+The heuristic marks a variable $x$ as owned if either $x$ or one of its projections are used in a \textbf{reset}, appears in a partial or variable application, or passed to a function that takes ownership. 
+\todo{This heuristic fits with our modifications and requires no further changes.}
+Applying this heuristic recursively over the body a function collects the set of all variables that must be owned. Once this set is computed, any parameter in the set is marked as owned in the function signature and the rest are marked as borrowed.
+
+%GOAL: quickly explain our call-graph approach, the recursive function problem
+However, the borrow signature of a function depends on the signatures of the functions it calls. Recursive functions are also problematic, since their final signatures may depend on their own body.
+To handle this, we build a call graph, that records for each function $f$, the set of functions that call $f$.
+We then iterate over the functions, collecting owned variables and updating signatures until we reach a fixed point where no signature changes any further.
+
+\todo{Do we mention that if a function has any borrowed parameters in its signature and is used in a partial application then we create a wrapper with all parameters owned?}
 
 \subsubsection{Learning to count}\label{section:refcount:beans:counting}
 
-\todo{Our adaptation of the immutable bean algorithm. Our modifications. How do we insert these refcount-instructions}
+%GOAL OF THE SECTION: Our adaptation of the immutable bean algorithm. Our modifications. How do we insert these refcount-instructions}
 
-\todo{Our primitives and how they change the logic for \textbf{inc}/\textbf{dec} insertion}
+%GOAL: How do we insert these refcount-instructions
+The algorithm for inserting \textbf{inc}/\textbf{dec} instructions is based on algorithm $C$ by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}.
 
-\todo{Should this section include: How do we capture/model the Rizzo constructors, i.e. Delay, Later, Signal, \dots}
+
+% The algorithm is given a map $\beta_C$ that records the ownership of global function parameters, and it also maintains a local map $\beta$ for the ownership of variables within function bodies.
+
+The insertion of \textbf{inc}/\textbf{dec} operations depends on the ownership of a variable and the ownership expected by its use site, which we call the context.
+Variables used in a \textit{borrowed context} do not need to be incremented.
+By contrast, variables used in an \textit{owned context} should be incremented before use, because the context consumes an RC token.
+Examples of owned contexts are constructor applications, variable applications, partial applications and calls to functions that expect ownership of a particular argument.
+Borrowed variables are never decremented while owned variables should be decremented after their last use. 
+The algorithm goes one step further and will skip incrementing owned variables on their last use in owned contexts. This avoids an unnecessary \textbf{inc}/\textbf{dec} pair and leaves more opportunities for \textbf{reset}/\textbf{reuse} to succeed.
+\todo{an increment before would always ruin the possibility of reset/reuse, $count(x)+1$, then call $f \; x$ all then again $count(x)-1$ which may erase $x$.}
+
+%GOAL: Our adaptations - primitives, (again) signals are just special case constructors
+Some of the modifications from Figure~\ref{figure:refcount_IR} change the $C$ algorithm~\cite{ullrich_counting_2021} slightly, in particular the \textbf{signal} constructor, primitives, and global variables. 
+Extending the algorithm with the special case constructor \textbf{signal} is easy as it can be treated \textbf{signal} as any other \textbf{ctor} value, where all arguments are reference counted in an owned context.
+Primitives are either variables, which are reference counted as above, or literals which are not reference counted at all, regardless of context.
+
+For the purpose of inserting \textbf{inc}/\textbf{dec} operations we treat global variables as borrowed. This is consistent with the definition of borrowed references as we assume the reference is kept alive by the global scope.
+While this is safe, it comes at the cost of unnecessary \textbf{inc} instructions.
+
+
+% As an example, consider an application like $f \; x$ where $f$ is a function taking one owned argument, then we say $x$ is used in an owned context. \todo{does it go here?} If $x$ were borrowed ($\beta(x)=\mathbb{B}$) then we would have to increment its reference counter before passing it to $f$, otherwise the decrement in $f$ could potentially erase the borrowed $x$.
+
+\todo{Return to the map example. Show it again with explicit reference counts. Why is this good? Explain the dependency in Rizzo, it must be like that because \dots}
+
+\todo{Should this section include: How we capture the remaining Rizzo constructors: \texttt{Delay}, \texttt{Later}}
 
 \subsection{compile time versus runtime}
 
