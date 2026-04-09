@@ -3,11 +3,17 @@
 
 % Motivation
 
-Functional reactive programming (FRP) is a programming paradigm for building \textit{reactive} programs in a declarative and functional style. FRP languages model time-varying values as first class values. % more on why programming languages needs to have a way to model these first class time-varying values. 
+% more on why programming languages needs to have a way to model these first class time-varying values. 
 % then btw, rizzo does this... singals... updating in place... be careful with this ...
-In the FRP language Rizzo \cite{rizzo_modal_2025}, such values are captured by \textit{signals}. 
-Rizzo maintains a global heap of signals, which are all (potentially) updated whenever input is received from the environment. 
-To avoid superfluous work, it is important that signals are erased in a timely manner and so memory management is particularly important for Rizzo.
+Functional reactive programming (FRP) is a programming paradigm for building \textit{reactive} programs in a declarative and functional style. FRP languages model time-varying values as first-class values called \textit{signals}. 
+%A sentence or two on the problems/issues that arise in FRP
+However, without proper restrictions this style of programming can easily lead to programs that are non-causal, non-productive and contain space leaks.
+
+The FRP language Rizzo~\cite{rizzo_modal_2025} solves these issues using modal types and operational semantics for updating signals in place.
+Rizzo maintains a global heap of signals from which all signals are updated when an input is received from the environment.
+This process may create intermediate signals which serve no purpose post update and should therefore be erased early to avoid superfluous work, making memory management particularly important for Rizzo. 
+%A sentence or two to bridge the gap - why we need RC
+Reference counting is a strategy for managing dynamic memory that allows immediate erasure of unused heap objects, this property is ideal for Rizzo.
 
 % Goals of the thesis
 In this thesis we introduce a compiler for Rizzo that automatically inserts the necessary reference-counting instructions. The compiler outputs C code and includes a \todo{library for the reactive semantics of Rizzo}.

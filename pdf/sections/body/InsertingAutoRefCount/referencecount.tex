@@ -48,6 +48,8 @@ We additionally add a specialised $\texttt{signal}$ constructor that can be used
 This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). 
 Finally, we add top level values as mappings from constants to $FnBody$ where the $FnBody$ is run at program start up to initialise the value. This way, we can reuse the automatic reference counting of Section~\ref{section:refcount:beans}.
 
+\todo{Should this section include: How we capture the remaining Rizzo constructors: \texttt{Delay}, \texttt{Later} or does it belong later in Section~\ref{section:refcount:beans}, or maybe semantics section?}
+
 \subsection{Transformations}\label{section:refcount:transforms}
 
 %Goal of section: pretty little flow chart showing how we chain transformations together and an explanation of why/what in relation the assumptions}
@@ -83,7 +85,9 @@ Another non-obvious point is the \textit{eta-expansion} of constructors. This in
 
 Once the Rizzo program has been transformed and converted into the IR form of Figure~\ref{figure:refcount_IR} it is time to insert RC instructions. 
 
-\todo{Should we include a subsection that explains how algorithms are tied together? And that they are run on every global value and function? Or maybe just a `by the way' we run it like so and so.}
+In this section, we will explain how RC instructions are inserted during compilation and our adaptations of the algorithms by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. Note, these algorithms only insert instructions and the counting of references and memory management happen at runtime.
+
+\todo{Should we include a subsection that explains how algorithms are tied together? And how they are run for each function/global variable?}
 
 \subsubsection{Reusing memory}\label{section:refcount:beans:reuse}
 
@@ -114,7 +118,8 @@ sync_fold f s : (Option 'a -> Option 'b -> 'c) -> Sync 'a 'b -> 'c =
 
 %Goal: mention that signals are CTOR, but hard-coded to 5. This is our main modification to this algorithm :) 
 The special-case constructor $\textbf{signal} \; (p,p)$ is treated as a $\textbf{ctor}_i$ with the exception that when matched upon it makes five fields available and similarly it is only suitable when five fields are available from the scrutinee.
-\todo{Currently, the only way a constructor can have 5 fields is if it is a signal, since we currently only allow tuples of 2 elements and no user-defined types.} 
+\todo{Currently, the only constructor with 5 fields is the \textbf{signal}. Tuples are always just 2 elements.} 
+
 %Goal of example: To show reuse on signals and say that we will return to limitations later
 Listing~\ref{listing:refcount:reuse_map} shows the map combinator from Section~\ref{section:frp:rizzo} after transformations and inserting \textbf{reset}/\textbf{reuse}. 
 We see that the algorithm has added instructions for reusing the input signal.
@@ -152,7 +157,7 @@ Although these signatures could be declared by programmers, it is more convenien
 
 %GOAL: explain the heuristic
 The heuristic marks a variable $x$ as owned if either $x$ or one of its projections are used in a \textbf{reset}, appears in a partial or variable application, or passed to a function that takes ownership. 
-\todo{This heuristic fits with our modifications and requires no further changes.}
+This heuristic fits with our modifications and requires no further changes.
 Applying this heuristic recursively over the body a function collects the set of all variables that must be owned. Once this set is computed, any parameter in the set is marked as owned in the function signature and the rest are marked as borrowed.
 
 %GOAL: quickly explain our call-graph approach, the recursive function problem
@@ -177,25 +182,39 @@ Variables used in a \textit{borrowed context} do not need to be incremented.
 By contrast, variables used in an \textit{owned context} should be incremented before use, because the context consumes an RC token.
 Examples of owned contexts are constructor applications, variable applications, partial applications and calls to functions that expect ownership of a particular argument.
 Borrowed variables are never decremented while owned variables should be decremented after their last use. 
-The algorithm goes one step further and will skip incrementing owned variables on their last use in owned contexts. This avoids an unnecessary \textbf{inc}/\textbf{dec} pair and leaves more opportunities for \textbf{reset}/\textbf{reuse} to succeed.
-\todo{an increment before would always ruin the possibility of reset/reuse, $count(x)+1$, then call $f \; x$ all then again $count(x)-1$ which may erase $x$.}
+The algorithm goes one step further and will skip incrementing owned variables on their last use in owned contexts. This optimisation avoids unnecessary \textbf{inc}/\textbf{dec} pairs and leaves more opportunities for \textbf{reset}/\textbf{reuse} to succeed.
+%an increment before would always ruin the possibility of reset/reuse, $count(x)+1$, then call $f \; x$ all then again $count(x)-1$ which may erase $x$.
 
 %GOAL: Our adaptations - primitives, (again) signals are just special case constructors
-Some of the modifications from Figure~\ref{figure:refcount_IR} change the $C$ algorithm~\cite{ullrich_counting_2021} slightly, in particular the \textbf{signal} constructor, primitives, and global variables. 
-Extending the algorithm with the special case constructor \textbf{signal} is easy as it can be treated \textbf{signal} as any other \textbf{ctor} value, where all arguments are reference counted in an owned context.
-Primitives are either variables, which are reference counted as above, or literals which are not reference counted at all, regardless of context.
+Adapting algorithm $C$ to our IR, from Figure~\ref{figure:refcount_IR}, requires handling the \textbf{signal} constructor, primitives, and global variables. 
+The special case constructor \textbf{signal} can be treated \textbf{signal} as any other \textbf{ctor} value, where all arguments are considered in an owned context.
+Primitives are either variables, which are handled according to the ownership rules above, or literals, which are never reference counted.
+Global variables are treated as borrowed for the purpose of \textbf{inc}/\textbf{dec} insertion, since they are assumed to be kept alive for the duration of the program. This choice keeps the implementation simple and safe but may introduce unnecessary \textbf{inc} instructions.
 
-For the purpose of inserting \textbf{inc}/\textbf{dec} operations we treat global variables as borrowed. This is consistent with the definition of borrowed references as we assume the reference is kept alive by the global scope.
-While this is safe, it comes at the cost of unnecessary \textbf{inc} instructions.
+%GOAL: Circle back to the map example - TRY to explain why we can never reuse and why that is CORRECT with regards to the semantics of Rizzo.
+Returning to the map example from earlier Listing~\ref{listing:refcount:incdec_map} shows the compiled map combinator after all transformations and with RC instructions. 
+The listing shows the result of inferring the borrow signature on the first line and displays the reference counts of the variables $x$, $s$, and $f$ assuming they are all unique when map is called. 
+Notice, that because $xs$ is a $tail s$ constructor and it wants ownership of $s$ we must increment it beforehand since $s$ is used again later in the $\textbf{reset} \; s$. This increment sets the reference count of $s$ to two, which means $s$ is no longer unique at the time of $\textbf{reset} \; s$ and as such not a valid candidate for reuse.
 
+\begin{lstlisting}[
+  caption={The map combinator with \textbf{inc}/\textbf{dec} instructions. The inferred ownership annotations for the arguments of map are shown on the first line.},
+  label={listing:refcount:incdec_map}
+]
+f: Owned, s: Owned
+fun map f s : ('a -> 'b) -> Signal 'a -> Signal 'b =
+  case s of  
+  (let x = proj_0 s in        count(x) = 1
+   inc x;                     count(x) = 2
+   inc s;                     count(s) = 2
+   let xs = Ctor2(s) in
+   let s' = reset s in        count(s) = 1, s' = NULL
+   inc f;                     count(f) = 2
+   let hd = f x in
+   let map' = pap map(f) in
+   let delayed_map = Ctor0(map') in
+   let tl = Ctor6(delayed_map, xs) in    
+   let res = reuse s' in Signal(hd, tail) in
+   ret res)
+\end{lstlisting}
 
-% As an example, consider an application like $f \; x$ where $f$ is a function taking one owned argument, then we say $x$ is used in an owned context. \todo{does it go here?} If $x$ were borrowed ($\beta(x)=\mathbb{B}$) then we would have to increment its reference counter before passing it to $f$, otherwise the decrement in $f$ could potentially erase the borrowed $x$.
-
-\todo{Return to the map example. Show it again with explicit reference counts. Why is this good? Explain the dependency in Rizzo, it must be like that because \dots}
-
-\todo{Should this section include: How we capture the remaining Rizzo constructors: \texttt{Delay}, \texttt{Later}}
-
-\subsection{compile time versus runtime}
-
-\todo{Explain that instructions are inserted at compile time but the actual counts are runtime?}
-
+While it may seem unfortunate that map can never reuse any memory but it would not be safe to reuse the input signal since it is needed again in the future when advancing the tail of the map-signal.\ \todo{\dots Likely candidate where a visualisation of a heap may heap!}
