@@ -51,7 +51,7 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 %token EFFECTFUL
 %token EQ CONS COMMA LPAREN RPAREN BAR
 %token IF THEN ELSE
-%token PIPE_GT ARROW COLON STAR SLASH UNDERSCORE EQEQ PLUS MINUS LT GT LEQ GEQ BANG
+%token PIPE_GT ARROW COLON STAR SLASH PERCENT UNDERSCORE EQEQ PLUS MINUS LT GT LEQ GEQ BANG
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY //NOT
 %token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION
 %token <string> ID
@@ -171,6 +171,8 @@ mul_expr:
     { EBinary (Mul, left, right, binary_ann left right) }
   | left=mul_expr SLASH right=cons_expr
     { EBinary (Div, left, right, binary_ann left right) }
+  | left=mul_expr PERCENT right=cons_expr
+    { EBinary (Mod, left, right, binary_ann left right) }
   | e=cons_expr
     { e }
 

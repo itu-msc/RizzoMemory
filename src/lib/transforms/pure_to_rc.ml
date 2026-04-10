@@ -24,6 +24,7 @@ let op_to_application = function
   | Mul -> "mul"
   | Sub -> "sub"
   | Div -> "div"
+  | Mod -> "mod"
   | Eq -> "eq"
   | Lt -> "lt"
   | Leq -> "leq"

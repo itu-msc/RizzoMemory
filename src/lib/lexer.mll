@@ -57,6 +57,7 @@ rule read = parse
   | ">=" { GEQ }
   | "<" { LT }
   | ">" { GT }
+  | "%" { PERCENT }
   | ":" { COLON }
   | "!" { BANG }
   | "+" { PLUS }

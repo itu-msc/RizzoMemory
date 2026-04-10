@@ -16,7 +16,7 @@ type unary_op =
 type binary_op =
   | SigCons
   | BSync | BOStar | BLaterApp
-  | Add | Mul | Sub | Div | Eq | Lt | Leq | Gt | Geq
+  | Add | Mul | Sub | Div | Mod | Eq | Lt | Leq | Gt | Geq
 
 (** Source location for an expression node *)
 type location = Location.t
@@ -233,6 +233,7 @@ and string_of_binary_op = function
   | Mul -> "*"
   | Sub -> "-"
   | Div -> "/"
+  | Mod -> "%"
   | Eq -> "=="
   | Lt -> "<"
   | Leq -> "<="

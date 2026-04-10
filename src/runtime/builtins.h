@@ -108,10 +108,154 @@ static inline rz_box_t rz_builtin_string_of_int(size_t num_args, rz_box_t *args)
 	return rz_make_string_len(buffer, strlen(buffer));
 }
 
+static inline rz_box_t rz_builtin_mod(size_t num_args, rz_box_t *args)
+{
+	int64_t lhs;
+	int64_t rhs;
+	rz_builtin_expect_arity("mod", 2, num_args);
+	lhs = rz_builtin_expect_int("mod", 0, args[0]);
+	rhs = rz_builtin_expect_int("mod", 1, args[1]);
+	if (rhs == 0)
+	{
+		fprintf(stderr, "Runtime error: builtin 'mod' received division by zero\n");
+		exit(1);
+	}
+	return rz_make_int(lhs % rhs);
+}
+
+static inline rz_box_t rz_builtin_abs(size_t num_args, rz_box_t *args)
+{
+	int64_t value;
+	rz_builtin_expect_arity("abs", 1, num_args);
+	value = rz_builtin_expect_int("abs", 0, args[0]);
+	if (value == INT64_MIN)
+	{
+		fprintf(stderr, "Runtime error: builtin 'abs' cannot negate INT64_MIN\n");
+		exit(1);
+	}
+	return rz_make_int(value < 0 ? -value : value);
+}
+
+static inline rz_box_t rz_builtin_min(size_t num_args, rz_box_t *args)
+{
+	int64_t lhs;
+	int64_t rhs;
+	rz_builtin_expect_arity("min", 2, num_args);
+	lhs = rz_builtin_expect_int("min", 0, args[0]);
+	rhs = rz_builtin_expect_int("min", 1, args[1]);
+	return rz_make_int(lhs < rhs ? lhs : rhs);
+}
+
+static inline rz_box_t rz_builtin_max(size_t num_args, rz_box_t *args)
+{
+	int64_t lhs;
+	int64_t rhs;
+	rz_builtin_expect_arity("max", 2, num_args);
+	lhs = rz_builtin_expect_int("max", 0, args[0]);
+	rhs = rz_builtin_expect_int("max", 1, args[1]);
+	return rz_make_int(lhs > rhs ? lhs : rhs);
+}
+
+static inline rz_box_t rz_builtin_clamp(size_t num_args, rz_box_t *args)
+{
+	int64_t value;
+	int64_t lower;
+	int64_t upper;
+	rz_builtin_expect_arity("clamp", 3, num_args);
+	value = rz_builtin_expect_int("clamp", 0, args[0]);
+	lower = rz_builtin_expect_int("clamp", 1, args[1]);
+	upper = rz_builtin_expect_int("clamp", 2, args[2]);
+	if (lower > upper)
+	{
+		fprintf(stderr, "Runtime error: builtin 'clamp' expected lower bound <= upper bound\n");
+		exit(1);
+	}
+	if (value < lower)
+	{
+		return rz_make_int(lower);
+	}
+	if (value > upper)
+	{
+		return rz_make_int(upper);
+	}
+	return rz_make_int(value);
+}
+
 static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *args)
 {
 	rz_builtin_expect_arity("console_out_signal", 1, num_args);
 	return rz_register_output_signal(num_args, args);
+}
+
+static inline rz_box_t rz_builtin_string_contains(size_t num_args, rz_box_t *args)
+{
+	size_t text_len;
+	size_t needle_len;
+	const char *text_bytes;
+	const char *needle_bytes;
+	rz_builtin_expect_arity("string_contains", 2, num_args);
+	rz_builtin_expect_string("string_contains", 0, args[0]);
+	rz_builtin_expect_string("string_contains", 1, args[1]);
+	text_len = rz_string_byte_length(args[0]);
+	needle_len = rz_string_byte_length(args[1]);
+	text_bytes = rz_string_data(args[0]);
+	needle_bytes = rz_string_data(args[1]);
+	if (needle_len == 0)
+	{
+		return rz_make_ptr(rz_bool_ctor(true));
+	}
+	if (needle_len > text_len)
+	{
+		return rz_make_ptr(rz_bool_ctor(false));
+	}
+	for (size_t i = 0; i + needle_len <= text_len; i++)
+	{
+		if (memcmp(text_bytes + i, needle_bytes, needle_len) == 0)
+		{
+			return rz_make_ptr(rz_bool_ctor(true));
+		}
+	}
+	return rz_make_ptr(rz_bool_ctor(false));
+}
+
+static inline rz_box_t rz_builtin_string_starts_with(size_t num_args, rz_box_t *args)
+{
+	size_t text_len;
+	size_t prefix_len;
+	const char *text_bytes;
+	const char *prefix_bytes;
+	rz_builtin_expect_arity("string_starts_with", 2, num_args);
+	rz_builtin_expect_string("string_starts_with", 0, args[0]);
+	rz_builtin_expect_string("string_starts_with", 1, args[1]);
+	text_len = rz_string_byte_length(args[0]);
+	prefix_len = rz_string_byte_length(args[1]);
+	text_bytes = rz_string_data(args[0]);
+	prefix_bytes = rz_string_data(args[1]);
+	if (prefix_len > text_len)
+	{
+		return rz_make_ptr(rz_bool_ctor(false));
+	}
+	return rz_make_ptr(rz_bool_ctor(memcmp(text_bytes, prefix_bytes, prefix_len) == 0));
+}
+
+static inline rz_box_t rz_builtin_string_ends_with(size_t num_args, rz_box_t *args)
+{
+	size_t text_len;
+	size_t suffix_len;
+	const char *text_bytes;
+	const char *suffix_bytes;
+	rz_builtin_expect_arity("string_ends_with", 2, num_args);
+	rz_builtin_expect_string("string_ends_with", 0, args[0]);
+	rz_builtin_expect_string("string_ends_with", 1, args[1]);
+	text_len = rz_string_byte_length(args[0]);
+	suffix_len = rz_string_byte_length(args[1]);
+	text_bytes = rz_string_data(args[0]);
+	suffix_bytes = rz_string_data(args[1]);
+	if (suffix_len > text_len)
+	{
+		return rz_make_ptr(rz_bool_ctor(false));
+	}
+	return rz_make_ptr(rz_bool_ctor(memcmp(text_bytes + (text_len - suffix_len), suffix_bytes, suffix_len) == 0));
 }
 
 static inline rz_box_t rz_builtin_clock(size_t num_args, rz_box_t *args)

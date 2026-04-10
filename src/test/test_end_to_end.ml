@@ -157,6 +157,31 @@ let test_simple_console_identity () =
     | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
     | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
 
+let test_runtime_mod_and_string_helpers () =
+  let program =
+    {|
+      fun entry x =
+        let result =
+          if string_contains "functional reactive programming" "reactive" then
+            if string_starts_with "hello" "he" then
+              if string_ends_with "hello" "lo" then
+                if 9 % 4 == 1 then "ok" else "bad"
+              else "bad"
+            else "bad"
+          else "bad"
+        in
+        let _o = console_out_signal (result :: never) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"trigger" () in
+  Alcotest.(check bool) "computed output appears" true (List.mem "ok" outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
 let test_issue_filterl_variant_outputs_quit () =
   let program =
     {|
@@ -276,6 +301,7 @@ let end_to_end_tests = [
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
   "Issue filterL variant outputs quit after non-match", `Quick, test_issue_filterl_variant_outputs_quit_after_non_match;
   "Issue map_l variant outputs Hello world", `Quick, test_issue_map_l_variant_outputs_hello_world;
+  "runtime mod and string helpers", `Quick, test_runtime_mod_and_string_helpers;
   "Console signal input string is freed", `Quick, test_console_signal_input_string_is_freed;
   "Clock signal outputs ticks", `Quick, test_clock_signal_outputs_ticks;
 ]

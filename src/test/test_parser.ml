@@ -58,6 +58,7 @@ let test_arbitrary_length_tuple () =
 let test_int_operator_precedence () =
   let input =
     "let calc = 10 - 3 * 2 / 1\n"
+    ^ "let rem = 10 * 3 % 4\n"
     ^ "let less = 1 + 2 < 4\n"
     ^ "let more = 5 > 4\n"
     ^ "let atleast = 5 >= 4\n"
@@ -67,6 +68,7 @@ let test_int_operator_precedence () =
   let expected : parsed program =
     [
       toplet "calc" (binary Sub (int 10) (binary Div (binary Mul (int 3) (int 2)) (int 1)));
+      toplet "rem" (binary Mod (binary Mul (int 10) (int 3)) (int 4));
       toplet "less" (binary Lt (binary Add (int 1) (int 2)) (int 4));
       toplet "more" (binary Gt (int 5) (int 4));
       toplet "atleast" (binary Geq (int 5) (int 4));

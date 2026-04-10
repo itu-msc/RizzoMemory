@@ -550,7 +550,7 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     | _ ->
       let* _ = error ann (Format.asprintf "Operator '+' expects Int or String operands, got '%a'" Ast.pp_typ t) in
       return (EBinary (op, te1, te2, Ann_typed (get_location ann, TError))))
-  | Mul | Sub | Div ->
+  | Mul | Sub | Div | Mod ->
     let* te1 = check e1 TInt in
     let* te2 = check e2 TInt in
     return (EBinary (op, te1, te2, Ann_typed (get_location ann, TInt)))
