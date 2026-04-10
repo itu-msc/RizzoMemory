@@ -46,6 +46,7 @@
 - [ ] Decide: How we would like to evaluate, which activities does it include? Measurements? Etc.
 - [ ] Evaluate our adaptation of Ullrich & De Moura.
 - [ ] Evaluate our use of Perceus(?)
+- [ ] Heavy Valgrind test with many inputs and several channels, many iterations.
 
 ## Rizzo Syntax design
 
