@@ -1,0 +1,28 @@
+
+fun mod a n = 
+    if a < n then a else mod (a - n) n
+
+fun str_concat a b = (a : String) + b
+
+fun entry x = 
+    let timer =  clock 1000 in
+    let number_signal = scan (fun x y -> x + 1) 0 timer in
+    let fizz_signal = filter_map (fun x -> if mod x 3 == 0  then Just ("fizz") else Nothing) number_signal in
+    let buzz_signal = filter_map (fun x -> if mod x 5 == 0  then Just ("buzz") else Nothing) number_signal in
+
+    let fizzbuzz_signal = 
+        interleave_l
+            (fun n s -> s) 
+            (map string_of_int number_signal) 
+            (let cont = fun mysync -> 
+                match mysync with
+                | Left (xs')      -> interleave_l       str_concat xs'          buzz_signal
+                | Right (ys')     -> interleave_l_right str_concat fizz_signal  ys'
+                | Both (xs', ys') -> interleave         str_concat xs'          ys'
+            in cont |> sync fizz_signal buzz_signal)
+    in
+    let x = console_out_signal fizzbuzz_signal in
+    
+    let x = quit_at (filter_l (fun s -> s == "quit") (mk_sig_of_channel console)) in
+    start_event_loop ()
+

@@ -65,7 +65,8 @@ fun switch_r s d =
     let d_ = (fun s_ -> fun x -> switch_r ((head s_) x) (tail s_)) |> d in
     switch_s s d_
 
-fun scan f b s : ('b -> 'a -> 'b) -> 'b -> Signal 'a -> Signal 'b = match s with
+fun scan f b s : ('b -> 'a -> 'b) -> 'b -> Signal 'a -> Signal 'b = 
+    match s with
     | x :: xs ->
         let b_ = f b x in
         b_ :: (scan f b_ |> xs)
@@ -84,6 +85,24 @@ fun interleave_from f current xs ys =
 
 fun interleave f xs ys =
     interleave_from f (f (head xs) (head ys)) xs ys
+
+fun interleave_l f xs later_ys = 
+    let cont = fun mysync -> 
+        match mysync with
+        | Left (xs)     -> interleave_l f xs later_ys
+        | Right(ys)     -> interleave_from f (head ys) xs ys
+        | Both (xs, ys) -> interleave f xs ys
+    in
+    switch xs (cont |> sync (tail xs) later_ys)
+
+fun interleave_l_right f lxs ys = 
+    let cont = fun mysync -> 
+        match mysync with
+        | Left (xs)     -> interleave_from f (head xs) xs ys
+        | Right(ys)     -> interleave_l_right f lxs ys
+        | Both (xs, ys) -> interleave f xs ys
+    in
+    switch ys (cont |> sync lxs (tail ys))
 
 fun filter_map p s : ('a -> (Option 'b)) -> Signal 'a -> Later (Signal 'b) = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
