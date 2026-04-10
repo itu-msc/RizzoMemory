@@ -16,6 +16,9 @@ let tagof = Rizzo_builtins.ctor_tag_of
 let ctor_tag_of_name (name : string) : int = 
   Rizzo_builtins.ctor_tag_of name
 
+let case_arm ?tag ?num_fields body : Refcount.case_arm =
+  { tag; num_fields; body }
+
 let op_to_application = function
   | Add -> "add"
   | Mul -> "mul"
@@ -130,25 +133,49 @@ and app_to_fn_body globals locals = function
 and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body = 
   let expr_to_fn_body = expr_to_fn_body globals in
   let expr_to_rexpr = expr_to_rexpr globals in
+  let lower_case_arm (pattern, branch, _) =
+    let body = expr_to_fn_body locals branch in
+    match pattern with
+    | PVar _ | PWildcard _ -> case_arm body
+    | PConst (CBool false, _) -> case_arm ~tag:(tagof "false") ~num_fields:0 body
+    | PConst (CBool true, _) -> case_arm ~tag:(tagof "true") ~num_fields:0 body
+    | PConst (CNever, _) -> case_arm ~tag:(tagof "never") ~num_fields:0 body
+    | PConst (CUnit, _) -> case_arm ~tag:(tagof "unit") ~num_fields:0 body
+    | PConst (CString _, _) -> failwith "String patterns should be eliminated before RC lowering"
+    | PConst (CInt _, _) -> failwith "Integer patterns are not supported in RC lowering"
+    | PTuple _ -> case_arm ~tag:(tagof "tuple") ~num_fields:2 body
+    | PSigCons _ -> case_arm ~tag:0 ~num_fields:5 body
+    | PStringCons _ -> failwith "String patterns should be eliminated before RC lowering"
+    | PCtor ((ctor_name, _), args, _) ->
+        case_arm ~tag:(ctor_tag_of_name ctor_name) ~num_fields:(List.length args) body
+  in
+  let lower_case_arms cases =
+    let rec aux seen_tags acc = function
+      | [] -> List.rev acc
+      | case :: rest ->
+          let arm = lower_case_arm case in
+          match arm.tag with
+          | None -> List.rev (arm :: acc)
+          | Some tag when List.mem tag seen_tags -> aux seen_tags acc rest
+          | Some tag -> aux (tag :: seen_tags) (arm :: acc) rest
+    in
+    aux [] [] cases
+  in
   match e with
   | EVar (x, _) -> FnRet (Var x)
   | EConst (c, _) -> FnRet (Const c)
   (* TODO: couldn't we just move this elsewhere? shouldn't we just add this sort of logic to anf? *)
   | EApp _ | ELet _ -> app_to_fn_body globals locals e
   | ECase (EVar (x,_), cases, _) -> 
-    let get_fields_of_pattern = function (* Causion: are we counting the nested part correctly? *)
-    | PVar _ | PWildcard _ | PConst _ -> 0
-    | PTuple _ -> 2 
-    | PSigCons _ -> 5 (* should it be 2, 3, 4, 5? *)
-    | PStringCons _ -> failwith "String patterns should be eliminated before RC lowering"
-    | PCtor (_, args, _) -> List.length args 
-    in
-    FnCase(x, List.map (fun (c, branch, _) -> (get_fields_of_pattern c, expr_to_fn_body locals branch)) cases)
+    FnCase (x, lower_case_arms cases)
   | ECase _ -> 
     failwith "expr_to_fn_body failed: case scrutinee is not a variable"
   | EIfe (EVar (x, _), e1, e2, _) ->
     (* We decided booleans are objects with 0 fields but with tag 0 or 1*)
-    FnCase (x, [(0,expr_to_fn_body locals e1); (0,expr_to_fn_body locals e2)]) 
+    FnCase (x, [
+      case_arm ~tag:(tagof "true") ~num_fields:0 (expr_to_fn_body locals e1);
+      case_arm ~tag:(tagof "false") ~num_fields:0 (expr_to_fn_body locals e2)
+    ]) 
   | EIfe _ -> failwith "expr_to_fn_body failed: if condition is not a variable"
   | EAnno (e, _, _) -> expr_to_fn_body locals e
   | _ -> 

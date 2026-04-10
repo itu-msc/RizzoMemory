@@ -100,8 +100,8 @@ let ctor_mappings =
     ("unit", 0);
     ("int", 0);
     ("string", 0);
-    ("false", 0);
-    ("true", 1);
+    ("true", 0);
+    ("false", 1);
     ("sigcons", -1);
     ("nothing", 0);
     ("just", 1);

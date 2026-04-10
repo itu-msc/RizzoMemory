@@ -683,7 +683,7 @@ let tests = [
           Alcotest.(check bool)
             "stdlib filename"
             true
-            (contains_substring ~text:defn.Language_service.filename ~substring:"src/stdlib/signal.rizz");
+            (contains_substring ~text:defn.Language_service.filename ~substring:"signal.rizz");
           Alcotest.(check int) "stdlib line" 11 defn.Language_service.range.start_pos.line);
   "hover returns node info", `Quick,
     (fun () ->

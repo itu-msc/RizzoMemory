@@ -223,7 +223,9 @@ static inline void rz_refcount_dec(rz_object_t* obj) {
                 rz_free(obj);
             } break;
             case RZ_STRING: {
+#ifdef __RZ_DEBUG_MALLOC
                 printf("Freeing string: %.*s\n", (int)((rz_string_t*)obj)->byte_length, ((rz_string_t*)obj)->bytes);
+#endif
                 rz_free(obj);
             }
         }

@@ -14,7 +14,7 @@ and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
     |> Option.map (fun a -> [a])
     |> Option.value ~default:[]
   | FnLet (_, e, f) -> (collect_string_consts_fn f) @ (collect_string_consts_expr e)
-  | FnCase (_, cases) -> List.concat_map (Fun.compose collect_string_consts_fn snd) cases
+  | FnCase (_, cases) -> List.concat_map (fun { body; _ } -> collect_string_consts_fn body) cases
   | FnDec (_, rest) | FnInc (_, rest)  -> collect_string_consts_fn rest
 and collect_string_consts_expr rexpr = match rexpr with
   | RConst c -> collect_primitive_string_const (Const c) 
@@ -121,17 +121,33 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | FnCase (scrutinee, branches) ->
       write ~indent (Printf.sprintf "switch (rz_object_tag(rz_unbox_ptr(%s))) {\n" (mangle scrutinee));
       let indent_inner = indent + standard_indent in
-      List.map snd branches 
-      |> List.iteri (fun tag branch_fn -> 
+      let default_branch, tagged_branches =
+        List.fold_left
+          (fun (default_branch, tagged_branches) { tag; body; _ } ->
+            match tag with
+            | Some tag -> (default_branch, (tag, body) :: tagged_branches)
+            | None ->
+                ((match default_branch with
+                  | Some _ -> default_branch
+                  | None -> Some body), tagged_branches))
+          (None, []) branches
+      in
+      List.rev tagged_branches
+      |> List.iter (fun (tag, branch_fn) -> 
         write ~indent (Printf.sprintf "case %d: {\n" tag);
         emit_fn_body indent_inner branch_fn;
         write ~indent:indent_inner "break;\n";
         write ~indent "}\n";
       );
       write ~indent "default: {\n";
-      write ~indent:indent_inner "fprintf(stderr, \"Rizzo Runtime error at (%s, %d): unexpected tag %d\", __FILE__, __LINE__,";
-      write (Printf.sprintf "rz_object_tag(rz_unbox_ptr(%s)));\n" (mangle scrutinee));
-      write ~indent:indent_inner "exit(1);\n";
+      (match default_branch with
+      | Some branch_fn ->
+          emit_fn_body indent_inner branch_fn;
+          write ~indent:indent_inner "break;\n"
+      | None ->
+          write ~indent:indent_inner "fprintf(stderr, \"Rizzo Runtime error at (%s, %d): unexpected tag %d\", __FILE__, __LINE__,";
+          write (Printf.sprintf "rz_object_tag(rz_unbox_ptr(%s)));\n" (mangle scrutinee));
+          write ~indent:indent_inner "exit(1);\n");
       write ~indent "}}\n"
     | FnDec (x, f) -> 
       if Option.is_none (int_of_string_opt x) then

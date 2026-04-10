@@ -22,16 +22,21 @@ and ctor =
 type fn_body = 
   | FnRet of primitive
   | FnLet of string * rexpr * fn_body
-  | FnCase of string * (int * fn_body) list
+  | FnCase of string * case_arm list
   | FnInc of string * fn_body
   | FnDec of string * fn_body
+and case_arm = {
+  tag: int option;
+  num_fields: int option;
+  body: fn_body;
+}
 
 type rc_fun = Fun of string list * fn_body
 
 type program = 
   | RefProg of { functions: (string * rc_fun) list; globals: (string * fn_body) list } 
 
-let get_cases = List.map snd
+let get_cases = List.map (fun { body; _ } -> body)
 
 type ownership =
   | Owned
@@ -94,11 +99,15 @@ let rec pp_fnbody out = function
   | FnLet (y, r, f) ->
         Format.fprintf out "@[<v 0>@{<magenta>let@} @{<lightcyan>%s@} = %a @{<magenta>in@}@,%a@]" y pp_rexpr r pp_fnbody f
   | FnCase (x, fs) ->
-      let pp_branch out f =
-        Format.fprintf out "@{<blue>|@} @[<hov 2>%a@]" pp_fnbody f
+      let pp_branch out { tag; body; _ } =
+        match tag with
+        | Some tag ->
+            Format.fprintf out "@{<blue>|@} @{<yellow>#%d@} @[<hov 2>%a@]" tag pp_fnbody body
+        | None ->
+            Format.fprintf out "@{<blue>|@} @{<magenta>default@} @[<hov 2>%a@]" pp_fnbody body
       in
       Format.fprintf out "@[<v 0>@{<magenta>match@} @{<lightcyan>%s@} @{<magenta>with@}@,%a@]" x
-        (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_branch) (get_cases fs)
+        (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") pp_branch) fs
   | FnInc (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>inc@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
   | FnDec (x, f) -> Format.fprintf out "@[<v 0>@{<magenta>dec@} @{<lightcyan>%s@};@,%a@]" x pp_fnbody f
 
@@ -144,7 +153,10 @@ and eq_fnbody f1 f2 =
   | FnCase (x1, fs1), FnCase (x2, fs2) ->
       x1 = x2 &&
       List.length fs1 = List.length fs2 &&
-      List.for_all2 (fun (i1, f1) (i2, f2) -> i1 = i2 && eq_fnbody f1 f2) fs1 fs2
+      List.for_all2 (fun arm1 arm2 ->
+        arm1.tag = arm2.tag
+        && arm1.num_fields = arm2.num_fields
+        && eq_fnbody arm1.body arm2.body) fs1 fs2
   | FnInc (x1, f1), FnInc (x2, f2) -> x1 = x2 && eq_fnbody f1 f2
   | FnDec (x1, f1), FnDec (x2, f2) -> x1 = x2 && eq_fnbody f1 f2
   | _ -> false
@@ -208,7 +220,7 @@ and free_vars_fn = function
     StringSet.union (free_vars_rexpr_inner rhs) (StringSet.remove x @@ free_vars f)
   | FnCase (scrutinee, branches) ->
     StringSet.singleton scrutinee
-    |> StringSet.union (List.fold_left (fun acc (_, branch) -> StringSet.union acc (free_vars branch)) StringSet.empty branches)
+    |> StringSet.union (List.fold_left (fun acc { body; _ } -> StringSet.union acc (free_vars body)) StringSet.empty branches)
   | FnInc (v, f) | FnDec (v, f) ->
     StringSet.union (StringSet.singleton v) (free_vars f)
 
@@ -247,7 +259,13 @@ let rec insert_rc (_f:fn_body) (var_ownerships: beta_env) func_ownerships : fn_b
   | FnRet x -> insert_inc x StringSet.empty _f var_ownerships
   | FnCase (x, fs) as case -> 
     let ys = StringSet.to_list (free_vars case) |> List.map (fun s -> Var s) in
-    let compiled_fs = List.map (fun (n, f) -> (n, insert_dec_many ys (insert_rc f var_ownerships func_ownerships) var_ownerships)) fs in
+    let compiled_fs =
+      List.map
+        (fun arm ->
+          { arm with
+            body = insert_dec_many ys (insert_rc arm.body var_ownerships func_ownerships) var_ownerships })
+        fs
+    in
     FnCase (x, compiled_fs) 
   (* The Lets*)
   | FnLet (y, RConst c, f) -> FnLet (y, RConst c, insert_rc f var_ownerships func_ownerships)
@@ -358,7 +376,7 @@ let insert_owned_partial_app_wrapper func_ownership (RefProg{functions; globals}
     | FnDec (x, f) -> FnDec (x, aux f)
     | FnInc (x, f) -> FnInc (x, aux f)
     | FnCase (x, cases) -> 
-      FnCase (x, List.map (fun (fields, body) -> (fields, aux body)) cases)
+      FnCase (x, List.map (fun arm -> { arm with body = aux arm.body }) cases)
   in 
   let functions' = List.map (fun (name, Fun(params, body)) -> name, Fun(params, aux body)) functions in
   let globals' = List.map (fun (name, body) -> name, aux body) globals in
@@ -493,7 +511,12 @@ and insert_reset_and_reuse_pairs_fn body = match body with
   | FnRet _ -> body
   | FnLet (x, e, f) -> FnLet (x, e, insert_reset_and_reuse_pairs_fn f)
   | FnCase (x, cases) ->                                  (*______D_____ x   ni             R(c)                        *)
-    FnCase (x, List.map (fun (num_fields,c) -> (num_fields, insert_reset x num_fields (insert_reset_and_reuse_pairs_fn c))) cases)
+    FnCase (x,
+      List.map (fun arm ->
+        let compiled_body = insert_reset_and_reuse_pairs_fn arm.body in
+        match arm.num_fields with
+        | Some num_fields -> { arm with body = insert_reset x num_fields compiled_body }
+        | None -> { arm with body = compiled_body }) cases)
   | FnInc _ | FnDec _ -> 
     failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
 
@@ -501,7 +524,7 @@ and insert_reset_and_reuse_pairs_fn body = match body with
     Ullrich & De Moura call it 'D' *)
 and insert_reset z num_fields fn_body = 
   match fn_body with
-  | FnCase (s, cases) -> FnCase (s, List.map (fun (i, arm) -> (i, insert_reset z num_fields arm)) cases)
+  | FnCase (s, cases) -> FnCase (s, List.map (fun arm -> { arm with body = insert_reset z num_fields arm.body }) cases)
   | FnRet _ -> fn_body
   | FnLet (x, e, f) when StringSet.mem z (free_vars_rexpr e) || StringSet.mem z (free_vars f) -> 
     (* (z in e) or (z in F) *)
@@ -519,7 +542,7 @@ and insert_reset z num_fields fn_body =
     Ullrich & De Moura call it 'S' *)
 and insert_reuse w num_fields fn_body: fn_body =
   match fn_body with
-  | FnCase (s, cases) -> FnCase (s, List.map (fun (i,c) -> i, insert_reuse w num_fields c) cases)
+  | FnCase (s, cases) -> FnCase (s, List.map (fun arm -> { arm with body = insert_reuse w num_fields arm.body }) cases)
   | FnRet _ -> fn_body
   | FnLet (x, RCtor Ctor {tag; fields}, f) when List.length fields = num_fields ->
       FnLet (x, RReuse (w, Ctor {tag; fields}), f) 

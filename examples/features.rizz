@@ -6,7 +6,12 @@ fun describeText s =
     | "H" :: rest -> "Starts with H, tail = " + rest
     | first :: _rest -> "Starts with " + first
 
-
+fun nothingToJust x =
+    match x with
+    | Just (y) -> Just(y + 1)
+    | Nothing -> Just(0)
+    | y -> y
+    | _ -> Nothing
 
 fun appendSignalToNeverAndAdd1 s a = const (a |> s)
 
