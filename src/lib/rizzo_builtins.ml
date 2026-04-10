@@ -70,3 +70,44 @@ let is_builtin name = M.mem name builtins_map
 let is_builtin_projection name = match M.find_opt name builtins_map with
   | Some { projection_index = Some _; _ } -> true
   | _ -> false
+
+
+(* consider if we can do this in a way that 
+  makes the compiler complain if we dont have the entries*)
+let ctor_mappings = 
+  M.of_list [
+    (*Laters*)
+    ("never", 0);
+    ("wait", 1);
+    ("tail", 2);
+    ("sync", 4);
+    ("watch", 5);
+    ("later_app", 6); 
+
+    (*sync*)
+    ("left", 0);
+    ("right", 1);
+    ("both", 2);
+
+    (*delay*)
+    ("delay", 0);
+    ("ostar", 1);
+
+    (*Tuples*)
+    ("tuple", 0);
+
+    (*Primitives*)
+    ("unit", 0);
+    ("int", 0);
+    ("string", 0);
+    ("false", 0);
+    ("true", 1);
+    ("sigcons", -1);
+    ("nothing", 0);
+    ("just", 1);
+  ]
+
+let ctor_tag_of name = match M.find_opt (String.lowercase_ascii name) ctor_mappings with
+  | Some tag -> tag
+  | None -> failwith (Printf.sprintf "Constructor '%s' not found in ctor_mappings" name)
+

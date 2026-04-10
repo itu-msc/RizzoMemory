@@ -338,7 +338,7 @@ let test_semantic_tokens_include_builtin_function_references () =
        ~declaration:false)
 
 let test_semantic_tokens_include_function_parameters () =
-  let text = "fun const x = x :: never\n" in
+  let text = "fun consf x = x :: never\n" in
   let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check bool)
     "function parameter token"
@@ -680,7 +680,11 @@ let tests = [
       | None -> Alcotest.fail "expected stdlib definition"
       | Some defn ->
           Alcotest.(check string) "name" "map" defn.Language_service.name;
-          Alcotest.(check int) "stdlib line" 12 defn.Language_service.range.start_pos.line);
+          Alcotest.(check bool)
+            "stdlib filename"
+            true
+            (contains_substring ~text:defn.Language_service.filename ~substring:"src/stdlib/signal.rizz");
+          Alcotest.(check int) "stdlib line" 11 defn.Language_service.range.start_pos.line);
   "hover returns node info", `Quick,
     (fun () ->
       let text = "let x = 1\nlet y = x\n" in

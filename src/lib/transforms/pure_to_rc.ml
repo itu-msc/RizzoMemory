@@ -10,47 +10,11 @@ let get_name =
 
 module M = Map.Make(String)
 
-(* consider if we can do this in a way that 
-  makes the compiler complain if we dont have the entries*)
-let ctorMappings = 
-  M.of_list [
-    (*Laters*)
-    ("never", 0);
-    ("wait", 1);
-    ("tail", 2);
-    ("sync", 4);
-    ("watch", 5);
-    ("later_app", 6); 
-
-    (*sync*)
-    ("left", 0);
-    ("right", 1);
-    ("both", 2);
-
-    (*delay*)
-    ("delay", 0);
-    ("ostar", 1);
-
-    (*Tuples*)
-    ("tuple", 0);
-
-    (*Primitives*)
-    ("unit", 0);
-    ("int", 0);
-    ("string", 0);
-    ("false", 0);
-    ("true", 1);
-    ("sigcons", -1);
-    ("nothing", 0);
-    ("just", 1);
-  ]
-let tagof name = match M.find_opt name ctorMappings with
-  | Some id -> id
-  | None -> failwith (Printf.sprintf "Constructor '%s' not found in mapping" name)
+let tagof = Rizzo_builtins.ctor_tag_of
 
 (* TODO: change when user defined types are added *)
-let ctor_tag_of_name (name : string) : int =
-  tagof (String.lowercase_ascii name)
+let ctor_tag_of_name (name : string) : int = 
+  Rizzo_builtins.ctor_tag_of name
 
 let op_to_application = function
   | Add -> "add"

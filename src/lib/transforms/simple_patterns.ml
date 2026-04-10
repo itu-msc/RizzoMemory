@@ -166,18 +166,28 @@ and compile_match e =
   | ECtor (name, args, ann) -> ECtor (name, List.map compile_match args, ann)
   | ECase (scrutinee, cases, ann) when is_string_case cases ->
     compile_string_case scrutinee cases ann
-  | ECase (scrutinee, cases, ann) -> 
-    (* this happens before ANF, so expr may be complex *)
+  | ECase ((EVar _ | EAnno (EVar _,_,_)) as scrutinee, cases, ann) ->
+    (* Alternatively, we could just do this AFTER ANF? *)
     let cases_compiled = 
       List.map 
       (fun (pat, case_body, case_ann) -> 
         let compiled = compile_simple_pattern scrutinee (fun () -> compile_match case_body) pat in
         (pat, Option.value compiled ~default:case_body, case_ann)) 
       cases 
+    in 
+    ECase (scrutinee, cases_compiled, ann)
+  | ECase (scrutinee, cases, ann) -> 
+    (* this happens before ANF, so expr may be complex *)
+    let scrutinee_name = Utilities.new_name "scrut", expr_get_ann scrutinee  in
+    let scrutinee_var = EVar scrutinee_name in
+    let cases_compiled = 
+      List.map 
+      (fun (pat, case_body, case_ann) -> 
+        let compiled = compile_simple_pattern scrutinee_var (fun () -> compile_match case_body) pat in
+        (pat, Option.value compiled ~default:case_body, case_ann)) 
+      cases 
     in
-    ECase (compile_match scrutinee, cases_compiled, ann)
-    (* let s = Utilities.new_name "scrut", expr_get_ann scrutinee in
-    ELet(s, compile_match scrutinee, compile_match_cases (EVar s) cases, ann) *)
+    ELet (scrutinee_name, compile_match scrutinee, ECase (scrutinee_var, cases_compiled, ann), ann)
   | ELet (name, e1, e2, ann) -> ELet (name, compile_match e1, compile_match e2, ann) 
   | EApp (e, args, ann) -> EApp (e, List.map compile_match args, ann)
   | EUnary (u, e, ann) -> EUnary (u, compile_match e, ann)
