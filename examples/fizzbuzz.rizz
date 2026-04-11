@@ -1,28 +1,61 @@
-
-fun mod a n = 
-    if a < n then a else mod (a - n) n
-
 fun str_concat a b = (a : String) + b
 
-fun entry x = 
-    let timer =  clock 1000 in
-    let number_signal = scan (fun x y -> x + 1) 0 timer in
-    let fizz_signal = filter_map (fun x -> if mod x 3 == 0  then Just ("fizz") else Nothing) number_signal in
-    let buzz_signal = filter_map (fun x -> if mod x 5 == 0  then Just ("buzz") else Nothing) number_signal in
+// yoyo between `start` and `end` (both inclusive) - note that the first value produced is `start + 1`
+fun yoyo start end source =
+  let count_up   = fun start -> scan (fun x y -> x + 1) start source in
+  let count_down = fun start -> scan (fun x y -> x - 1) start source in
+
+  jump 
+    (fun x -> 
+      if x > end 
+      then Just (jump (fun x -> if x < start then Just (yoyo start end source) else Nothing) (count_down end))
+      else Nothing)
+    (count_up start)
+
+fun fizzbuzz_signal_from source = 
+    let fizz_signal = filter_map (fun x -> if mod x 3 == 0 then Just ("fizz") else Nothing) source in
+    let buzz_signal = filter_map (fun x -> if mod x 5 == 0 then Just ("buzz") else Nothing) source in
 
     let fizzbuzz_signal = 
         interleave_l
             (fun n s -> s) 
-            (map string_of_int number_signal) 
+            (map string_of_int source) 
             (let cont = fun mysync -> 
                 match mysync with
                 | Left (xs')      -> interleave_l       str_concat xs'          buzz_signal
                 | Right (ys')     -> interleave_l_right str_concat fizz_signal  ys'
                 | Both (xs', ys') -> interleave         str_concat xs'          ys'
             in cont |> sync fizz_signal buzz_signal)
+    in fizzbuzz_signal
+
+fun entry x = 
+    let timer = clock 1000 in
+
+    let counter : Unit -> Signal Int = fun unit -> scan (fun x y -> x + 1) 0 timer in
+
+    let time_out_sec = 5 in
+    let time_out = (fun x -> "__time_out") |> filter (fun x -> x > time_out_sec * 1000) (clock 1000) in
+    let chosen_signal = 
+        let picker = fun input_sync -> 
+            let parse_input = fun input -> 
+                match input with
+                | "quit" -> const ""
+                | "yoyo" -> fizzbuzz_signal_from (yoyo 0 100 timer)
+                | "counter" -> fizzbuzz_signal_from (counter ())
+                | _ -> 
+                    let err_msg = "invalid input '" + input + "'\nHelp: possible inputs are 'yoyo' and 'counter'" in
+                    let x = quit_at (tail (clock 1)) in
+                    const err_msg
+            in
+            match input_sync with
+            | Left (input) -> parse_input input
+            | Both (input, _) -> parse_input input
+            | Right (time_out) -> parse_input "counter"
+        in
+        let dialog = const "Choose a fizzbuzz source such as 'yoyo' or 'counter'" in
+        switch dialog (picker |> (sync (wait console) time_out))
     in
-    let x = console_out_signal fizzbuzz_signal in
+    let x = console_out_signal chosen_signal in
     
     let x = quit_at (filter_l (fun s -> s == "quit") (mk_sig_of_channel console)) in
     start_event_loop ()
-
