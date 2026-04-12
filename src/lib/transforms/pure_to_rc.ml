@@ -72,7 +72,7 @@ let rec expr_to_rexpr globals locals (e: _ expr): Refcount.rexpr =
   | EUnary (UWatch, n, _) -> RCtor (Ctor { tag = tagof "watch"; fields = [get_name n] })
   | EUnary (UDelay, n, _) -> RCtor (Ctor { tag = tagof "delay"; fields = [get_name n] })
   | EUnary (UNot, n, _) -> RCall ("not", [get_name n])
-  | EUnary (UProj idx, EVar (x, _), _) -> RProj (idx, x)
+  | EUnary (UProj idx, (EVar (x, _) | EAnno (EVar (x,_),_,_)), _) -> RProj (idx, x)
   | EConst (const, _) -> RConst const
   | EAnno (e, _, _) -> expr_to_rexpr globals locals e
   | _ -> failwith (Format.asprintf "expr_to_rexpr failed: invalid expression '%a'" Ast.pp_expr e)
@@ -167,7 +167,7 @@ and expr_to_fn_body globals locals (e: _ expr) : Refcount.fn_body =
   | EConst (c, _) -> FnRet (Const c)
   (* TODO: couldn't we just move this elsewhere? shouldn't we just add this sort of logic to anf? *)
   | EApp _ | ELet _ -> app_to_fn_body globals locals e
-  | ECase (EVar (x,_), cases, _) -> 
+  | ECase ((EVar (x,_) | EAnno (EVar (x, _),_,_)), cases, _) -> 
     FnCase (x, lower_case_arms cases)
   | ECase _ -> 
     failwith "expr_to_fn_body failed: case scrutinee is not a variable"

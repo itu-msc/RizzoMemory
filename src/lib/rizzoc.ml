@@ -44,6 +44,7 @@ module Transformations = struct
   let eliminate_dead_let_program = Transforms.Dead_let_elimination.dead_let_eliminate
   let eliminate_patterns = Transforms.Patterns.transform_patterns
   let eliminate_simple_patterns = Transforms.Simple_patterns.transform_patterns
+  let eliminate_patterns_tree = Transforms.Patterns_tree.transform_patterns
   let lower_typed_program = Transforms.Typed_lowering.lower_program
   let ast_to_rc_ir = Transforms.Pure_to_rc.to_rc_intermediate_representation
   
@@ -175,7 +176,9 @@ let apply_transforms p =
   (* |> Transformations.eliminate_dead_let_program *)
   (* |> Transformations.eliminate_patterns *)
   |> Transformations.remove_duplicate_names
-  |> Transformations.eliminate_simple_patterns
+  (* |> Transformations.eliminate_patterns_simple *)
+  (* |> Transformations.eliminate_patterns *)
+  |> Transformations.eliminate_patterns_tree
   |> Transformations.eliminate_dead_let_program
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program (* TODO *)
