@@ -341,6 +341,55 @@ let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_res
 let lines_of_text (text : string) : string array =
   text |> String.split_on_char '\n' |> Array.of_list
 
+let leading_whitespace_width (line : string) : int =
+  let rec go index =
+    if index < String.length line then
+      match line.[index] with
+      | ' ' | '\t' -> go (index + 1)
+      | _ -> index
+    else
+      index
+  in
+  go 0
+
+let drop_leading_whitespace (line : string) (count : int) : string =
+  let rec go index remaining =
+    if index >= String.length line || remaining = 0 then
+      String.sub line index (String.length line - index)
+    else
+      match line.[index] with
+      | ' ' | '\t' -> go (index + 1) (remaining - 1)
+      | _ -> String.sub line index (String.length line - index)
+  in
+  go 0 count
+
+let dedent_text (text : string) : string =
+  let lines = String.split_on_char '\n' text |> Array.of_list in
+  let start = ref 0 in
+  let stop = ref (Array.length lines - 1) in
+  while !start <= !stop && String.trim lines.(!start) = "" do
+    incr start
+  done;
+  while !stop >= !start && String.trim lines.(!stop) = "" do
+    decr stop
+  done;
+  if !start > !stop then
+    ""
+  else
+    let indent = ref max_int in
+    for index = !start to !stop do
+      let line = lines.(index) in
+      if String.trim line <> "" then
+        indent := min !indent (leading_whitespace_width line)
+    done;
+    let indent = if !indent = max_int then 0 else !indent in
+    let dedented_lines =
+      List.init (!stop - !start + 1) (fun offset ->
+        let line = lines.(!start + offset) in
+        if String.trim line = "" then "" else drop_leading_whitespace line indent)
+    in
+    String.concat "\n" dedented_lines
+
 let file_name ~(uri : string) ~(filename : string option) : string =
   match filename with
   | Some path when String.length path > 0 -> path
@@ -434,7 +483,9 @@ let detail_of_name : type s. s Ast.name -> string option =
 let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
   match typ with
   | None -> ""
-  | Some t -> Format.asprintf "\n\nType:\n```rizz\n%a\n```" Ast.pp_typ t
+  | Some t ->
+      let type_text = Format.asprintf "%a" Ast.pp_typ t |> dedent_text in
+      Format.asprintf "\n\nType:\n```rizz\n%s\n```" type_text
 
 let type_info_block_of_ann : type s. s Ast.ann -> string =
   fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
@@ -452,7 +503,8 @@ let type_info_block : type s. s Ast.expr -> string =
 
 let expression_info_block : type s. s Ast.expr -> string =
   fun expr ->
-    Format.asprintf "\n\nExpr:\n```rizz\n%a\n```" Ast.pp_expr expr
+    let expr_text = Format.asprintf "%a" Ast.pp_expr expr |> dedent_text in
+    Format.asprintf "\n\nExpr:\n```rizz\n%s\n```" expr_text
 
 let hover_text_for_expr : type s. s Ast.expr -> string =
   fun expr ->

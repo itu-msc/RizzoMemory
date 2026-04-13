@@ -13,6 +13,114 @@ let contains_substring ~(text : string) ~(substring : string) : bool =
   in
   if sub_len = 0 then true else go 0
 
+let leading_whitespace_width (line : string) : int =
+  let rec go index =
+    if index < String.length line then
+      match line.[index] with
+      | ' ' | '\t' -> go (index + 1)
+      | _ -> index
+    else
+      index
+  in
+  go 0
+
+let drop_leading_whitespace (line : string) (count : int) : string =
+  let rec go index remaining =
+    if index >= String.length line || remaining = 0 then
+      String.sub line index (String.length line - index)
+    else
+      match line.[index] with
+      | ' ' | '\t' -> go (index + 1) (remaining - 1)
+      | _ -> String.sub line index (String.length line - index)
+  in
+  go 0 count
+
+let dedent_text_for_test (text : string) : string =
+  let lines = String.split_on_char '\n' text |> Array.of_list in
+  let start = ref 0 in
+  let stop = ref (Array.length lines - 1) in
+  while !start <= !stop && String.trim lines.(!start) = "" do
+    incr start
+  done;
+  while !stop >= !start && String.trim lines.(!stop) = "" do
+    decr stop
+  done;
+  if !start > !stop then
+    ""
+  else
+    let indent = ref max_int in
+    for index = !start to !stop do
+      let line = lines.(index) in
+      if String.trim line <> "" then
+        indent := min !indent (leading_whitespace_width line)
+    done;
+    let indent = if !indent = max_int then 0 else !indent in
+    let dedented_lines =
+      List.init (!stop - !start + 1) (fun offset ->
+        let line = lines.(!start + offset) in
+        if String.trim line = "" then "" else drop_leading_whitespace line indent)
+    in
+    String.concat "\n" dedented_lines
+
+let test_dedent_code_block_trims_common_indentation () =
+  let text =
+    "                match mysync with\n"
+    ^ "                | Left(xs') -> interleave_l(str_concat, xs', buzz_signal)\n"
+    ^ "                | Right(ys') -> interleave_l_right(str_concat, fizz_signal,\n"
+    ^ "                                                   ys')\n"
+    ^ "                | Both(xs', ys') -> interleave(str_concat, xs', ys')\n"
+  in
+  let dedented = dedent_text_for_test text in
+  Alcotest.(check string)
+    "dedents shared indentation"
+    ("match mysync with\n"
+     ^ "| Left(xs') -> interleave_l(str_concat, xs', buzz_signal)\n"
+     ^ "| Right(ys') -> interleave_l_right(str_concat, fizz_signal,\n"
+     ^ "                                   ys')\n"
+     ^ "| Both(xs', ys') -> interleave(str_concat, xs', ys')")
+    dedented
+
+let test_expression_info_block_dedents_pretty_printed_expression () =
+  let expr =
+    Ast_test_helpers.case
+      (Ast_test_helpers.var "mysync")
+      [
+        Ast_test_helpers.pctor (Ast_test_helpers.name "Left") [ Ast_test_helpers.pvar "xs'" ],
+        Ast_test_helpers.app
+          (Ast_test_helpers.var "interleave_l")
+          [
+            Ast_test_helpers.var "str_concat";
+            Ast_test_helpers.var "xs'";
+            Ast_test_helpers.var "buzz_signal";
+          ];
+        Ast_test_helpers.pctor (Ast_test_helpers.name "Right") [ Ast_test_helpers.pvar "ys'" ],
+        Ast_test_helpers.app
+          (Ast_test_helpers.var "interleave_l_right")
+          [
+            Ast_test_helpers.var "str_concat";
+            Ast_test_helpers.var "fizz_signal";
+            Ast_test_helpers.var "ys'";
+          ];
+        Ast_test_helpers.pctor (Ast_test_helpers.name "Both") [ Ast_test_helpers.pvar "xs'"; Ast_test_helpers.pvar "ys'" ],
+        Ast_test_helpers.app
+          (Ast_test_helpers.var "interleave")
+          [
+            Ast_test_helpers.var "str_concat";
+            Ast_test_helpers.var "xs'";
+            Ast_test_helpers.var "ys'";
+          ];
+      ]
+  in
+  let expected =
+    "\n\nExpr:\n```rizz\n"
+    ^ dedent_text_for_test (Format.asprintf "%a" Ast.pp_expr expr)
+    ^ "\n```"
+  in
+  Alcotest.(check string)
+    "expression block uses dedented pretty-printed code"
+    expected
+    (Language_service.expression_info_block expr)
+
 let test_valid_document_has_no_diagnostics () =
   let text = "let x = 1\nfun id y = y\n" in
   let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
@@ -618,6 +726,8 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
         (contains_substring ~text:hover.Language_service.contents ~substring:"match expression")
 
 let tests = [
+  "dedent code block trims common indentation", `Quick, test_dedent_code_block_trims_common_indentation;
+  "expression info block dedents pretty-printed expression", `Quick, test_expression_info_block_dedents_pretty_printed_expression;
   "valid document diagnostics", `Quick, test_valid_document_has_no_diagnostics;
   "implicit signal prelude diagnostics", `Quick, test_document_can_use_implicit_signal_prelude;
   "stdlib document excludes self from implicit prelude", `Quick, test_stdlib_document_excludes_itself_from_implicit_prelude;
