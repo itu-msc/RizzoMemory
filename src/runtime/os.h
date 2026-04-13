@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -19,6 +20,153 @@ typedef enum {
     RZ_INPUT_TOO_LONG = 2,
     RZ_TIMEOUT = 3,
 } rz_os_result_t;
+
+#ifdef _WIN32
+typedef struct {
+    char buffer[4096];
+    size_t length;
+    bool truncated;
+} rz_console_line_state_t;
+
+static rz_console_line_state_t rz_console_line_state = {{0}, 0, false};
+
+static inline void rz_console_echo_bytes(const char* text, DWORD length) {
+    HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD written = 0;
+    DWORD console_mode = 0;
+
+    if (stdout_handle == INVALID_HANDLE_VALUE || stdout_handle == NULL || length == 0) {
+        return;
+    }
+    if (GetConsoleMode(stdout_handle, &console_mode)) {
+        WriteConsoleA(stdout_handle, text, length, &written, NULL);
+    } else {
+        WriteFile(stdout_handle, text, length, &written, NULL);
+    }
+}
+
+static inline void rz_console_echo_char(char c) {
+    rz_console_echo_bytes(&c, 1);
+}
+
+static inline void rz_console_line_reset(void) {
+    rz_console_line_state.length = 0;
+    rz_console_line_state.truncated = false;
+}
+
+static inline void rz_console_line_push_char(char c) {
+    if (rz_console_line_state.length + 1 < sizeof(rz_console_line_state.buffer)) {
+        rz_console_line_state.buffer[rz_console_line_state.length++] = c;
+        rz_console_line_state.buffer[rz_console_line_state.length] = '\0';
+    } else {
+        rz_console_line_state.truncated = true;
+    }
+}
+
+static inline rz_os_result_t rz_console_line_finish(char* buffer, size_t size) {
+    size_t copy_len = 0;
+    if (size > 0) {
+        copy_len = rz_console_line_state.length;
+        if (copy_len >= size) {
+            copy_len = size - 1;
+        }
+        memcpy(buffer, rz_console_line_state.buffer, copy_len);
+        buffer[copy_len] = '\0';
+    }
+
+    rz_os_result_t result =
+        (rz_console_line_state.truncated || rz_console_line_state.length >= size)
+        ? RZ_INPUT_TOO_LONG
+        : RZ_OK;
+    rz_console_line_reset();
+    return result;
+}
+
+static inline bool rz_console_handle_key_event(const KEY_EVENT_RECORD* key_event, char* buffer, size_t size, rz_os_result_t* result_out) {
+    char c;
+    if (!key_event->bKeyDown) {
+        return false;
+    }
+
+    c = key_event->uChar.AsciiChar;
+    if (c == '\0') {
+        return false;
+    }
+    if (c == '\r' || c == '\n') {
+        rz_console_echo_bytes("\r\n", 2);
+        *result_out = rz_console_line_finish(buffer, size);
+        return true;
+    }
+    if (c == '\b') {
+        if (rz_console_line_state.length > 0) {
+            rz_console_line_state.length--;
+            rz_console_line_state.buffer[rz_console_line_state.length] = '\0';
+            rz_console_echo_bytes("\b \b", 3);
+        }
+        return false;
+    }
+    if ((unsigned char)c >= ' ' || c == '\t') {
+        rz_console_line_push_char(c);
+        rz_console_echo_char(c);
+    }
+    return false;
+}
+
+static rz_os_result_t rz_readline_timeout_console(char* buffer, size_t size, uint32_t timeout_ms) {
+    HANDLE stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
+    ULONGLONG deadline = 0;
+
+    if (timeout_ms != UINT32_MAX) {
+        deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
+    }
+
+    while (true) {
+        DWORD wait_ms;
+        DWORD wait_result;
+
+        if (timeout_ms == UINT32_MAX) {
+            wait_ms = INFINITE;
+        } else {
+            ULONGLONG now = GetTickCount64();
+            if (now >= deadline) {
+                return RZ_TIMEOUT;
+            }
+            wait_ms = (DWORD)(deadline - now);
+        }
+
+        wait_result = WaitForSingleObject(stdin_handle, wait_ms);
+        if (wait_result == WAIT_TIMEOUT) {
+            return RZ_TIMEOUT;
+        }
+        if (wait_result != WAIT_OBJECT_0) {
+            return RZ_NO_INPUT;
+        }
+
+        while (true) {
+            DWORD available = 0;
+            INPUT_RECORD record;
+            DWORD records_read = 0;
+            rz_os_result_t result;
+
+            if (!GetNumberOfConsoleInputEvents(stdin_handle, &available)) {
+                return RZ_NO_INPUT;
+            }
+            if (available == 0) {
+                break;
+            }
+            if (!ReadConsoleInputA(stdin_handle, &record, 1, &records_read) || records_read == 0) {
+                return RZ_NO_INPUT;
+            }
+            if (record.EventType != KEY_EVENT) {
+                continue;
+            }
+            if (rz_console_handle_key_event(&record.Event.KeyEvent, buffer, size, &result)) {
+                return result;
+            }
+        }
+    }
+}
+#endif
 
 /* https://stackoverflow.com/a/4023921 */
 static rz_os_result_t rz_readline(char* buffer, size_t size) {
@@ -68,14 +216,7 @@ static rz_os_result_t rz_readline_timeout(char* buffer, size_t size, uint32_t ti
     }
 
     if (GetConsoleMode(stdin_handle, &console_mode)) {
-        DWORD wait_result = WaitForSingleObject(stdin_handle, timeout_ms == UINT32_MAX ? INFINITE : timeout_ms);
-        if (wait_result == WAIT_TIMEOUT) {
-            return RZ_TIMEOUT;
-        }
-        if (wait_result != WAIT_OBJECT_0) {
-            return RZ_NO_INPUT;
-        }
-        return rz_readline(buffer, size);
+        return rz_readline_timeout_console(buffer, size, timeout_ms);
     }
 
     ULONGLONG deadline = GetTickCount64() + (ULONGLONG)timeout_ms;

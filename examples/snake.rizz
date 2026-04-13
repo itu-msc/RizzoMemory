@@ -1,6 +1,6 @@
 
-let board_width = 8
-let board_height = 8
+let board_width = 20
+let board_height = 20
 let board_cells = board_width * board_height
 
 fun repeat_text text count : String -> Int -> String =
@@ -284,7 +284,7 @@ fun entry x =
     let initial_snake = "3_3;2_3;1_3" in
     let initial_food = find_food initial_snake 5 board_cells in
     let initial_state = (initial_snake, (initial_food, ("right", (0, "")))) in
-    let game_clock = clock 200 in
+    let game_clock = clock 300 in
     let input_sig = map (snd) (sample game_clock console_sig) in
     let game_states = scan update_state initial_state input_sig in
     let rendered_states = map render_state game_states in
