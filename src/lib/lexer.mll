@@ -69,6 +69,8 @@ rule read = parse
   | "," { COMMA }
   | "(" { LPAREN }
   | ")" { RPAREN }
+  | "[" { LBRACKET }
+  | "]" { RBRACKET }
   | "|" { BAR }
   | "_" { UNDERSCORE }
   | type_var as x { TYPEVAR x }
@@ -79,6 +81,7 @@ rule read = parse
     | "Sync" -> TYPE_SYNC
     | "Signal" -> TYPE_SIGNAL
     | "Option" -> TYPE_OPTION
+    | "List" -> TYPE_LIST
     | _ -> TYPE_ID x 
     }
   | int as i { INT (int_of_string i) }

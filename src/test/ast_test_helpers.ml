@@ -22,6 +22,8 @@ let pconst (c : const) : parsed pattern = PConst (c, ann)
 let psigcons (p1 : parsed pattern) (p2 : parsed name) : parsed pattern = PSigCons (p1, p2, ann)
 let pstringcons (p1 : parsed pattern) (p2 : parsed name) : parsed pattern = PStringCons (p1, p2, ann)
 let pctor (ctor_name : parsed name) (args : parsed pattern list) : parsed pattern = PCtor (ctor_name, args, ann)
+let plist (patterns : parsed pattern list) : parsed pattern =
+  List.fold_right (fun head tail -> pctor (name "Cons") [head; tail]) patterns (pctor (name "Nil") [])
 
 let var (s : string) : parsed expr = EVar (name s)
 let ctor (name' : string) (args : parsed expr list) : parsed expr = ECtor (name name', args, ann)
@@ -40,6 +42,8 @@ let app (fn : parsed expr) (args : parsed expr list) : parsed expr = EApp (fn, a
 let unary (op : unary_op) (e : parsed expr) : parsed expr = EUnary (op, e, ann)
 let binary (op : binary_op) (e1 : parsed expr) (e2 : parsed expr) : parsed expr = EBinary (op, e1, e2, ann)
 let tuple (e1 : parsed expr) (e2 : parsed expr) : parsed expr = ETuple (e1, e2, ann)
+let list_ (exprs : parsed expr list) : parsed expr =
+  List.fold_right (fun head tail -> ctor "Cons" [head; tail]) exprs (ctor "Nil" [])
 let ife (c : parsed expr) (t : parsed expr) (e : parsed expr) : parsed expr = EIfe (c, t, e, ann)
 
 let case (scrutinee : parsed expr) (branches : (parsed pattern * parsed expr) list) : parsed expr =

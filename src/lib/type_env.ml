@@ -106,7 +106,7 @@ let rec occurs_in (tyvar_id: int) (t: typ) : bool =
   | TVar id -> tyvar_id = id
   | TError -> false
   | TUnit | TInt | TBool | TString | TName _ | TParam _-> false
-  | TSignal t | TLater t | TDelay t | TOption t | TChan t-> occurs_in tyvar_id t
+  | TSignal t | TLater t | TDelay t | TOption t | TList t | TChan t-> occurs_in tyvar_id t
   | TSync (t1, t2) | TTuple (t1, t2) -> occurs_in tyvar_id t1 || occurs_in tyvar_id t2
   | TFun (Cons1(front, rest), t2) ->
     occurs_in tyvar_id front || List.exists (occurs_in tyvar_id) rest || occurs_in tyvar_id t2
@@ -128,7 +128,7 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
   | TName n1, TName n2 when n1 = n2 -> return ()
   | TParam p1, TParam p2 when p1 = p2 -> return ()
   | TSignal t1, TSignal t2 | TLater t1, TLater t2 | TDelay t1, TDelay t2 
-  | TChan t1, TChan t2 | TOption t1, TOption t2 -> 
+  | TChan t1, TChan t2 | TOption t1, TOption t2 | TList t1, TList t2 -> 
     unify ann t1 t2
   | TSync (t1a, t1b), TSync (t2a, t2b) | TTuple (t1a, t1b), TTuple (t2a, t2b) ->
     let* () = unify ann t1a t2a in
@@ -210,6 +210,9 @@ let rec apply_subst ?(subst_map = None) (t: typ) : typ t =
   | TOption t -> 
     let* t = apply_subst t in
     return (TOption t)
+  | TList t ->
+    let* t = apply_subst t in
+    return (TList t)
   | TChan t -> 
     let* t = apply_subst t in
     return (TChan t)
@@ -263,6 +266,7 @@ let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t =
     | TLater t  -> let* t = go t in return (TLater t)
     | TDelay t  -> let* t = go t in return (TDelay t)
     | TOption t -> let* t = go t in return (TOption t)
+    | TList t -> let* t = go t in return (TList t)
     | TChan t   -> let* t = go t in return (TChan t)
     | TTuple (t1, t2) ->
       let* t1 = go t1 in let* t2 = go t2 in return (TTuple (t1, t2))

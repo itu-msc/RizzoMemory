@@ -116,6 +116,23 @@ let test_constructor_application_with_parenthesized_let () =
   in
   Alcotest.check program_testable "constructor application with parenthesized let" expected parsed
 
+let test_list_literals_and_patterns_parse () =
+  let input =
+    "let empty = []\n"
+    ^ "let nums = [1, 2, 3]\n"
+    ^ "let head = match nums with | x :: xs -> x | _ -> 0\n"
+    ^ "let exact = match nums with | [1, 2, 3] -> true | _ -> false\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [ toplet "empty" (list_ []);
+      toplet "nums" (list_ [int 1; int 2; int 3]);
+      toplet "head" (case (var "nums") [ (psigcons (pvar "x") (name "xs"), var "x"); (pwild, int 0) ]);
+      toplet "exact" (case (var "nums") [ (plist [pconst (CInt 1); pconst (CInt 2); pconst (CInt 3)], bool true); (pwild, bool false) ]);
+    ]
+  in
+  Alcotest.check program_testable "list literals and patterns parse" expected parsed
+
 let parser_tests =
   [
     "parser accepts syntax", `Quick, test_parser_program;
@@ -125,4 +142,5 @@ let parser_tests =
     "not operator syntax", `Quick, test_not_operator_syntax;
     "effectful decorator", `Quick, test_effectful_decorator_marks_function;
     "constructor application with parenthesized let", `Quick, test_constructor_application_with_parenthesized_let;
+    "list literals and patterns", `Quick, test_list_literals_and_patterns_parse;
   ]

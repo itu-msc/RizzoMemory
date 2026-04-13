@@ -39,6 +39,7 @@ type typ =
   | TDelay of typ
   | TSync of typ * typ
   | TOption of typ
+  | TList of typ
   | TChan of typ
 
 type parsed (* just parsed *)
@@ -165,6 +166,7 @@ and eq_typ a b = match a,b with
   | TLater t1, TLater t2
   | TDelay t1, TDelay t2
   | TOption t1, TOption t2
+  | TList t1, TList t2
   | TChan t1, TChan t2 -> eq_typ t1 t2
   | _ -> false
 
@@ -265,6 +267,7 @@ and pp_typ fmt =
   | TTuple (t1, t2) -> fprintf fmt ("(%a * %a)") pp_typ t1 pp_typ t2
   | TSync (t1, t2) -> fprintf fmt ("@{<green>Sync@}(%a, %a)") pp_typ t1 pp_typ t2
   | TOption t -> fprintf fmt "(@{<green>Option@} %a)" pp_typ t
+  | TList t -> fprintf fmt "(@{<green>List@} %a)" pp_typ t
   | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
   | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
 

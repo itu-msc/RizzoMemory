@@ -296,12 +296,54 @@ let test_clock_signal_outputs_ticks () =
   with exn ->
     Alcotest.failf "Clock compilation failed with exception: %s" (Printexc.to_string exn)
 
+let test_string_split_and_list_length_output_count () =
+  let program =
+    {|
+      fun entry x =
+        let parts = string_split "a,b,,c," "," in
+        let count = list_length parts in
+        let _o = console_out_signal (string_of_int count :: never) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"trigger" () in
+  Alcotest.(check bool) "split count output appears" true (List.mem "5" outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_list_pattern_match_outputs_head () =
+  let program =
+    {|
+      fun entry x =
+        let nums = [7, 8] in
+        let result =
+          match nums with
+          | head :: rest -> string_of_int head
+          | [] -> "empty"
+        in
+        let _o = console_out_signal (result :: never) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"trigger" () in
+  Alcotest.(check bool) "list pattern output appears" true (List.mem "7" outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
 let end_to_end_tests = [
   "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity;
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
   "Issue filterL variant outputs quit after non-match", `Quick, test_issue_filterl_variant_outputs_quit_after_non_match;
   "Issue map_l variant outputs Hello world", `Quick, test_issue_map_l_variant_outputs_hello_world;
   "runtime mod and string helpers", `Quick, test_runtime_mod_and_string_helpers;
+  "string_split and list_length output count", `Quick, test_string_split_and_list_length_output_count;
+  "list pattern match outputs head", `Quick, test_list_pattern_match_outputs_head;
   "Console signal input string is freed", `Quick, test_console_signal_input_string_is_freed;
   "Clock signal outputs ticks", `Quick, test_clock_signal_outputs_ticks;
 ]

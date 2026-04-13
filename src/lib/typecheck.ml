@@ -62,6 +62,7 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
     | TLater t -> let* t = replace_generalized_tvars t in return (TLater t)
     | TDelay t -> let* t = replace_generalized_tvars t in return (TDelay t)
     | TOption t -> let* t = replace_generalized_tvars t in return (TOption t)
+    | TList t -> let* t = replace_generalized_tvars t in return (TList t)
     | TChan t -> let* t = replace_generalized_tvars t in return (TChan t)
     | TTuple (t1, t2) ->
       let* t1 = replace_generalized_tvars t1 in
@@ -94,7 +95,7 @@ and free_tvar_ids_typ : typ -> IntSet.t Type_env.t = fun t ->
     let* t1_free = free_tvar_ids_typ t1 in
     let* t2_free = free_tvar_ids_typ t2 in
     return (IntSet.union t1_free t2_free)
-  | TSignal t | TDelay t | TLater t | TOption t | TChan t -> free_tvar_ids_typ t
+  | TSignal t | TDelay t | TLater t | TOption t | TList t | TChan t -> free_tvar_ids_typ t
   | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return IntSet.empty
   | TFun (Cons1 (front, rest), ret_type) ->
     let* param_free =
@@ -131,7 +132,7 @@ and free_type_vars_typ : typ -> StringSet.t Type_env.t = function
     let* t1_free = free_type_vars_typ t1 in
     let* t2_free = free_type_vars_typ t2 in
     return (StringSet.union t1_free t2_free)
-  | TSignal t | TDelay t | TLater t | TOption t | TChan t -> free_type_vars_typ t
+  | TSignal t | TDelay t | TLater t | TOption t | TList t | TChan t -> free_type_vars_typ t
   | TUnit | TInt | TBool | TString | TName _ -> return StringSet.empty
   | TParam v -> return (StringSet.singleton v)
   | TFun (Cons1(front, rest), ret_type) -> 
@@ -173,9 +174,26 @@ let rec typecheck : type stage. stage program -> typed program * ((Location.t * 
   let errors = List.map (function | Type_env.Typing_error (loc, err) -> (loc, err)) env.errors in
   (checked_program, errors)
 
-and run_type_env_from_state (state : Type_env.typing_state) (m : 'a Type_env.t) =
+and run_type_env_from_state : 'a. Type_env.typing_state -> 'a Type_env.t -> 'a * Type_env.typing_state =
+  fun state m ->
   let Type_env.Env run = m in
   run state
+
+and tail_expr_has_known_list_shape : type stage. stage expr -> bool Type_env.t = function
+  | ECtor (("Nil", _), _, _) | ECtor (("Cons", _), _, _) -> return true
+  | EAnno (_, TList _, _) -> return true
+  | tail_expr ->
+    let* state = Type_env.get_state in
+    let probe : bool Type_env.t =
+      let* inferred_tail = infer tail_expr in
+      let* tail_t = get_typ inferred_tail in
+      let* tail_t = Type_env.apply_subst tail_t in
+      match tail_t with
+      | TList _ -> return true
+      | _ -> return false
+    in
+    let result, _ = run_type_env_from_state state probe in
+    return result
 
 and probe_string_case_on_unresolved_scrutinee
     : type stage.
@@ -427,6 +445,12 @@ and get_constructor_signature : type stage. string -> stage ann -> (typ list * t
   | "Nothing" ->
     let* a = Type_env.fresh_type_var () in
     return ([], TOption a)
+  | "Nil" ->
+    let* a = Type_env.fresh_type_var () in
+    return ([], TList a)
+  | "Cons" ->
+    let* a = Type_env.fresh_type_var () in
+    return ([a; TList a], TList a)
   | "Left" ->
     let* a = Type_env.fresh_type_var () in
     let* b = Type_env.fresh_type_var () in
@@ -483,8 +507,17 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
       let tail_binding = (tail_name, mono TString) in
       let typed_tail = (tail_name, Ann_typed (get_location tail_ann, TString)) in
       return (PStringCons (typed_hd, typed_tail, Ann_typed (get_location ann, TString)), hd_bindings @ [tail_binding])
+    | TList a ->
+      let* a = Type_env.apply_subst a in
+      let* typed_hd, hd_bindings = check_pattern hd_pattern a in
+      let tail_type = TList a in
+      let tail_binding = (tail_name, mono tail_type) in
+      let typed_tail = PVar (tail_name, Ann_typed (get_location tail_ann, tail_type)) in
+      let pattern_type = TList a in
+      let typed_ctor = ("Cons", Ann_typed (get_location ann, pattern_type)) in
+      return (PCtor (typed_ctor, [typed_hd; typed_tail], Ann_typed (get_location ann, pattern_type)), hd_bindings @ [tail_binding])
     | _ ->
-      let* _ = error ann (Format.asprintf "Expected a signal or string for '::' pattern, got '%a'" Ast.pp_typ expected_type) in
+      let* _ = error ann (Format.asprintf "Expected a signal, string, or list for '::' pattern, got '%a'" Ast.pp_typ expected_type) in
       let typed_tail = (tail_name, Ann_typed (get_location tail_ann, TError)) in
       return (PStringCons (PWildcard (Ann_typed (get_location ann, TError)), typed_tail, Ann_typed (get_location ann, TError)), []))
   | PStringCons (_, _, ann) ->
@@ -527,8 +560,14 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
   | SigCons ->
     let* te1 = infer e1 in
     let* t1 = get_typ te1 in
-    let* te2 = check e2 (TLater (TSignal t1)) in
-    return (EBinary (SigCons, te1, te2, Ann_typed (get_location ann, TSignal t1)))
+    let* prefers_list = tail_expr_has_known_list_shape e2 in
+    if prefers_list then
+      let* te2 = check e2 (TList t1) in
+      let* result_t = Type_env.apply_subst (TList t1) in
+      return (EBinary (SigCons, te1, te2, Ann_typed (get_location ann, result_t)))
+    else
+      let* te2 = check e2 (TLater (TSignal t1)) in
+      return (EBinary (SigCons, te1, te2, Ann_typed (get_location ann, TSignal t1)))
   | Eq ->
     let* te1 = infer e1 in
     let* t1 = get_typ te1 in
@@ -628,6 +667,13 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
       | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t))) 
       | _ -> 
         let* _ = error ann "Option has at most one projection" in
+        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
+    | TList t ->
+      (match i with
+      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t)))
+      | 1 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, TList t)))
+      | _ ->
+        let* _ = error ann "List has 2 projections: 0 for head and 1 for tail" in
         return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
     | TTuple (t1, t2) -> 
       (match i with

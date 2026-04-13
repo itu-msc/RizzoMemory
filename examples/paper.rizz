@@ -20,6 +20,5 @@ fun entry x =
     let show_nat = trigger_l (fun x n -> n) show_sig (nats_prim) in
     let _x = console_out_signal ("" :: map_l string_of_int show_nat) in
 
-
     let _x = quit_at quit_sig in
     start_event_loop ()

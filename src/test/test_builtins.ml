@@ -1,5 +1,6 @@
 open Rizzoc
 open Rizzoc.Ast
+open Ast_test_helpers
 
 let parse_and_typecheck input =
   let parsed = Parser.parse_string input in
@@ -77,9 +78,59 @@ let test_new_builtins_have_expected_types () =
       Alcotest.(check bool) "string_ends_with result type" true (Ast.eq_typ ends_result_t TBool)
   | _ -> Alcotest.fail "unexpected typed AST shape for new builtins"
 
+let test_list_constructors_and_projection_builtins_have_expected_types () =
+  let typed =
+    parse_and_typecheck
+      ("let empty : List Int = []\n"
+      ^ "let nums = 1 :: []\n"
+      ^ "let first = list_head nums\n"
+      ^ "let rest = list_tail nums\n")
+  in
+  match typed with
+  | [ TopLet (_, EAnno (_, TList TInt, _), _);
+      TopLet (_, EBinary (SigCons, _, _, Ann_typed (_, nums_t)), _);
+      TopLet (_, EApp (EVar ("list_head", Ann_typed (_, head_builtin_t)), [_], Ann_typed (_, first_t)), _);
+      TopLet (_, EApp (EVar ("list_tail", Ann_typed (_, tail_builtin_t)), [_], Ann_typed (_, rest_t)), _) ] ->
+      Alcotest.(check bool) "cons infers list type" true (Ast.eq_typ nums_t (TList TInt));
+      Alcotest.(check bool) "list_head builtin type" true (Ast.eq_typ head_builtin_t (TFun (Cons1 (TList TInt, []), TInt)));
+      Alcotest.(check bool) "list_head result type" true (Ast.eq_typ first_t TInt);
+      Alcotest.(check bool) "list_tail builtin type" true (Ast.eq_typ tail_builtin_t (TFun (Cons1 (TList TInt, []), TList TInt)));
+      Alcotest.(check bool) "list_tail result type" true (Ast.eq_typ rest_t (TList TInt))
+  | _ -> Alcotest.fail "unexpected typed AST shape for list constructors and projection builtins"
+
+let test_list_supporting_builtins_have_expected_types () =
+  let typed =
+    parse_and_typecheck
+      ("let empty : List Int = []\n"
+      ^ "let is_empty = list_is_empty empty\n"
+      ^ "let count = list_length [1, 2, 3]\n"
+      ^ "let words = string_split \"a,b\" \",\"\n")
+  in
+  match typed with
+  | [ TopLet (_, _, _);
+      TopLet (_, EApp (EVar ("list_is_empty", Ann_typed (_, empty_builtin_t)), [_], Ann_typed (_, empty_result_t)), _);
+      TopLet (_, EApp (EVar ("list_length", Ann_typed (_, length_builtin_t)), [_], Ann_typed (_, length_result_t)), _);
+      TopLet (_, EApp (EVar ("string_split", Ann_typed (_, split_builtin_t)), [_; _], Ann_typed (_, split_result_t)), _) ] ->
+      Alcotest.(check bool) "list_is_empty builtin type" true (Ast.eq_typ empty_builtin_t (TFun (Cons1 (TList TInt, []), TBool)));
+      Alcotest.(check bool) "list_is_empty result type" true (Ast.eq_typ empty_result_t TBool);
+      Alcotest.(check bool) "list_length builtin type" true (Ast.eq_typ length_builtin_t (TFun (Cons1 (TList TInt, []), TInt)));
+      Alcotest.(check bool) "list_length result type" true (Ast.eq_typ length_result_t TInt);
+      Alcotest.(check bool) "string_split builtin type" true (Ast.eq_typ split_builtin_t (TFun (Cons1 (TString, [TString]), TList TString)));
+      Alcotest.(check bool) "string_split result type" true (Ast.eq_typ split_result_t (TList TString))
+  | _ -> Alcotest.fail "unexpected typed AST shape for list support builtins"
+
+let test_lower_typed_program_rewrites_list_cons_to_constructor () =
+  let typed = parse_and_typecheck "let nums = 1 :: []\n" in
+  let lowered = lower_typed_program typed in
+  let expected = [toplet "nums" (ctor "Cons" [int 1; ctor "Nil" []])] in
+  Alcotest.check program_testable "list cons lowers to constructors" expected lowered
+
 let builtin_tests = [
   "console is a string channel", `Quick, test_console_is_string_channel;
   "parse_int returns option int", `Quick, test_parse_int_has_expected_type;
   "clock returns signal int", `Quick, test_clock_has_expected_type;
   "new builtins have expected types", `Quick, test_new_builtins_have_expected_types;
+  "list constructors and builtins have expected types", `Quick, test_list_constructors_and_projection_builtins_have_expected_types;
+  "list support builtins have expected types", `Quick, test_list_supporting_builtins_have_expected_types;
+  "list cons lowers to constructors", `Quick, test_lower_typed_program_rewrites_list_cons_to_constructor;
 ]

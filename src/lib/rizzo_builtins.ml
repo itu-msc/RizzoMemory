@@ -50,10 +50,15 @@ let builtins = [
   mk "string_is_empty" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TBool)) ();
   mk "string_head" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TString)) ();
   mk "string_tail" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TString)) ();
+  mk "string_split" ~ownership:(Some [Refcount.Borrowed; Refcount.Borrowed]) (TFun (Cons1(TString, [TString]), TList TString)) ();
   mk "string_of_int" ~public:true ~ownership: (Some [Refcount.Borrowed]) (TFun (Cons1(TInt, []), TString)) ();
   mk "match_fail" ~public:false ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TString, []), TParam "'a")) ();
 
   mk "head" ~proj_idx:(Some 0) (TFun (Cons1(TSignal (TParam "'a"), []), TParam "'a")) ();
+  mk "list_head" ~proj_idx:(Some 0) (TFun (Cons1(TList (TParam "'a"), []), TParam "'a")) ();
+  mk "list_tail" ~proj_idx:(Some 1) (TFun (Cons1(TList (TParam "'a"), []), TList (TParam "'a"))) ();
+  mk "list_is_empty" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TList (TParam "'a"), []), TBool)) ();
+  mk "list_length" ~ownership:(Some [Refcount.Borrowed]) (TFun (Cons1(TList (TParam "'a"), []), TInt)) ();
   mk "fst" ~proj_idx: (Some 0) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'a")) ();
   mk "snd" ~proj_idx: (Some 1) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'b")) ();
 
@@ -113,6 +118,8 @@ let ctor_mappings =
     ("sigcons", -1);
     ("nothing", 0);
     ("just", 1);
+    ("nil", 2);
+    ("cons", 3);
   ]
 
 let ctor_tag_of name = match M.find_opt (String.lowercase_ascii name) ctor_mappings with

@@ -37,6 +37,14 @@ and lower_expr (e : typed expr) : parsed expr =
       | t ->
           failwith
             (Format.asprintf "typed lowering expected '+' to have Int or String type, got '%a'" pp_typ t))
+  | EBinary (SigCons, e1, e2, ann) ->
+    let lowered_e1 = lower_expr e1 in
+    let lowered_e2 = lower_expr e2 in
+    (match ann_get_type ann with
+    | TList _ ->
+      ECtor (("Cons", parsed_ann ann), [lowered_e1; lowered_e2], parsed_ann ann)
+    | _ ->
+      EBinary (SigCons, lowered_e1, lowered_e2, parsed_ann ann))
   | EBinary (op, e1, e2, ann) ->
       EBinary (op, lower_expr e1, lower_expr e2, parsed_ann ann)
   | ETuple (e1, e2, ann) ->

@@ -30,6 +30,26 @@ let rec tuple_pattern_of_list start_pos end_pos = function
   | [a; b] -> PTuple (a, b, mkloc start_pos end_pos)
   | a :: rest -> PTuple (a, tuple_pattern_of_list start_pos end_pos rest, mkloc start_pos end_pos)
 
+let nil_expr start_pos end_pos =
+  ECtor (("Nil", mkloc start_pos end_pos), [], mkloc start_pos end_pos)
+
+let cons_expr start_pos end_pos head tail =
+  ECtor (("Cons", mkloc start_pos end_pos), [head; tail], mkloc start_pos end_pos)
+
+let rec list_expr_of_list start_pos end_pos = function
+  | [] -> nil_expr start_pos end_pos
+  | head :: tail -> cons_expr start_pos end_pos head (list_expr_of_list start_pos end_pos tail)
+
+let nil_pattern start_pos end_pos =
+  PCtor (("Nil", mkloc start_pos end_pos), [], mkloc start_pos end_pos)
+
+let cons_pattern start_pos end_pos head tail =
+  PCtor (("Cons", mkloc start_pos end_pos), [head; tail], mkloc start_pos end_pos)
+
+let rec list_pattern_of_list start_pos end_pos = function
+  | [] -> nil_pattern start_pos end_pos
+  | head :: tail -> cons_pattern start_pos end_pos head (list_pattern_of_list start_pos end_pos tail)
+
 (* When you expand the parser, you can use location tracking helpers:
    - $startpos : starting position of the symbol
    - $endpos   : ending position of the symbol
@@ -49,11 +69,11 @@ let rec tuple_pattern_of_list start_pos end_pos = function
 
 %token LET FUN MATCH WITH IN
 %token EFFECTFUL
-%token EQ CONS COMMA LPAREN RPAREN BAR
+%token EQ CONS COMMA LPAREN RPAREN LBRACKET RBRACKET BAR
 %token IF THEN ELSE
 %token PIPE_GT ARROW COLON STAR SLASH PERCENT UNDERSCORE EQEQ PLUS MINUS LT GT LEQ GEQ BANG
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY //NOT
-%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION
+%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION TYPE_LIST
 %token <string> ID
 %token <string> TYPE_ID
 %token <string> TYPEVAR
@@ -215,6 +235,8 @@ atom:
   | FALSE { EConst (CBool false, mkloc $startpos $endpos) }
   | UNIT { EConst (CUnit, mkloc $startpos $endpos) }
   | NEVER { EConst (CNever, mkloc $startpos $endpos) }
+  | LBRACKET RBRACKET { nil_expr $startpos $endpos }
+  | LBRACKET es=separated_nonempty_list(COMMA, expr) RBRACKET { list_expr_of_list $startpos $endpos es }
   | LPAREN es=tuple_expr_list RPAREN { tuple_expr_of_list $startpos $endpos es }
   | LPAREN e=expr COLON ann=type_expr RPAREN { EAnno (e, ann, mkloc $startpos $endpos) }
   | LPAREN e=expr RPAREN { e }
@@ -260,6 +282,8 @@ pattern_atom:
   | TRUE { PConst (CBool true, mkloc $startpos $endpos) }
   | FALSE { PConst (CBool false, mkloc $startpos $endpos) }
   | UNIT { PConst (CUnit, mkloc $startpos $endpos) }
+  | LBRACKET RBRACKET { list_pattern_of_list $startpos $endpos [] }
+  | LBRACKET ps=separated_nonempty_list(COMMA, pattern) RBRACKET { list_pattern_of_list $startpos $endpos ps }
   | LPAREN ps=tuple_pattern_list RPAREN { tuple_pattern_of_list $startpos $endpos ps }
   | LPAREN p=pattern RPAREN { p }
 
@@ -300,6 +324,7 @@ app_type:
   | TYPE_DELAY ta=type_atom { TDelay ta }
   | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
   | TYPE_OPTION ta=type_atom { TOption ta }
+  | TYPE_LIST ta=type_atom { TList ta }
   | ta=type_atom { ta }
   (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
   // | at=app_type ta=type_atoma { failwith "type application ..." }

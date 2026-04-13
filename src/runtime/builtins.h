@@ -14,6 +14,12 @@ static rz_box_t rz_start_event_loop();
 static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args);
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b);
 
+enum
+{
+	RZ_TAG_LIST_NIL = 2,
+	RZ_TAG_LIST_CONS = 3,
+};
+
 static inline void rz_builtin_expect_arity(const char *name, size_t expected, size_t actual)
 {
 	if (expected != actual)
@@ -51,6 +57,38 @@ static inline bool rz_builtin_expect_bool(const char *name, size_t index, rz_box
 		exit(1);
 	}
 	return arg.as.obj == &RZ_BOOL_TRUE;
+}
+
+static inline rz_object_t *rz_builtin_expect_list(const char *name, size_t index, rz_box_t arg)
+{
+	if (arg.kind != RZ_BOX_PTR)
+	{
+		fprintf(stderr, "Runtime error: builtin '%s' expected list for argument %zu, got box kind %d\n", name, index + 1, arg.kind);
+		exit(1);
+	}
+	rz_object_t *obj = rz_unbox_ptr(arg);
+	if (rz_object_get_type(obj) != RZ_OBJECT)
+	{
+		fprintf(stderr, "Runtime error: builtin '%s' expected list object for argument %zu, got object type %d\n", name, index + 1, rz_object_get_type(obj));
+		exit(1);
+	}
+	uint16_t tag = rz_object_tag(obj);
+	if (tag != RZ_TAG_LIST_NIL && tag != RZ_TAG_LIST_CONS)
+	{
+		fprintf(stderr, "Runtime error: builtin '%s' expected list constructor for argument %zu, got tag %d\n", name, index + 1, tag);
+		exit(1);
+	}
+	return obj;
+}
+
+static inline rz_box_t rz_builtin_make_nil(void)
+{
+	return rz_make_ptr(rz_ctor_var(RZ_TAG_LIST_NIL, 0));
+}
+
+static inline rz_box_t rz_builtin_make_cons(rz_box_t head, rz_box_t tail)
+{
+	return rz_make_ptr(rz_ctor_var(RZ_TAG_LIST_CONS, 2, head, tail));
 }
 
 static inline rz_box_t rz_builtin_make_nothing(void)
@@ -256,6 +294,86 @@ static inline rz_box_t rz_builtin_string_ends_with(size_t num_args, rz_box_t *ar
 		return rz_make_ptr(rz_bool_ctor(false));
 	}
 	return rz_make_ptr(rz_bool_ctor(memcmp(text_bytes + (text_len - suffix_len), suffix_bytes, suffix_len) == 0));
+}
+
+static inline rz_box_t rz_builtin_list_is_empty(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("list_is_empty", 1, num_args);
+	rz_object_t *list = rz_builtin_expect_list("list_is_empty", 0, args[0]);
+	return rz_make_ptr(rz_bool_ctor(rz_object_tag(list) == RZ_TAG_LIST_NIL));
+}
+
+static inline rz_box_t rz_builtin_list_length(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("list_length", 1, num_args);
+	rz_object_t *list = rz_builtin_expect_list("list_length", 0, args[0]);
+	int64_t length = 0;
+	while (rz_object_tag(list) == RZ_TAG_LIST_CONS)
+	{
+		length += 1;
+		list = rz_builtin_expect_list("list_length", 0, rz_object_get_field(list, 1));
+	}
+	return rz_make_int(length);
+}
+
+static inline rz_box_t rz_builtin_string_split(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("string_split", 2, num_args);
+	rz_box_t source_box = rz_builtin_expect_string("string_split", 0, args[0]);
+	rz_box_t delimiter_box = rz_builtin_expect_string("string_split", 1, args[1]);
+	const char *source = rz_string_data(source_box);
+	const char *delimiter = rz_string_data(delimiter_box);
+	size_t source_len = rz_string_byte_length(source_box);
+	size_t delimiter_len = rz_string_byte_length(delimiter_box);
+	if (delimiter_len == 0)
+	{
+		fprintf(stderr, "Runtime error: builtin 'string_split' expected a non-empty delimiter\n");
+		exit(1);
+	}
+
+	size_t part_count = 1;
+	for (size_t i = 0; i + delimiter_len <= source_len;)
+	{
+		if (memcmp(source + i, delimiter, delimiter_len) == 0)
+		{
+			part_count += 1;
+			i += delimiter_len;
+		}
+		else
+		{
+			i += 1;
+		}
+	}
+
+	size_t *starts = alloca(sizeof(size_t) * part_count);
+	size_t *lengths = alloca(sizeof(size_t) * part_count);
+	size_t part_index = 0;
+	size_t segment_start = 0;
+	for (size_t i = 0; i + delimiter_len <= source_len;)
+	{
+		if (memcmp(source + i, delimiter, delimiter_len) == 0)
+		{
+			starts[part_index] = segment_start;
+			lengths[part_index] = i - segment_start;
+			part_index += 1;
+			i += delimiter_len;
+			segment_start = i;
+		}
+		else
+		{
+			i += 1;
+		}
+	}
+	starts[part_index] = segment_start;
+	lengths[part_index] = source_len - segment_start;
+
+	rz_box_t result = rz_builtin_make_nil();
+	for (size_t index = part_count; index > 0; index--)
+	{
+		rz_box_t piece = rz_make_string_len(source + starts[index - 1], lengths[index - 1]);
+		result = rz_builtin_make_cons(piece, result);
+	}
+	return result;
 }
 
 static inline rz_box_t rz_builtin_clock(size_t num_args, rz_box_t *args)

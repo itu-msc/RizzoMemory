@@ -81,7 +81,7 @@ let test_warning () =
 let rec typ_has_tvar = function
   | Ast.TVar _ -> true
   | Ast.TError | Ast.TUnit | Ast.TInt | Ast.TString | Ast.TBool | Ast.TName _ | Ast.TParam _ -> false
-  | Ast.TSignal t | Ast.TLater t | Ast.TDelay t | Ast.TOption t | Ast.TChan t -> typ_has_tvar t
+  | Ast.TSignal t | Ast.TLater t | Ast.TDelay t | Ast.TOption t | Ast.TList t | Ast.TChan t -> typ_has_tvar t
   | Ast.TTuple (t1, t2) | Ast.TSync (t1, t2) -> typ_has_tvar t1 || typ_has_tvar t2
   | Ast.TFun (Ast.Cons1 (front, rest), ret) -> typ_has_tvar front || List.exists typ_has_tvar rest || typ_has_tvar ret
 
