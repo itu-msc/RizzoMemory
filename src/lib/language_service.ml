@@ -91,7 +91,7 @@ type parsed_typed_result = {
   diagnostics: diagnostic list;
 }
 
-module StringMap = Map.Make(String)
+module StringMap = Collections.StringMap
 
 type scoped_symbol = {
   kind: semantic_token_kind;

@@ -1,6 +1,6 @@
 open Ast
 
-module StringSet = Set.Make(String)
+module StringSet = Collections.StringSet
 
 let rec lift (p: _ program) : _ program =
   let lifted_lambdas = ref [] in

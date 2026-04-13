@@ -10,7 +10,7 @@ let dummy ann = EConst (CUnit, Ann_typed (get_location ann, TError))
 let get_typ e = Type_env.get_type e
 
 type scheme = Type_env.scheme
-module StringSet = Set.Make(String)
+module StringSet = Collections.StringSet
 module IntSet = Set.Make(Int)
 module StringMap = Type_env.StringMap
 let forall vars t = Type_env.Forall (vars, t)
@@ -404,10 +404,10 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
   | EFun (params, body, ann) -> 
     let* Cons1(p1_type, param_types_rest), ret_type = 
       match expected with
-      | TFun (param_types, ret_type) when Ast_helpers.list1_length param_types = List.length params -> 
+      | TFun (param_types, ret_type) when List1.length param_types = List.length params -> 
         return (param_types, ret_type)
       | TFun (ps, _) -> 
-        let ps_len = Ast_helpers.list1_length ps in
+        let ps_len = List1.length ps in
         let* _ = error ann (Format.asprintf "Function has %d parameters but expected type '%a'" ps_len Ast.pp_typ expected) in
         return (Cons1(TError, List.init (List.length params - 1) (fun _ -> TError)), TError)
       | _ -> 

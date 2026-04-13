@@ -1,4 +1,4 @@
-module StringSet = Set.Make(String)
+module StringSet = Collections.StringSet
 
 let default_effectful_names =
   Rizzo_builtins.output_builtins

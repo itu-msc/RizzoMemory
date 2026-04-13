@@ -1,6 +1,6 @@
 open Ast
 
-module StringSet = Set.Make(String)
+module StringSet = Collections.StringSet
 
 let builtin_function_names =
   Rizzo_builtins.builtins
