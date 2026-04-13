@@ -6,7 +6,19 @@ fun swap_nested_left p =
 //     | (5, _) -> 1337
 //     | (_, _) -> 42
 
-fun id x = x
+fun consMatcher syn =
+    match syn with
+    | Left ("Hello") -> "Got Hello"
+    | Left ("Hi") -> "Got Hi"
+    | Left ("Hey") -> "Got Hey"
+    | Left ("Hola" :: rest) -> "Got Hola with tail " + rest
+    | Left (_ :: t) -> "Got hej with head " + (if (string_starts_with t "hej") then "hej" else "not hej")
+    | Left (x) -> "Got Left with " + x
+    | Right ("World") -> "Got World"
+    | Right (x) -> "Got Right with " + x
+    | Both ("Hello", "World") -> "Got Both Hello and World"
+    | Both (x, y) -> "Got Both with " + x + " and " + y
+    | _ -> "Got something else"
 
 /* Creates 4 tuples, but only mallocs 3 times - 2 tuples for t, and 2 for swap_nested_left
     Question: why does it malloc 3 time and not 2? Why does it not reuse (inner or outer - not sure?)

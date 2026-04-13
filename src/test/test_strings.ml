@@ -37,6 +37,22 @@ let rec expr_contains_call target : _ expr -> bool = function
   | EIfe (c, t, e, _) -> expr_contains_call target c || expr_contains_call target t || expr_contains_call target e
   | EAnno (e, _, _) -> expr_contains_call target e
 
+  let rec expr_contains_let_binding target : _ expr -> bool = function
+    | ELet ((name, _), rhs, body, _) ->
+      String.equal name target || expr_contains_let_binding target rhs || expr_contains_let_binding target body
+    | EConst _ | EVar _ -> false
+    | ECtor (_, args, _) -> List.exists (expr_contains_let_binding target) args
+    | EFun (_, body, _) -> expr_contains_let_binding target body
+    | EApp (fn, args, _) -> expr_contains_let_binding target fn || List.exists (expr_contains_let_binding target) args
+    | EUnary (_, e, _) -> expr_contains_let_binding target e
+    | EBinary (_, e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
+    | ETuple (e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
+    | ECase (scrutinee, branches, _) ->
+      expr_contains_let_binding target scrutinee
+      || List.exists (fun (_, body, _) -> expr_contains_let_binding target body) branches
+    | EIfe (c, t, e, _) -> expr_contains_let_binding target c || expr_contains_let_binding target t || expr_contains_let_binding target e
+    | EAnno (e, _, _) -> expr_contains_let_binding target e
+
 let test_string_cons_pattern_binds_strings () =
   let typed =
     parse_and_typecheck
@@ -110,6 +126,65 @@ let test_nested_string_literal_pattern_typechecks () =
   in
   ()
 
+let test_constructor_string_cons_binds_tail () =
+  let program =
+    [
+      toplet "consMatcher"
+        (fun_ ["syn"]
+           (case (var "syn")
+              [
+                ( pctor (name "Left") [pstringcons (pconst (CString "Hola")) (name "rest")],
+                  binary Add (str "Got Hola with tail ") (var "rest") );
+                (pctor (name "Left") [pvar "x"], binary Add (str "Got Left with ") (var "x"));
+                (pwild, str "Got something else");
+              ]));
+    ]
+  in
+  Utilities.new_name_reset ();
+  let transformed = Transformations.eliminate_patterns_tree program in
+  match transformed with
+    | [TopLet (_, EFun (_, body, _), _)] ->
+      Alcotest.(check bool) "uses string_tail in nested constructor payload" true (expr_contains_call "string_tail" body);
+      Alcotest.(check bool) "rest is bound in transformed body" true (expr_contains_let_binding "rest" body)
+  | _ -> Alcotest.fail "unexpected transformed AST shape"
+
+let test_constructor_fallback_keeps_later_subpatterns () =
+  let program =
+    [
+      toplet "consMatcher"
+        (fun_ ["syn"]
+           (case (var "syn")
+              [
+                (pctor (name "Left") [pconst (CString "Hello")], str "Got Hello");
+                (pctor (name "Left") [pvar "x"], binary Add (str "Got Left with ") (var "x"));
+                (pwild, str "Got something else");
+              ]));
+    ]
+  in
+  Utilities.new_name_reset ();
+  let transformed = Transformations.eliminate_patterns_tree program in
+  Utilities.new_name_reset ();
+  let expected =
+    [
+      toplet "consMatcher"
+        (fun_ ["syn"]
+           (let_ "scrut1" (var "syn")
+              (case (var "scrut1")
+                 [
+                   ( pctor (name "Left") [pwild],
+                     let_ "ctor_field2" (unary (UProj 0) (var "scrut1"))
+                       (ife
+                          (app (var "string_eq") [var "ctor_field2"; str "Hello"])
+                          (str "Got Hello")
+                          (let_ "x" (var "ctor_field2") (binary Add (str "Got Left with ") (var "x")))) );
+                   (pwild, str "Got something else");
+                 ])));
+    ]
+  in
+  Alcotest.check program_testable
+    "later constructor arm keeps its own payload pattern"
+    expected transformed
+
 let test_explicit_lifts_wrap_builtin_function_values () =
   let program =
     [
@@ -135,5 +210,7 @@ let string_tests = [
   "string add lowers to intrinsic", `Quick, test_lower_typed_program_rewrites_string_add;
   "string match lowers in pipeline", `Quick, test_apply_typed_transforms_eliminates_string_match;
   "nested string literal pattern typechecks", `Quick, test_nested_string_literal_pattern_typechecks;
+  "constructor string-cons binds tail", `Quick, test_constructor_string_cons_binds_tail;
+  "constructor fallback keeps later subpatterns", `Quick, test_constructor_fallback_keeps_later_subpatterns;
   "function values become explicit lifts", `Quick, test_explicit_lifts_wrap_builtin_function_values;
 ]

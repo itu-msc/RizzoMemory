@@ -210,6 +210,26 @@ let emit_bindings bindings body =
 		bindings
 		body
 
+let rec compile_leaf_clauses lower ann clauses =
+	match clauses with
+	| [] -> match_fail ann "Non-exhaustive pattern match"
+	| clause :: rest ->
+		let clause = normalize_clause clause in
+		compile_leaf_clause lower ann clause rest
+
+and compile_leaf_clause lower ann clause rest =
+	match StringMap.bindings clause.pats with
+	| [] -> emit_bindings clause.bindings clause.body
+	| (branch_var, pattern) :: remaining ->
+		let continue_clause =
+			compile_leaf_clause lower ann { clause with pats = StringMap.of_list remaining } rest
+		in
+		let next_clause () = compile_leaf_clauses lower ann rest in
+		(match pattern with
+		| PWildcard _ | PVar _ | PConst (CString _, _) | PStringCons _ ->
+			compile_string_pattern lower (var (branch_var, ann)) pattern continue_clause next_clause ann
+		| _ -> failwith "Unexpected tree leaf pattern in decision-tree compiler")
+
 let emit_test ann branch_var test_pat fresh_vars yes no =
 	let scrutinee = var (branch_var, ann) in
 	match test_pat with
@@ -275,7 +295,7 @@ let rec compile_tree_rows lower ann clauses =
 	| clause1 :: _ when StringMap.is_empty clause1.pats -> emit_bindings clause1.bindings clause1.body
 	| clause1 :: _ ->
 		(match branching_heuristic clauses with
-		| None -> emit_bindings clause1.bindings clause1.body
+		| None -> compile_leaf_clauses lower ann clauses
 		| Some branch_var ->
 			let test_pat = StringMap.find branch_var clause1.pats in
 			let fresh_vars = test_fresh_vars test_pat in
@@ -285,7 +305,7 @@ let rec compile_tree_rows lower ann clauses =
 						 match StringMap.find_opt branch_var clause.pats with
 						 | None -> (clause :: yes, clause :: no)
 						 | Some pat when same_test_pattern test_pat pat ->
-							 (add_test_subpatterns branch_var fresh_vars test_pat clause :: yes, no)
+							 (add_test_subpatterns branch_var fresh_vars pat clause :: yes, no)
 						 | Some _ -> (yes, clause :: no))
 					clauses
 					([], [])
