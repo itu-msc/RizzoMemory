@@ -7,8 +7,15 @@ let make_fun_decl ?ending:(e = " {\n") name  =
   (* TODO: see if we can remove the num_args (the first param) from the method signature *)
 
 let rec collect_string_consts (RefProg{functions; globals}: program) = 
-  List.concat_map (fun (_, (Fun (_, b))) -> collect_string_consts_fn b) functions
-  @ List.concat_map (fun (_, body) -> collect_string_consts_fn body) globals
+  let strs = 
+    List.concat_map (fun (_, (Fun (_, b))) -> collect_string_consts_fn b) functions
+    @ List.concat_map (fun (_, body) -> collect_string_consts_fn body) globals
+  in
+  let module M = Map.Make(String) in
+  let seen = ref M.empty in
+  List.iter (fun (_, (str, var_name)) -> seen := M.add str var_name !seen) strs;
+  M.to_list !seen
+
 and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
   | FnRet x -> collect_primitive_string_const x 
     |> Option.map (fun a -> [a])
@@ -69,7 +76,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     write (Printf.sprintf "static rz_box_t %s;\n\n" (mangle "console"));    
 
     string_consts 
-    |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
+    |> List.iter (fun ((str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
     write "\n";
 
     (* forward declare functions *)
@@ -196,8 +203,8 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | Const CBool true  -> "rz_make_ptr(rz_bool_ctor(true))"
     | Const CBool false -> "rz_make_ptr(rz_bool_ctor(false))"
     | Const CNever   -> "RZ_NEVER"
-    | Const (CString _ as c) -> 
-      let (_, var_name) = List.assoc c string_consts in
+    | Const (CString s) -> 
+      let var_name = List.assoc s string_consts in
       Printf.sprintf "rz_make_str_lit(%s)" var_name
     | Const Ast.CUnit -> Printf.sprintf "rz_make_int(0)"
   and as_possible_function_access name args =

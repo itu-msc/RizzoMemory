@@ -113,6 +113,22 @@ static inline void rz_signal_free(rz_object_t *obj)
     rz_heap_size--;
 }
 
+static rz_object_t* rz_reset_signal(rz_object_t* obj)
+{
+    /* reset-shared*/
+    if (obj->header.refcount != 1) {
+        rz_refcount_dec(obj);
+        return NULL;
+    }
+    /* reset-unique */
+    rz_signal_t* sig = (rz_signal_t*)obj;
+    rz_refcount_dec_box(sig->head);
+    rz_refcount_dec_box(sig->tail);
+    sig->updated = rz_make_int(0);
+    rz_remove_signal_node(sig);
+    return obj;
+}
+
 static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_box_t tail)
 {
     if (obj == NULL)
@@ -197,6 +213,21 @@ static void rz_debug_print_signal(rz_box_t box)
     printf(", tail: ");
     rz_debug_print_box(signal->tail);
     printf(", updated: %"PRId64")", signal->updated.as.i64);
+}
+
+static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b) 
+{
+    if (rz_object_get_type(a) != RZ_SIGNAL || rz_object_get_type(b) != RZ_SIGNAL) 
+        return rz_make_ptr(rz_bool_ctor(false));
+    
+    rz_signal_t *sig_a = (rz_signal_t *)a;
+    rz_signal_t *sig_b = (rz_signal_t *)b;
+
+    rz_object_t *heads_equal = rz_unbox_ptr(rz_eq(sig_a->head, sig_b->head));
+    rz_object_t *tails_equal = rz_unbox_ptr(rz_eq(sig_a->tail, sig_b->tail));
+    bool res = rz_object_tag(heads_equal) == RZ_TAG_BOOL_TRUE 
+               && rz_object_tag(tails_equal) == RZ_TAG_BOOL_TRUE;
+    rz_make_ptr(rz_bool_ctor(res));
 }
 
 /*   |------------------------------|

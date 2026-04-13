@@ -73,6 +73,10 @@ bool rz_is_boxed(rz_box_t box) {
     return box.kind == RZ_BOX_INT || box.kind == RZ_BOX_STRING_LITERAL;
 }
 
+static inline rz_box_kind_t rz_box_kind(rz_box_t box) {
+    return box.kind;
+}
+
 #define rz_make_int(v) ((rz_box_t){ .kind = RZ_BOX_INT, .as.i64 = (v) })
 
 static inline int64_t rz_unbox_int(rz_box_t box) {
@@ -92,8 +96,10 @@ static inline char* rz_unbox_str_lit(rz_box_t box) {
 }
 
 /* TODO: double check that booleans are never reference counted */
-static rz_object_t RZ_BOOL_TRUE = { .header = { .num_fields = 0, .tag = 0, .refcount = -1 } };
-static rz_object_t RZ_BOOL_FALSE = { .header = { .num_fields = 0, .tag = 1, .refcount = -1 } };
+#define RZ_TAG_BOOL_TRUE 0
+#define RZ_TAG_BOOL_FALSE 1
+static rz_object_t RZ_BOOL_TRUE = { .header = { .num_fields = 0, .tag = RZ_TAG_BOOL_TRUE, .refcount = -1 } };
+static rz_object_t RZ_BOOL_FALSE = { .header = { .num_fields = 0, .tag = RZ_TAG_BOOL_FALSE, .refcount = -1 } };
 static inline rz_object_t* rz_bool_ctor(bool b) {
     return b ? &RZ_BOOL_TRUE : &RZ_BOOL_FALSE;
 }
@@ -120,7 +126,7 @@ static inline rz_box_t rz_object_get_field(rz_object_t* obj, int16_t idx) {
 }
 
 rz_object_t *rz_ctor(int16_t tag, int16_t num_fields, rz_box_t* args) {
-    rz_object_fields_t* obj = (rz_object_fields_t*) rz_malloc(sizeof(rz_object_fields_t) + (num_fields - 1) * sizeof(rz_box_t));
+    rz_object_fields_t* obj = (rz_object_fields_t*) rz_malloc(sizeof(rz_object_t) + num_fields * sizeof(rz_box_t));
     obj->_base.header.tag = tag;
     obj->_base.header.num_fields = num_fields;
     obj->_base.header.refcount = 1;
@@ -289,7 +295,6 @@ typedef struct rz_function_args {
 
 #define ARGS_OF(f) ((rz_function_args_t*)f)
 #define ARGS_OF_BOXED(f) (((rz_box_t*)(f + 1)))
-#define sizeof_function_with(num_args) (sizeof(rz_function_t) + (num_args) * sizeof(rz_box_t))
 
 static inline size_t rz_function_get_arity(rz_function_t* fun) {
     return fun->_base.header.tag;
@@ -301,7 +306,7 @@ rz_box_t rz_call(rz_fun* f, size_t num_args, rz_box_t* args) {
 }
 
 static inline rz_function_t *rz_malloc_func(rz_fun *f, int64_t arity, size_t num_free_vars) {
-    rz_function_t* fun = (rz_function_t*) rz_malloc(sizeof_function_with(num_free_vars));
+    rz_function_t* fun = (rz_function_t*) rz_malloc(sizeof(rz_function_t) + num_free_vars * sizeof(rz_box_t));
     fun->_base.header.num_fields = num_free_vars;
     fun->_base.header.refcount = 1;
     fun->_base.header.obj_type = RZ_PARTIAL_APP;
@@ -371,30 +376,43 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
     }
 }
 
+static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b);
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
     if (rz_box_is_string(a) || rz_box_is_string(b)) {
         bool both_strings = rz_box_is_string(a) && rz_box_is_string(b);
         return rz_make_ptr(rz_bool_ctor(both_strings && rz_string_eq_content(a, b)));
     }
-    if (a.kind != b.kind) return rz_make_ptr( rz_bool_ctor(false) );
-    if (a.kind == RZ_BOX_INT) {
-        return rz_make_ptr( rz_bool_ctor(a.as.i64 == b.as.i64) );
+    if (rz_box_kind(a) != rz_box_kind(b)) return rz_make_ptr( rz_bool_ctor(false) );
+    if (rz_box_kind(a) == RZ_BOX_INT) {
+        return rz_make_ptr( rz_bool_ctor(rz_unbox_int(a) == rz_unbox_int(b)) );
     } else {
-        rz_object_t* a_obj = a.as.obj;
-        rz_object_t* b_obj = b.as.obj;
-        if (a_obj->header.tag != b_obj->header.tag 
-            || a_obj->header.num_fields != b_obj->header.num_fields) {
-            return rz_make_ptr( rz_bool_ctor(false) );
-        }
-        rz_object_fields_t* a_fields = (rz_object_fields_t*)a_obj;
-        rz_object_fields_t* b_fields = (rz_object_fields_t*)b_obj;
-        for (size_t i = 0; i < a_obj->header.num_fields; i++) {
-            switch (rz_eq(a_fields->fields[i], b_fields->fields[i]).as.obj->header.tag) {
-                case 0: return rz_make_ptr( rz_bool_ctor(false) );
-                default: continue;
+        switch (rz_object_get_type(rz_unbox_ptr(a))) {
+            case RZ_SIGNAL:      return rz_signal_eq(rz_unbox_ptr(a), rz_unbox_ptr(b));
+            case RZ_STRING:      return rz_make_ptr(rz_bool_ctor(rz_string_eq_content(a, b)));
+            case RZ_PARTIAL_APP: return rz_make_ptr(rz_bool_ctor(false));
+            case RZ_OBJECT: {
+                rz_object_t* a_obj = rz_unbox_ptr(a);
+                rz_object_t* b_obj = rz_unbox_ptr(b);
+                if (rz_object_tag(a_obj) != rz_object_tag(b_obj)
+                    || a_obj->header.num_fields != b_obj->header.num_fields) {
+                    return rz_make_ptr( rz_bool_ctor(false) );
+                }
+                rz_object_fields_t* a_fields = (rz_object_fields_t*)a_obj;
+                rz_object_fields_t* b_fields = (rz_object_fields_t*)b_obj;
+                for (size_t i = 0; i < a_obj->header.num_fields; i++) {
+                    rz_box_t field_equality = rz_eq(a_fields->fields[i], b_fields->fields[i]);
+                    switch (rz_object_tag(rz_unbox_ptr(field_equality))) {
+                        case RZ_TAG_BOOL_FALSE: return field_equality;
+                        default: continue;
+                    }
+                }
+                return rz_make_ptr( rz_bool_ctor(true) );
+            }
+            default: {
+                fprintf(stderr, "Runtime error: equality not defined for objects of type '%d'\n", rz_object_get_type(rz_unbox_ptr(a)));
+                exit(1);
             }
         }
-        return rz_make_ptr( rz_bool_ctor(true) );
     }
 }
 
