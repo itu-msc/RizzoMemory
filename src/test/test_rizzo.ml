@@ -140,6 +140,20 @@ let test_typecheck_normalizes_inner_annotations () =
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
 
+let test_projection_partial_app_survives_refcount () =
+  let program =
+    Parser.parse_string
+      "fun use f p =\n\
+      \  f p\n\
+      fun entry x =\n\
+      \  use snd (1, 2)\n"
+  in
+  let typed_program, errors = Rizzoc.typecheck program in
+  Alcotest.(check int) "no type errors" 0 (List.length errors);
+  let lowered_program = Rizzoc.apply_typed_transforms typed_program in
+  let _ = Rizzoc.ref_count lowered_program in
+  Alcotest.(check pass) "projection partial application reaches RC" () ()
+
 let location_tests = [
   "location creation", `Quick, test_location_creation;
   "lexer error has location", `Quick, test_lexer_error_has_location;
@@ -147,6 +161,7 @@ let location_tests = [
   "error context display", `Quick, test_show_error_context;
   "warning reporting", `Quick, test_warning;
   "typecheck normalizes inner annotations", `Quick, test_typecheck_normalizes_inner_annotations;
+  "projection partial application survives refcount", `Quick, test_projection_partial_app_survives_refcount;
 ]
 
 

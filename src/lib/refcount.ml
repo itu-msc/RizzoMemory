@@ -351,6 +351,11 @@ let rec collect func_ownerships (_f:fn_body) : StringSet.t =
       | true -> StringSet.add x fcol
       | false -> fcol
 
+let projection_partial_app_index = function
+  | "head" | "list_head" | "fst" -> Some 0
+  | "list_tail" | "snd" -> Some 1
+  | _ -> None
+
 let insert_owned_partial_app_wrapper func_ownership (RefProg{functions; globals}: program) = 
   
   let all_owned_funcs = ref [] in
@@ -364,6 +369,26 @@ let insert_owned_partial_app_wrapper func_ownership (RefProg{functions; globals}
   let rec aux f = 
     match f with
     | FnRet _ -> f
+    | FnLet (x, RPartialApp (c, []), let_body) ->
+      (match projection_partial_app_index c with
+      | Some proj_idx ->
+        let param = Printf.sprintf "%s_arg0" c in
+        let function_name = Utilities.new_name (c ^ "_PROJ") in
+        let ret = Utilities.new_var () in
+        let body = FnLet (ret, RProj (proj_idx, param), FnRet (Var ret)) in
+        all_owned_funcs := (function_name, Fun ([param], body), [Owned]) :: !all_owned_funcs;
+        FnLet (x, RPartialApp (function_name, []), aux let_body)
+      | None ->
+        if List.exists (fun b -> not (is_owned b)) (lookup_params func_ownership c) then
+          let params = wrapper_params c in
+          let function_name = Utilities.new_name (c ^ "_ALL_OWNED") in
+          let ret = Utilities.new_var () in
+          let body = FnLet (ret, RCall (c, List.map (fun p -> Var p) params), FnRet (Var ret)) in
+          let ownerships = List.map (fun _ -> Owned) params in
+          all_owned_funcs := (function_name, Fun (params, body), ownerships) :: !all_owned_funcs;
+          FnLet (x, RPartialApp (function_name, []), aux let_body)
+        else
+          FnLet (x, RPartialApp (c, []), aux let_body))
     | FnLet (x, RPartialApp (c, args), let_body) when List.exists (fun b -> not (is_owned b)) (lookup_params func_ownership c) -> 
       let params = wrapper_params c in
       let function_name = Utilities.new_name (c ^ "_ALL_OWNED") in
