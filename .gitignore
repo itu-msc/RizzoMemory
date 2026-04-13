@@ -6,6 +6,7 @@
 # stupid pdf
 pdf/main.pdf
 
+output
 output.c
 output.exe
 a.exe

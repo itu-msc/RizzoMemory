@@ -21,4 +21,6 @@ fun entry x =
     let my_console_sig = mk_sig (wait console) in
     let my_console = console_out_signal ("" :: my_console_sig) in
     let q = quit_at (my_console_sig) in
+    let nestedList = [[1, 2], [3, 4], [5]] in
+    let nestedStringList = [["Hello", "world"], ["Rizz", "is"], ["cool"]] in
     start_event_loop ()

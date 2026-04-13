@@ -66,7 +66,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     write "#include \"rizzo.h\"\n";
     write "\n";
 
-    write (Printf.sprintf "static rz_box_t %s = rz_make_int(RZ_CHANNEL_CONSOLE_IN);\n" (mangle "console"));
+    write (Printf.sprintf "static rz_box_t %s;\n\n" (mangle "console"));    
 
     string_consts 
     |> List.iter (fun (_, (str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
@@ -76,26 +76,27 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     List.iter (fun (name, _) -> write @@ make_fun_decl ~ending:";\n" (mangle name)) functions;
     write "\n";
 
-    let needs_init = declare_globals globals in
-    if List.length needs_init > 0 then write ~indent:standard_indent "\n";
+    declare_globals globals;
 
     List.iter emit_fn functions;
     let entry_name = mangle "entry" in
     match List.assoc_opt "entry" functions with
-    | Some _ -> write ("int main() {\n"
-                ^ "    rz_init_rizzo();\n");
-                init_globals needs_init;
-                write (
-                  Printf.sprintf 
-                  "    rz_box_t res = rz_call(%s, 1, (rz_box_t[]){rz_make_int(0)});\n" entry_name (* TODO: notice, should we have this line here?*)
-                ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
-                ^ "    return 0;\n}\n")
+    | Some _ -> 
+      write ("int main() {\n"
+           ^ "    rz_init_rizzo();\n");
+      write (Printf.sprintf "%s = rz_make_int(RZ_CHANNEL_CONSOLE_IN);\n" (mangle "console")) ~indent:standard_indent;
+      
+      init_globals globals;
+      
+      write (
+        Printf.sprintf 
+        "    rz_box_t res = rz_call(%s, 1, (rz_box_t[]){rz_make_int(0)});\n" entry_name (* TODO: notice, should we have this line here?*)
+      ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
+      ^ "    return 0;\n}\n")
     | None -> failwith "No entry point found"
-  and declare_globals (globals: (string * Refcount.fn_body) list) = 
-    List.filter_map (fun (name, body) -> 
-      match body with
-      | FnRet p -> write (Printf.sprintf "static rz_box_t %s = %s;\n" (mangle name) (emit_primitive p)); None
-      | _ -> write (Printf.sprintf "static rz_box_t %s;\n" (mangle name)); Some (name, body)
+  and declare_globals (globals: (string * Refcount.fn_body) list) : unit = 
+    List.iter (fun (name, _) ->
+      write (Printf.sprintf "static rz_box_t %s;\n" (mangle name))
     ) globals
   and init_globals (globals: (string* Refcount.fn_body) list) : unit = 
     List.iter (fun (name, body) -> 
