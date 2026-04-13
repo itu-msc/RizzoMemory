@@ -273,8 +273,6 @@ let friendly_lexer_message (msg : string) : string =
         None
     in
     match unexpected_char with
-    | Some ('[' | ']') ->
-        "Unexpected bracket. '[' and ']' are not part of Rizz syntax; use parentheses '()' for grouping/tuples."
     | Some ('{' | '}') ->
         "Unexpected brace. '{' and '}' are not part of Rizz syntax."
     | _ -> msg

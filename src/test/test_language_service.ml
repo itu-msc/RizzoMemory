@@ -190,19 +190,19 @@ let test_malformed_match_branch_reports_hint () =
         true
         (contains_substring ~text:first.Language_service.message ~substring:"expected '| <pattern> -> <expr>'")
 
-let test_unexpected_bracket_reports_hint () =
+let test_missing_bracket_reports_hint () =
   let text = "let x = [1\n" in
   let result = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
   match result.Language_service.diagnostics with
+  
   | [] -> Alcotest.fail "expected lexer diagnostic"
   | first :: _ ->
-      let message = first.Language_service.message in
-      let has_bracket_hint =
-        contains_substring ~text:message ~substring:"bracket"
-        || contains_substring ~text:message ~substring:"Unexpected character: ["
-      in
-      if not has_bracket_hint then
-        Alcotest.failf "mentions bracket unsupported (message was: %s)" message
+    let message = first.Language_service.message in
+    let has_bracket_hint =
+      contains_substring ~text:message ~substring:"Syntax error: missing ']'"
+    in
+    if not has_bracket_hint then
+      Alcotest.failf "bracket hint not found in diagnostic message: %s" message
 
 let has_semantic_token ~(tokens : Language_service.semantic_token list) ~(line : int) ~(character : int) ~(kind : Language_service.semantic_token_kind) ~(declaration : bool) : bool =
   List.exists
@@ -734,7 +734,7 @@ let tests = [
   "invalid document diagnostics", `Quick, test_invalid_document_reports_diagnostic;
   "missing paren gives friendly diagnostic", `Quick, test_missing_paren_reports_friendly_message;
   "malformed match branch gives hint", `Quick, test_malformed_match_branch_reports_hint;
-  "unexpected bracket gives hint", `Quick, test_unexpected_bracket_reports_hint;
+  "missing bracket gives hint", `Quick, test_missing_bracket_reports_hint;
   "semantic tokens MVP", `Quick, test_semantic_tokens_mvp;
   "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
   "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
