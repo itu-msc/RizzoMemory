@@ -73,7 +73,7 @@ let public_builtins = List.filter (fun ({ public; _ } : builtin_info) -> public)
 let builtins_ownerships_map = 
   builtins
   |> List.filter_map (fun b -> Option.map (fun ownerships -> (b.name, ownerships)) b.param_ownership)
-  |> Refcount_core.StringMap.of_list
+  |> Collections.StringMap.of_list
 
 let get name = match M.find_opt name builtins_map with
   | Some b -> b

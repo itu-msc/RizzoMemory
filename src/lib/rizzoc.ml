@@ -56,7 +56,7 @@ module Transformations = struct
 end
 
 module Utilities = struct include Utilities end
-
+module Collections = struct include Collections end
 type generated_c_compiler_invocation = {
   compiler : string;
   arguments : string list;

@@ -1,6 +1,5 @@
 open! Ast
-
-module StringSet = Collections.StringSet
+open Collections
 
 (** Finds the free variables of a function. 
     [top_decl_names] are the names of all top-level let-bindings. *)

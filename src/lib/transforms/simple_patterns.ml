@@ -40,7 +40,7 @@ let is_string_case cases =
 
 let rec sink_until_first_use name proj ann e = 
   let (var_name, _) = name in
-  let used_in e = Ast_helpers.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals e) in
+  let used_in e = Collections.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals e) in
   match e with
   | EVar (n1,_) when var_name = n1 -> ELet(name, proj, e, ann)
   | EVar _ | EConst _ -> e

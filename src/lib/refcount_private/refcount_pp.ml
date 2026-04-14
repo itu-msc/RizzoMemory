@@ -1,4 +1,5 @@
 open! Refcount_core
+open Collections
 
 let pp_primitive out = function
   | Var x -> Format.fprintf out "@{<lightcyan>%s@}" x

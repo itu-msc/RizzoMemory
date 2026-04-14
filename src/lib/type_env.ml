@@ -1,6 +1,5 @@
 open! Ast
-module StringMap = Collections.StringMap
-module IntMap = Map.Make(Int)
+open Collections
 
 type typing_error = Typing_error of Location.t * string
 

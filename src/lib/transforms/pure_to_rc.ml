@@ -183,7 +183,7 @@ let to_rc_intermediate_representation (builtins : Rc.parameter_ownership) (p : _
     let toplevel_arity = M.of_list (List.map mapper p) in
     let builtins_arity =
       builtins
-      |> Rc.StringMap.to_list
+      |> Collections.StringMap.to_list
       |> List.map (fun (name, ownerships) -> (name, Some (List.length ownerships)))
       |> M.of_list
     in

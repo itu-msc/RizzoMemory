@@ -1,6 +1,7 @@
 open Ast
+open Collections
 
-module StringSet = Collections.StringSet
+(** Lambda lifting: transform all functions into top-level functions, and replace lambda expressions with applications of the lifted functions. *)
 
 let rec lift (p: _ program) : _ program =
   let lifted_lambdas = ref [] in

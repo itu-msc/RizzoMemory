@@ -1,4 +1,5 @@
 open! Ast
+open Collections
 
 let ( let* ) = Type_env.Operators.( let* )
 let return = Type_env.return
@@ -10,9 +11,7 @@ let dummy ann = EConst (CUnit, Ann_typed (get_location ann, TError))
 let get_typ e = Type_env.get_type e
 
 type scheme = Type_env.scheme
-module StringSet = Collections.StringSet
-module IntSet = Set.Make(Int)
-module StringMap = Type_env.StringMap
+
 let forall vars t = Type_env.Forall (vars, t)
 
 (** creates a monomorphic - fully concrete - type of some typ *)
@@ -27,11 +26,11 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
   let* t_params = free_type_vars_typ t in
   let generalized_tvars = IntSet.diff t_tvars env_tvars in
   let generalized_params = StringSet.diff t_params env_params in
-  let id_to_name = ref Type_env.IntMap.empty in
+  let id_to_name = ref IntMap.empty in
   let used_param_names = ref t_params in
   let name_index = ref 0 in
   let fresh_param_name id =
-    match Type_env.IntMap.find_opt id !id_to_name with
+    match IntMap.find_opt id !id_to_name with
     | Some name -> name
     | None ->
       let rec fresh_name () =
@@ -43,7 +42,7 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
       in
       let name = fresh_name () in
       used_param_names := StringSet.add name !used_param_names;
-      id_to_name := Type_env.IntMap.add id name !id_to_name;
+      id_to_name := IntMap.add id name !id_to_name;
       name
   in
   let rec replace_generalized_tvars : typ -> typ Type_env.t = function
@@ -79,7 +78,7 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
   in
   let* t = replace_generalized_tvars t in
   let generalized_vars =
-    Type_env.IntMap.bindings !id_to_name
+    IntMap.bindings !id_to_name
     |> List.map snd
     |> StringSet.of_list
     |> StringSet.union generalized_params
@@ -685,7 +684,7 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
     | TSync _ -> 
       let* _ = error ann "Cannot project a sync?" in
       return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
-and normalize_typed_ann : type stage. (string Type_env.IntMap.t ref) -> stage ann -> stage ann Type_env.t =
+and normalize_typed_ann : type stage. (string IntMap.t ref) -> stage ann -> stage ann Type_env.t =
   fun id_to_name -> function
   | Ann_typed (loc, typ) ->
     let* typ = Type_env.generalize_type_vars ~id_to_name typ in
@@ -801,5 +800,5 @@ and normalize_typed_top_expr id_to_name : typed top_expr -> typed top_expr Type_
     return (TopLet (name, expr, ann))
 
 and normalize_typed_program (program : typed program) : typed program Type_env.t =
-  let id_to_name = ref Type_env.IntMap.empty in
+  let id_to_name = ref IntMap.empty in
   Type_env.collect (List.map (normalize_typed_top_expr id_to_name) program)

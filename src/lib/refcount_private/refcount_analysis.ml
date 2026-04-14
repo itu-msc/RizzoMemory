@@ -1,4 +1,5 @@
 open! Refcount_core
+open Collections
 
 let add_if_member (p : primitive) (env : StringSet.t) : StringSet.t =
   match p with

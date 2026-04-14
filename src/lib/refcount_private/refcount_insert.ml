@@ -1,4 +1,5 @@
 open! Refcount_core
+open Collections
 
 module Analysis = Refcount_analysis
 module Eq = Refcount_eq

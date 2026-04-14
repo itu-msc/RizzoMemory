@@ -1,6 +1,5 @@
 open! Ast
-module StringSet = Collections.StringSet
-module StringMap = Collections.StringMap
+open Collections
 
 type primitive =
   | Const of Ast.const

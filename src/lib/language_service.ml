@@ -1,3 +1,5 @@
+open Collections
+
 type position = {
   line: int;
   character: int;
@@ -90,8 +92,6 @@ type parsed_typed_result = {
   typed_program: Ast.typed Ast.program;
   diagnostics: diagnostic list;
 }
-
-module StringMap = Collections.StringMap
 
 type scoped_symbol = {
   kind: semantic_token_kind;

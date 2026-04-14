@@ -8,9 +8,9 @@ module Eq = Refcount_private.Refcount_eq
 module Analysis = Refcount_private.Refcount_analysis
 module Insert = Refcount_private.Refcount_insert
 
-val free_vars : fn_body -> StringSet.t
-val free_vars_rexpr : rexpr -> StringSet.t
-val collect : parameter_ownership -> fn_body -> StringSet.t
+val free_vars : fn_body -> Collections.StringSet.t
+val free_vars_rexpr : rexpr -> Collections.StringSet.t
+val collect : parameter_ownership -> fn_body -> Collections.StringSet.t
 val infer_all_simple : program -> parameter_ownership
 val infer_all : ?builtins:parameter_ownership -> program -> parameter_ownership
 

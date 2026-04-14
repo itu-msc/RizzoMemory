@@ -30,7 +30,7 @@ let match_fail ann message = app (match_fail_name, ann) [EConst (CString message
 
 let rec sink_until_first_use name proj ann expr =
 	let (var_name, _) = name in
-	let used_in expr = Ast_helpers.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals expr) in
+	let used_in expr = Collections.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals expr) in
 	match expr with
 	| EVar (n1, _) when var_name = n1 -> ELet (name, proj, expr, ann)
 	| EVar _ | EConst _ -> expr
