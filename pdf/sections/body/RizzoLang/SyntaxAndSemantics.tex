@@ -171,11 +171,9 @@ Our implementation depends on adhering to the reactive semantics of Rizzo as def
 
 In Rizzo the semantics are split into two layers: the standard evaluation semantics for expressions, and the reactive semantics that govern how signals are updated over time. The evaluation semantics follow a standard eager evaluation strategy, while the reactive semantics describe how signals evolve in response to input on channels. This means for our language and the heap we will focus on the reactive semantics, as the evaluation semantics does not enforce any particular structure on the heap or AST.
 
-
-
 In Rizzo the reactive semantics require that:
 \begin{itemize}
-    \item Any new signal must only depend on other signals in the \todo{now heap}.
+    \item Any new signal must only depend on other signals in the \texttt{Now heap}.
     \item When an input is produced on a channel, all signals with a tail that depends on the clock of that channel must to be updated.
     \item Signals must be updated based on a topological order of their dependencies. If signal B depends on signal A, signal A must appear before signal B in the heap and thus be updated first.
 \end{itemize}

@@ -76,15 +76,11 @@ In Rizzo, time will step forward whenever a value is produced by a channel. This
 Time steps are discrete and sequential, meaning they happen one-after-the-other and never at the same time. 
 This is important because whenever time advances, Rizzo must bring all signals into this new time step by updating them. In order for signals to be reachable during update, they are all stored in a signal-only heap. The heap is structured as a list because the ordering is important for making sure signals are updated in the correct order.
 
-The reactive semantics describe how signals are updated when time is progressed. Described at a high level the procedure will iterate through all signals in the heap. 
+The reactive semantics describe how signals are updated when time is progressed. Described at a high level, the procedure will mark all signals as old, by moving them to the \texttt{Earlier Heap}. We then iterate through all signals in the heap. 
 For each signal it checks if the signal was dependent, either directly or indirectly, on the channel that produced a value and if so the signal is updated otherwise it is skipped. 
-A signal is then updated by evaluating the tail, the delayed computation, resulting in a new signal which is copied back into the old signal.
+A signal is then updated by evaluating the delayed computation in the tail, resulting in a new signal which is copied back into the old signal. When done, we move the original signal back to the \texttt{Now Heap} and continue with the next signal.
 
-This copying step is important for any implementation of a Rizzo runtime as it essentially leaves a fresh (possibly) intermediate signal and the original signal in the heap. 
+The copying action is important for any implementation of a Rizzo runtime, as the new signal, carries the new value and the delayed computation for the next time step of the original signal. The process could essentially leave a fresh (possibly) intermediate signal and the original signal in the heap.
 If clean-up is not performed before the next time step then both these signals are considered for update, creating duplicate work.
-\todo{Finish, this is what we'll solve\dots}
 
-% In Rizzo signals are stored in a heap structure, where the structure is a form of linked list. The importance of this structure is for the runtime to iterate and update signals for each input on a channel.
-
-% Without going too much in detail, the way signals are stored in Rizzo is through a double linked list of signal nodes, where each node contains the current value of the signal and a pointer to the next node. When a signal is updated, a new node is created with the new value and the value is copied back to the initial signal node, so references don't have to be updated. This means that the memory management of Rizzo must be able to immediately identify signals that are no longer needed, otherwise these lead to unnecessary work being done. One solution to this is a reference counted memory management system. With reference counting, each object holds a counter with the number of references that exist for that object. The count then makes it possible to immediately know when a signal is not needed and can be safely discarded.
-
+This precise clean-up is what we intend to solve using reference counting. With reference counting, we can immediately identify when a signal is no longer needed and can be safely discarded, thus avoiding unnecessary work during the update process.
