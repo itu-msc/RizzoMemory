@@ -10,7 +10,7 @@ To do so, we provide a \verb|C| runtime that implements the semantics described 
 % \todo{We did x,y,z \dots}
 %GOAL: to evaluate we do the following ... 
 For this evaluation, our focus will be on the absence of space leaks and the proper timing of signal clean-up so that unnecessary work is avoided. 
-In Section~\ref{section:eval:heap_behaviour} we execute a small/simple Rizzo program such that inspecting the signal heap at regular intervals and greater detail. Then in Section~\ref{section:eval:no_space_leaks} we zoom out and run some more complex programs for longer periods to observe the used memory in general.
+In Section~\ref{section:eval:heap_behaviour} we execute a small/simple Rizzo program and inspect the signal heap at regular intervals and greater detail. Then in Section~\ref{section:eval:no_space_leaks} we zoom out, run some more complex programs for longer periods and observe the memory in general at a higher level.
 
 \subsection{Heap behaviour is kind}\label{section:eval:heap_behaviour}
 
@@ -19,3 +19,7 @@ In Section~\ref{section:eval:heap_behaviour} we execute a small/simple Rizzo pro
 \subsection{No bit is forgotten \textemdash~Valgrind}\label{section:eval:no_space_leaks}
 
 \input{sections/body/Evaluation/no_space_leaks.tex}
+
+\subsection{Reusing memory at runtime}\label{section:eval:reuse}
+
+\input{sections/body/Evaluation/evalutation_reuse.tex}
