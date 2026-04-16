@@ -75,6 +75,11 @@ let builtins_ownerships_map =
   |> List.filter_map (fun b -> Option.map (fun ownerships -> (b.name, ownerships)) b.param_ownership)
   |> Collections.StringMap.of_list
 
+let builtins_projection_map =
+  builtins
+  |> List.filter_map (fun b -> Option.map (fun idx -> (b.name, idx)) b.projection_index)
+  |> Collections.StringMap.of_list
+
 let get name = match M.find_opt name builtins_map with
   | Some b -> b
   | None -> failwith (Printf.sprintf "Builtin '%s' not found" name)

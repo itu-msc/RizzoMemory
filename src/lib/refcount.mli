@@ -20,4 +20,4 @@ val insert_reset_and_reuse_pairs_program : program -> program
 val insert_reset_and_reuse_pairs_fn : fn_body -> fn_body
 val insert_reset : string -> int -> fn_body -> fn_body
 val insert_reuse : string -> int -> fn_body -> fn_body
-val reference_count_program : parameter_ownership -> program -> parameter_ownership * program
+val reference_count_program : parameter_ownership -> int Collections.StringMap.t -> program -> parameter_ownership * program

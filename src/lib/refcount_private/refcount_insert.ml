@@ -88,13 +88,9 @@ and c_app (vars : primitive list) (ownerships : ownership list) (_f : fn_body) b
   | [], _, FnLet (z, e, f) -> FnLet (z, e, f)
   | _ -> failwith "c_app: mismatch - more variables than ownership annotations"
 
-let projection_partial_app_index = function
-  | "head" | "list_head" | "fst" -> Some 0
-  | "list_tail" | "snd" -> Some 1
-  | _ -> None
-
-let insert_owned_partial_app_wrapper func_ownership (RefProg { functions; globals } : program) =
+let insert_owned_partial_app_wrapper func_ownership projection_map (RefProg { functions; globals } : program) =
   let all_owned_funcs = ref [] in
+  let projection_partial_app_index name = StringMap.find_opt name projection_map in
   let wrapper_params c =
     match List.find_opt (fun (name, _) -> name = c) functions with
     | Some (_, Fun (params, _)) -> params
@@ -190,12 +186,12 @@ and insert_reuse w num_fields fn_body : fn_body =
   | FnInc _ | FnDec _ ->
       failwith "no inc/dec should exist before reset/reuse transformation - this transformation should be called before 'insert_rc'"
 
-let reference_count_program builtins (RefProg { globals; _ } as p : program) =
-  Analysis.set_global_names builtins p;
+let reference_count_program ownerships projection_map (RefProg { globals; _ } as p : program) =
+  Analysis.set_global_names ownerships p;
   let reset_reuse_program = insert_reset_and_reuse_pairs_program p in
-  let func_ownerships = Analysis.infer_all ~builtins reset_reuse_program in
-  let RefProg { globals = g; functions = f }, func_ownerships = insert_owned_partial_app_wrapper func_ownerships reset_reuse_program in
-  Analysis.set_global_names builtins (RefProg { globals = g; functions = f });
+  let func_ownerships = Analysis.infer_all ~builtins:ownerships reset_reuse_program in
+  let RefProg { globals = g; functions = f }, func_ownerships = insert_owned_partial_app_wrapper func_ownerships projection_map reset_reuse_program in
+  Analysis.set_global_names ownerships (RefProg { globals = g; functions = f });
   let globals_env = List.fold_left (fun env (name, _) -> StringMap.add name Borrowed env) StringMap.empty globals in
   let functions' =
     f

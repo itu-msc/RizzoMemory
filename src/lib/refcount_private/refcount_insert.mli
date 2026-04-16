@@ -3,6 +3,7 @@ val insert_rc : Refcount_core.fn_body -> Refcount_core.beta_env -> Refcount_core
 
 val insert_owned_partial_app_wrapper :
   Refcount_core.parameter_ownership ->
+  int Collections.StringMap.t ->
   Refcount_core.program ->
   Refcount_core.program * Refcount_core.parameter_ownership
 
@@ -13,5 +14,6 @@ val insert_reuse : string -> int -> Refcount_core.fn_body -> Refcount_core.fn_bo
 
 val reference_count_program :
   Refcount_core.parameter_ownership ->
+  int Collections.StringMap.t ->
   Refcount_core.program ->
   Refcount_core.parameter_ownership * Refcount_core.program

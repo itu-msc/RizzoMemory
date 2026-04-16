@@ -88,7 +88,7 @@ let test_paper_goforward () =
 
   let p_own = StringMap.empty in
   let prog = RefProg { functions = [("go_forward", go_forward)]; globals = []} in
-  let newOwned, go_forward' = Rizzoc.RefCount.reference_count_program p_own prog in
+  let newOwned, go_forward' = Rizzoc.RefCount.reference_count_program p_own StringMap.empty  prog in
 
   (* ensure p is owned *)
   let p_ownership = StringMap.find "go_forward" newOwned |> List.hd in
@@ -168,7 +168,7 @@ let test_globals_are_borrowed () =
   ] in
 
   let prog = RefProg { functions = []; globals } in
-  let _, actual = Rizzoc.RefCount.reference_count_program StringMap.empty prog in
+  let _, actual = Rizzoc.RefCount.reference_count_program StringMap.empty StringMap.empty  prog in
 
   let expected = RefProg {
     functions = [];
@@ -203,7 +203,7 @@ let test_function_can_use_global_without_dec () =
   ] in
 
   let prog = RefProg { functions; globals } in
-  let _, actual = Rizzoc.RefCount.reference_count_program StringMap.empty prog in
+  let _, actual = Rizzoc.RefCount.reference_count_program StringMap.empty StringMap.empty prog in
 
   let expected = RefProg {
     functions = [
