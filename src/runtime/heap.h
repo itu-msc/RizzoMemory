@@ -227,7 +227,7 @@ static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b)
     rz_object_t *tails_equal = rz_unbox_ptr(rz_eq(sig_a->tail, sig_b->tail));
     bool res = rz_object_tag(heads_equal) == RZ_TAG_BOOL_TRUE 
                && rz_object_tag(tails_equal) == RZ_TAG_BOOL_TRUE;
-    rz_make_ptr(rz_bool_ctor(res));
+    return rz_make_ptr(rz_bool_ctor(res));
 }
 
 /*   |------------------------------|
