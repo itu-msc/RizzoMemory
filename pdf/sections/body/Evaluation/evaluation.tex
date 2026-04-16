@@ -1,14 +1,21 @@
 \section{Evaluation \textemdash~look how nice it is!}
 
-\todo{We set out to solve problem memory management in Rizzo \dots}
-\todo{We did x,y,z \dots}
+%GOAL: We set out to solve problem memory management in Rizzo
 
-\subsection{Heap behaviour is kind}
+We originally set out to solve the memory management problem in Rizzo. 
+With a pipeline for transforming Rizzo programs and inserting reference counting, we evaluate (\todo{and observe?}) the resulting programs by executing them.
+%GOAL: Let's add a quick oh by the way, there is a C-runtime ...
+To do so, we provide a \verb|C| runtime that implements the semantics described in Section~\ref{section:rizzolang:semantics}, and we emit \verb|C|-code based on the IR of fully transformed programs.
 
-\todo{\dots we ran this Rizzo program X (code of which is in the appendix). The program does \textbf{something}. We enabled  with compiler flags `\_\_RZ\_DEBUG\_INFO', the output is shown in \dots}
+% \todo{We did x,y,z \dots}
+%GOAL: to evaluate we do the following ... 
+For this evaluation, our focus will be on the absence of space leaks and the proper timing of signal clean-up so that unnecessary work is avoided. 
+In Section~\ref{section:eval:heap_behaviour} we execute a small/simple Rizzo program such that inspecting the signal heap at regular intervals and greater detail. Then in Section~\ref{section:eval:no_space_leaks} we zoom out and run some more complex programs for longer periods to observe the used memory in general.
 
-\subsection{No bit is forgotten \textemdash~valgrind}
+\subsection{Heap behaviour is kind}\label{section:eval:heap_behaviour}
 
-\todo{Results of running some different Rizzo programs (with valgrind) for extended period/number of iterations. Goal is to convince no space is leaks happen when the program is run.}
+\input{sections/body/Evaluation/heap_behaviour.tex}
 
-\todo{We also check the heap size stays reasonable}
+\subsection{No bit is forgotten \textemdash~Valgrind}\label{section:eval:no_space_leaks}
+
+\input{sections/body/Evaluation/no_space_leaks.tex}
