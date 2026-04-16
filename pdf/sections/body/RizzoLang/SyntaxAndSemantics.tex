@@ -178,10 +178,7 @@ In Rizzo the reactive semantics require that:
     \item Signals must be updated based on a topological order of their dependencies. If signal B depends on signal A, signal A must appear before signal B in the heap and thus be updated first.
 \end{itemize}
 
-
-
-\subsection{Rizzo Reactive semantics}
-
+Based on these requirements, we have chosen to structure our heap as a single linked list. This gives us a simple way to maintain the topological order of signals, as we can ensure that when a new signal is created, it is added after the split between the \texttt{Now} and \texttt{Earlier} heaps. \dots
 
 
 % For RizzoLang we need to adhere to the \texttt{advance} and \texttt{update} semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, but we also need to define the semantics of reference counting for our implementation. In this section we first describe the evaluation strategy of Rizzo, then the reactive semantics for signals, and finally how reference counting interacts with the heap structure.
