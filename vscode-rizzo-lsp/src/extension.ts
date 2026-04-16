@@ -106,27 +106,6 @@ async function restartLanguageServer(): Promise<void> {
 }
 
 /**
- * Resolves the path to the C runtime headers bundled with the extension.
- * When running from source (dev mode) falls back to ../../src/runtime.
- */
-async function getRuntimePath(context: vscode.ExtensionContext): Promise<string> {
-    const workspaceFolder = await getValidWorkspaceFolder(vscode.workspace.getConfiguration("rizzoLsp")) ?? "";
-    const localRuntime = path.join(workspaceFolder, "src", "runtime");
-    if (fs.existsSync(localRuntime)) {
-        return localRuntime;
-    }
-    
-    const bundled = path.join(context.extensionPath, "runtime");
-    if (fs.existsSync(bundled)) {
-        return bundled;
-    }
-
-    await vscode.window.showErrorMessage(
-        "Rizzo LSP: C runtime headers not found in either the workspace or the extension.");
-    return "";
-}
-
-/**
  * Resolves the rizzoc compiler command and arguments.
  * Priority:
  *   1. User setting rizzoLsp.compiler.command (if non-empty)
@@ -160,11 +139,10 @@ function getRizzocCommand(
 }
 
 /**
- * Compiles the current .rizz file and runs the result in an integrated terminal.
+ * Builds the current .rizz file with rizzoc and runs the result in an integrated terminal.
  * Steps:
- *   1. rizzoc <file>          → output.c  (in the workspace directory)
- *   2. <cc> -I<runtime> output.c -o output
- *   3. ./output  (or .\output.exe on Windows)
+ *   1. rizzoc <file>          → output executable (in the workspace directory)
+ *   2. ./output  (or .\output.exe on Windows)
  */
 async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     const editor = vscode.window.activeTextEditor;
@@ -184,11 +162,9 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
 
     const filePath = doc.uri.fsPath;
 
-    const config = vscode.workspace.getConfiguration("rizzoLsp");
     const workspaceFolder = await getValidWorkspaceFolder(vscode.workspace.getConfiguration("rizzoLsp"));
 
     const rizzoc = getRizzocCommand(workspaceFolder);
-    const runtimePath = await getRuntimePath(context);
     const isWindows = process.platform === "win32";
 
     // Build the rizzoc invocation.
@@ -201,28 +177,14 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
             ? `${quotedCommand} ${quotedArgs} ${quotedFile}`
             : `${quotedCommand} ${quotedFile}`;
 
-    // Validate the C compiler setting to prevent shell injection.
-    const rawCc = config.get<string>("compiler.cc", "gcc").trim() || "gcc";
-    if (!/^[a-zA-Z0-9\-_./ \\:]+$/.test(rawCc)) {
-        await vscode.window.showErrorMessage(
-            `Rizzo: Invalid rizzoLsp.compiler.cc value: "${rawCc}". ` +
-            `Only alphanumeric characters, spaces, and path separators are allowed.`
-        );
-        return;
-    }
-    const cc = rawCc;
-
     const outputName = isWindows ? "output.exe" : "output";
-    const windowsArchFlag = isWindows ? " -m64" : "";
-    const ccCmd = `${cc}${windowsArchFlag} -I"${runtimePath}" output.c -o ${outputName}`;
     const runCmd = isWindows ? `.\\${outputName}` : `./${outputName}`;
 
     const terminal = getOrCreateRunTerminal(workspaceFolder ?? "");
     terminal.show(true);
 
     const pwdVar = isWindows ? "$PREV_PWD = $PWD" : "PREV_PWD=$(pwd)";
-    //TODO: Dont change dirs if the user use the opam installed rizzoc instead of a local build.
-    terminal.sendText(`${pwdVar}; cd "${workspaceFolder}" && ${rizzocCmd} && ${ccCmd} && echo "" && ${runCmd}; cd $PREV_PWD`);
+    terminal.sendText(`${pwdVar}; cd "${workspaceFolder}" && ${rizzocCmd} && echo "" && ${runCmd}; cd $PREV_PWD`);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
