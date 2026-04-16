@@ -165,35 +165,22 @@ fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
 \todo{This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
 We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).}
 
-%Notes:
-% we have added a singal constructor to the AST because the signal objects need to be allocated with exactly 5 fields compared to the standard constructors. IF the IR AST still had type information, then we could have just had a single constructor in the AST and then had the code generator allocate the correct number of fields based on the type of the constructor. However, since we have chosen to remove type information from the IR AST to simplify the implementation of reference counting, we need to have a separate signal constructor in the AST to ensure that signals are allocated with the correct structure.
+Our implementation depends on adhering to the reactive semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, while also implementing the reference counting semantics from \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021}. In this section we describe how we have structured our implementation to meet these requirements, and how the design of the heap and AST supports these semantics.
 
-%Old text:
-% we have these update and advance semantics, but we also need to define the semantics of reference counting for our implementation.
-% when constructors (signals) are invoked
-% when we allocate a signal cons, then we also need to the signal heap (the linked list structure). 
-% we then need to traverse the heap to update signals, (and we need to be careful about how reference counting interacts with this traversal).
-% add a conceptual example (use the one we follow through the paper)
+\subsubsection{Semantics: Rizzo}
 
-% The important thing here is the way we insert the new signal into the signal heap and why.
-% For this section we will refer to the signal heap as the ``heap''.
+In Rizzo the semantics are split into two layers: the standard evaluation semantics for expressions, and the reactive semantics that govern how signals are updated over time. The evaluation semantics follow a standard eager evaluation strategy, while the reactive semantics describe how signals evolve in response to input on channels. This means for our language and the heap we will focus on the reactive semantics, as the evaluation semantics does not enforce any particular structure on the heap or AST.
 
-% Based on this we then know the heap structure needs to support ordered iteration and efficient insertion/removal, while having a way to distinguish between the now and earlier heap during the update and advance semantics \todo{have we mentioned the now and erlier heap yet?}. Based on the acyclic nature of signal dependencies, we also know the heap structure must remain acyclic.
-% Based on these requirements we know a simple DAG, directed for the update direction and acyclic as signals can only depend on signals created before them, would be sufficient to represent the heap. We have chosen to implement this DAG as a linked list, which simplifies the implementation of ordered iteration and insertion/removal.
 
-% add a list of the semantics that we need to adhere to, then use that to describe why we have chosen the heap structure we have and how it interacts with reference counting.
+
 In Rizzo the reactive semantics require that:
 \begin{itemize}
-    \item All signals \todo{depending on the input clock} are traversed when a channel produces a value.
-    \item Signals must be updated in creation order to respect dependencies. If signal B depends on signal A, signal A must appear before signal B in the heap and thus be updated first.
-    \item Any new signal needs to be inserted in the end of the now heap.
-    \item \todo{add more rules, for example from counting imutable beans if any have an effect on the memory}
+    \item Any new signal must only depend on other signals in the \todo{now heap}.
+    \item When an input is produced on a channel, all signals with a tail that depends on the clock of that channel must to be updated.
+    \item Signals must be updated based on a topological order of their dependencies. If signal B depends on signal A, signal A must appear before signal B in the heap and thus be updated first.
 \end{itemize}
 
-Based on above, we know the heap structure needs to support ordered iteration and efficient insertion/removal, while having a way to distinguish between the now and earlier heap during the update and advance semantics \todo{have we mentioned the now and erlier heap yet?}. For this we have chosen to simplify the implementation by using a linked list, which naturally supports ordered iteration and efficient insertion/removal, without having to move around large memory blocks.
-% Now that we have a basic understanding of the syntax and type system of Rizzo, we can describe the operational semantics. The semantics of Rizzo are defined in terms of an abstract machine that evaluates expressions and updates signals over time. The key operations are the evaluation of expressions, the update of signals when channels produce values, and the management of memory through reference counting.
-% reorder this section to first introduce the language has 2 layers of semantics from Rizzo, then describe the evaluation semantics, then the reactive semantics, and finally the reference counting semantics.
-Now that we have a way to represent signals in memory, we can describe the operational semantics of Rizzo. The semantics of Rizzo are split into two layers: the standard evaluation semantics for expressions, and the reactive semantics that govern how signals are updated over time. The evaluation semantics are not very interesting in this context, as they follow a standard eager evaluation strategy. The more interesting part is the reactive semantics, which describe how signals evolve over time in response to input on channels. \todo{maybe rewrite this and have it earlier?}
+
 
 \subsection{Rizzo Reactive semantics}
 

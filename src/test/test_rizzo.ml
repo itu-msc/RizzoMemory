@@ -129,6 +129,12 @@ let program_has_tvar (program : _ Ast.program) : bool =
     | Ast.TopLet ((_, name_ann), expr, ann) ->
         ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar expr) program
 
+let parse_and_typecheck input =
+  let parsed = Parser.parse_string input in
+  let typed_program, errors = Rizzoc.typecheck parsed in
+  Alcotest.(check int) "no type errors" 0 (List.length errors);
+  typed_program
+
 let test_typecheck_normalizes_inner_annotations () =
   let program =
     Parser.parse_string
@@ -154,6 +160,16 @@ let test_projection_partial_app_survives_refcount () =
   let _ = Rizzoc.ref_count lowered_program in
   Alcotest.(check pass) "projection partial application reaches RC" () ()
 
+let test_annotated_list_map_typechecks () =
+  let typed_program =
+    parse_and_typecheck
+      "fun list_map f lst : ('a -> 'b) -> List 'a -> List 'b =\n\
+      \  match lst with\n\
+      \  | [] -> []\n\
+      \  | x :: xs -> (f x) :: (list_map f xs)\n"
+  in
+  Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
+
 let location_tests = [
   "location creation", `Quick, test_location_creation;
   "lexer error has location", `Quick, test_lexer_error_has_location;
@@ -162,6 +178,7 @@ let location_tests = [
   "warning reporting", `Quick, test_warning;
   "typecheck normalizes inner annotations", `Quick, test_typecheck_normalizes_inner_annotations;
   "projection partial application survives refcount", `Quick, test_projection_partial_app_survives_refcount;
+  "annotated list_map typechecks", `Quick, test_annotated_list_map_typechecks;
 ]
 
 

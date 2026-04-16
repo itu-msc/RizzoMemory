@@ -419,6 +419,67 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
     let* body_type = get_typ typed_body in
     let new_expected = TFun (Cons1(p1_type, param_types_rest), body_type) in
     return (EFun (params_annotated, typed_body, Ann_typed(get_location ann, new_expected)))
+  | ECase (scrutinee, branches, ann) ->
+    let* tscrutinee = infer scrutinee in
+    let* t_scrutinee = get_typ tscrutinee in
+    let has_sigcons_pattern =
+      List.exists (fun (pattern, _, _) ->
+        match pattern with
+        | PSigCons _ -> true
+        | _ -> false) branches
+    in
+    let* t_scrutinee =
+      if has_sigcons_pattern then (
+        let* t_scrutinee = Type_env.apply_subst t_scrutinee in
+        match t_scrutinee with
+        | TVar _ ->
+          let* prefers_string = probe_string_case_on_unresolved_scrutinee ann t_scrutinee branches in
+          if prefers_string then (
+            let* _ = Type_env.expected_equal ann t_scrutinee TString in
+            Type_env.apply_subst t_scrutinee
+          ) else (
+            let* elem_t = Type_env.fresh_type_var () in
+            let* _ = Type_env.expected_equal ann t_scrutinee (TSignal elem_t) in
+            Type_env.apply_subst t_scrutinee
+          )
+        | _ -> return t_scrutinee
+      ) else
+        return t_scrutinee
+    in
+    let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t =
+      fun (pattern, branch, _) ->
+        let* typed_pattern, bindings = check_pattern pattern t_scrutinee in
+        let* typed_branch = Type_env.with_locals bindings (check branch expected) in
+        return (typed_pattern, typed_branch)
+    in
+    let* tbranches = Type_env.collect (List.map branch_mapper branches) in
+    let* typed_branches =
+      List.map2 (
+        fun (_, _, branch_ann) (typed_pattern, typed_body) ->
+          let* body_type = get_typ typed_body in
+          return (typed_pattern, typed_body, Ann_typed (get_location branch_ann, body_type)))
+        branches tbranches
+      |> Type_env.collect
+    in
+    let* result_type = Type_env.apply_subst expected in
+    return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, result_type)))
+  | EBinary (SigCons, e1, e2, ann) ->
+    (match expected with
+    | TList elem_t ->
+      let* typed_hd = check e1 elem_t in
+      let* typed_tl = check e2 (TList elem_t) in
+      let* result_type = Type_env.apply_subst (TList elem_t) in
+      return (EBinary (SigCons, typed_hd, typed_tl, Ann_typed (get_location ann, result_type)))
+    | TSignal elem_t ->
+      let* typed_hd = check e1 elem_t in
+      let* typed_tl = check e2 (TLater (TSignal elem_t)) in
+      let* result_type = Type_env.apply_subst (TSignal elem_t) in
+      return (EBinary (SigCons, typed_hd, typed_tl, Ann_typed (get_location ann, result_type)))
+    | _ ->
+      let* te = infer e in
+      let* te_type = get_typ te in
+      let* _ = Type_env.expected_equal ann expected te_type in
+      return te)
   | _ -> 
     let* te = infer e in
     let* te_type = get_typ te in
