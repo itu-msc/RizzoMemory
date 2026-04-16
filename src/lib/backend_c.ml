@@ -1,4 +1,5 @@
-open Refcount
+module Refcount_core = Refcount_private.Refcount_core
+open Refcount_core
 
 let standard_indent = 4
 
@@ -16,7 +17,7 @@ let rec collect_string_consts (RefProg{functions; globals}: program) =
   List.iter (fun (_, (str, var_name)) -> seen := M.add str var_name !seen) strs;
   M.to_list !seen
 
-and collect_string_consts_fn (fn:Refcount.fn_body) = match fn with
+and collect_string_consts_fn (fn: Refcount_core.fn_body) = match fn with
   | FnRet x -> collect_primitive_string_const x 
     |> Option.map (fun a -> [a])
     |> Option.value ~default:[]
@@ -101,11 +102,11 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
       ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
       ^ "    return 0;\n}\n")
     | None -> failwith "No entry point found"
-  and declare_globals (globals: (string * Refcount.fn_body) list) : unit = 
+  and declare_globals (globals: (string * Refcount_core.fn_body) list) : unit = 
     List.iter (fun (name, _) ->
       write (Printf.sprintf "static rz_box_t %s;\n" (mangle name))
     ) globals
-  and init_globals (globals: (string* Refcount.fn_body) list) : unit = 
+  and init_globals (globals: (string * Refcount_core.fn_body) list) : unit = 
     List.iter (fun (name, body) -> 
       emit_fn_body ~return_to:(Some name) 4 body; write "\n";
     ) globals

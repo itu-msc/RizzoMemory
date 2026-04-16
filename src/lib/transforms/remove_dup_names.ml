@@ -1,6 +1,5 @@
 open! Ast
-
-module StringMap = Map.Make(String)
+open Collections
 
 let rec subst_program (p: _ program) = 
   List.map (fun (TopLet(x, rhs, ann)) -> TopLet(x, subst StringMap.empty rhs, ann)) p

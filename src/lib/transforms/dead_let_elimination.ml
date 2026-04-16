@@ -45,7 +45,7 @@ let rec eliminate_dead_let (e : _ expr) : _ expr =
 	| ELet (((x, _) as name), e1, e2, ann) ->
 			let e1' = eliminate_dead_let e1 in
 			let e2' = eliminate_dead_let e2 in
-			if Ast_helpers.StringSet.mem x (Ast_helpers.free_vars_expr_no_globals e2') || has_effectful_call e1'
+			if Collections.StringSet.mem x (Ast_helpers.free_vars_expr_no_globals e2') || has_effectful_call e1'
 			then ELet (name, e1', e2', ann)
 			else e2'
 	| EAnno (e, t, ann) -> EAnno (eliminate_dead_let e, t, ann)

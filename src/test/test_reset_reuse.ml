@@ -1,5 +1,6 @@
 open! Rizzoc.RefCount
 open Ast_test_helpers
+open Rizzoc.Collections
 
 let tagged_arm tag num_fields body =
   { tag = Some tag; num_fields = Some num_fields; body }

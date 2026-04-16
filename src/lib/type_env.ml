@@ -1,6 +1,5 @@
 open! Ast
-module StringMap = Map.Make(String)
-module IntMap = Map.Make(Int)
+open Collections
 
 type typing_error = Typing_error of Location.t * string
 
@@ -134,7 +133,7 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
     let* () = unify ann t1a t2a in
     unify ann t1b t2b
   | TFun (ts1, rt1), TFun (ts2, rt2) ->
-    if Ast_helpers.list1_length ts1 <> Ast_helpers.list1_length ts2
+    if List1.length ts1 <> List1.length ts2
     then
       (* unify up to length of the shortest one *)
       let Cons1(ts1_hd, ts1_rest) = ts1 in
@@ -145,7 +144,7 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
         let longest_to_unify = List.take min_length_rest longest in
         let* _ = List.fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) shortest longest_to_unify in
         let longest_remaining = List.drop min_length_rest longest in
-        let longest_remaining_list1 = Ast_helpers.list1_of_list longest_remaining in
+        let longest_remaining_list1 = List1.of_list longest_remaining in
         unify ann shortest_ret_typ (TFun (longest_remaining_list1, longest_ret_typ))
       in
 
@@ -154,7 +153,7 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
       else unify_params ts2_rest rt2 ts1_rest rt1
     else
       let* () = unify ann rt1 rt2 in
-      Ast_helpers.list1_fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) ts1 ts2
+      List1.fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) ts1 ts2
   | TVar id1 , TVar id2 when id1 = id2 -> return ()
   | TVar id, t | t, TVar id -> 
     if occurs_in id t 
@@ -219,7 +218,7 @@ let rec apply_subst ?(subst_map = None) (t: typ) : typ t =
   | TVar id -> find (TVar id)
   | TFun (param_types, ret_type) ->
     let* ret_type'    = apply_subst ret_type in
-    let param_results = Ast_helpers.list1_fold_left (fun acc a -> apply_subst a :: acc) [] param_types in
+    let param_results = List1.fold_left (fun acc a -> apply_subst a :: acc) [] param_types in
     let* param_types' = collect (List.rev param_results) in
     return (TFun (Cons1(List.hd param_types', List.tl param_types'), ret_type'))
 

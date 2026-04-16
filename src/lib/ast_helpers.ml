@@ -1,6 +1,5 @@
 open! Ast
-
-module StringSet = Set.Make(String)
+open Collections
 
 (** Finds the free variables of a function. 
     [top_decl_names] are the names of all top-level let-bindings. *)
@@ -42,14 +41,3 @@ and free_vars_expr top_decl_names e : StringSet.t =
   | EFun (params, body, _) -> free_vars_fun top_decl_names params body
   | EAnno (e, _, _) -> free_vars_expr e
 
-let list1_length (Cons1 (_, rest)) = 1 + List.length rest
-let list1_map f (Cons1 (x, rest)) = Cons1 (f x, List.map f rest)
-let list1_fold_left f acc (Cons1 (x, rest)) = List.fold_left f (f acc x) rest
-let list1_fold_left2 f acc (Cons1 (x1, rest1)) (Cons1 (x2, rest2)) = 
-  let acc = f acc x1 x2 in
-  List.fold_left2 f acc rest1 rest2
-
-let list1_of_list lst = 
-  match lst with
-  | [] -> failwith "Cannot convert empty list to list1"
-  | x :: rest -> Cons1 (x, rest)

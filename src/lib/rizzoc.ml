@@ -56,7 +56,7 @@ module Transformations = struct
 end
 
 module Utilities = struct include Utilities end
-
+module Collections = struct include Collections end
 type generated_c_compiler_invocation = {
   compiler : string;
   arguments : string list;
@@ -157,6 +157,7 @@ let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
     @ (if debug_malloc then ["-D__RZ_DEBUG_MALLOC"] else [])
     @ (if debug_info then ["-D__RZ_DEBUG_INFO"] else [])
     @ ["-I"; runtime_include; input_file; "-o"; output_file]
+    @ (if is_windows then [] else ["-lm"])
   in
   { compiler; arguments }
 
