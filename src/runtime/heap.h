@@ -16,6 +16,9 @@ typedef struct rz_signal
     rz_box_t head, tail; /* could be any (boxed) value   */
     rz_box_t updated;    /* an integer, either 0 or 1    */
     rz_box_t prev, next; /* holders a pointer (of rz_signal_t) to the prev/next signal in the heap */
+#ifdef __RZ_DEBUG_INFO
+    rz_box_t debug_index;
+#endif
 } rz_signal_t;
 
 #define RZ_HEAP_SENTINEL_TAG 255
@@ -41,6 +44,9 @@ static rz_signal_t rz_heap_tail = {
 rz_signal_t *rz_heap_base = &rz_heap_head;
 rz_signal_t *rz_heap_cursor = &rz_heap_tail;
 size_t rz_heap_size = 0;
+#ifdef __RZ_DEBUG_INFO
+uint64_t rz_debug_signal_next_index = 0;
+#endif
 
 static inline void rz_heap_init(void)
 {
@@ -89,8 +95,14 @@ static rz_object_t *rz_signal_ctor(rz_box_t head, rz_box_t tail)
 {
     rz_heap_size++;
 
+#ifndef __RZ_DEBUG_INFO
+    int16_t args_cnt = 5;
     rz_box_t args[5] = {head, tail, rz_make_int(0), rz_make_ptr(NULL), rz_make_ptr(NULL)};
-    rz_signal_t *new_sig = (rz_signal_t *)rz_ctor(0, 5, args);
+#else
+    int16_t args_cnt = 6;
+    rz_box_t args[6] = {head, tail, rz_make_int(1), rz_make_ptr(NULL), rz_make_ptr(NULL), rz_make_int(rz_debug_signal_next_index++)};
+#endif
+    rz_signal_t *new_sig = (rz_signal_t *)rz_ctor(0, args_cnt, args);
     new_sig->_base.obj_type = RZ_SIGNAL;
 
     rz_insert_signal_node(new_sig);
@@ -173,13 +185,11 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
     return obj;
 }
 
-static void rz_debug_print_heap()
+#ifdef __RZ_DEBUG_INFO
+static inline void rz_debug_print_heap()
 {
-    rz_signal_t *sig = &rz_heap_head;
-    size_t index = 0;
-    
     printf("(size: %zu)", rz_heap_size);
-    while (sig)
+    for (rz_signal_t *sig = &rz_heap_head; sig != NULL; sig = (rz_signal_t *)rz_unbox_ptr(sig->next))
     {
         if (sig == &rz_heap_head || sig == &rz_heap_tail)
         {
@@ -190,22 +200,19 @@ static void rz_debug_print_heap()
         }
         else if (rz_unbox_int(sig->updated))
         {
-            printf("[%zu] ", index);
+            printf("[%zu] ", rz_unbox_int(sig->debug_index));
         }
         else
         {
             if (sig == rz_heap_cursor)
-                printf("(%zu) ", index);
+                printf("(%zu) ", rz_unbox_int(sig->debug_index));
             else
-                printf("%zu ", index);
+                printf("%zu ", rz_unbox_int(sig->debug_index));
         }
-
-        sig = (rz_signal_t *)rz_unbox_ptr(sig->next);
-        if (sig != &rz_heap_tail && sig != NULL)
-            index++;
     }
     printf("\n");
 }
+#endif
 
 static void rz_debug_print_signal(rz_box_t box)
 {

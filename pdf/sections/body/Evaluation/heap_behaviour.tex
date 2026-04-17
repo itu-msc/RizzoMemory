@@ -1,1 +1,47 @@
 \todo{\dots we ran this Rizzo program X (code of which is in the appendix). The program does \textbf{something}. We enabled  with compiler flags `\_\_RZ\_DEBUG\_INFO', the output is shown in \dots}
+
+In order to evaluate the heap behaviour, we will be running a small Rizzo. The program has two modes, an English mode and a Danish mode, and will print a greeting every second in a language that depends on the selected mode.
+The source code for the program is available in our repository at the path \todo{examples/eval\_small.rizz}.
+
+When compiling the program we enable the \texttt{--debug-info} flag, which enables the logging of debug information. Specifically, the flag enables printing of the heap every time a channel produces a value, and it will assign a unique identifier to each signal so it can be traced through a series of prints. 
+To compile the program, first run \texttt{rizzoc examples/eval\_small.rizz --debug-info} and then run the generated executable \texttt{output.exe}.
+Running the program we get the output as seen in \todo{appendix}. The first is the initial print that occurs when registering a signal as a console output. The second line is from the stepping which is triggered by a second passing and on the third line we see the first print of the heap. After initialisation (and the first time step) the heap consists of six signals.
+
+The $0\text{th}$ signal is the timer, the $1\text{st}$ and $2\text{nd}$ signals are created inside the calls to \texttt{filter\_l} and are conceptually \textit{internal channels} for an application of the \texttt{watch} constructor.
+The initial greeting signal, called \texttt{called}, is the $3\text{rd}$ signal in the heap. The $4\text{th}$ signal is the result of the application \texttt{switch\_r default mode\_funcs}, and the $5\text{th}$ signal is created by \texttt{quit\_at}.
+By this time in the execution not all signals have materialised. In fact, the \texttt{console\_sig} (a delayed signal over strings) will only materialise once the console input channel produces a value, this happens in lines six to eight, where a \text{da} is input. 
+Notice, the signals 12 and 14 are created in front of 1 and 2 respectively, these are the result of applying \texttt{mk\_sig}. 
+And similarly, signals 16 through 18 are the signals created by evaluation the delayed computation \texttt{map\_l} of \texttt{mode\_funcs} and \texttt{switch\_r} which has swapped the application to the Danish mode.
+
+\todo{Tobias: 16 must the signal from mapL. 17 is the result of applying the \texttt{mode\_function} (called f inside cont of switchr) that was partially applied in the mapL of mode\_funcs. And the 18th, that one I am a little ensure about, I imagine it is the recursive call to \texttt{switch\_r} inside cont. This seems consistent, since after inputing `en', this signal is deleted and 32 is now where 18 were.}
+
+\todo{Finish by something like: notice how beyond this point, when all signals have materialised, the heap size grows no more. Both the Danish and the English mode require the same amount of signal \dots and there are no signal ids unaccounted for.}
+
+\begin{verbatim}
+Hello. Type da for Danish.
+Hello. Type da for Danish.
+step 0001, channel 1, (size: 6)| [0] 1 2 [3] [4] 5 (|)
+Hello. Type da for Danish.
+step 0002, channel 1, (size: 6)| [0] 1 2 [3] [4] 5 (|)
+da  --user input
+Hej. Type en for English.
+step 0003, channel 0, (size: 10)| 0 [12] [1] [14] [2] [16] [17] [18] [4] 5 (|)
+Hej. Type en for English.
+step 0004, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [18] [4] 5 (|)
+Hej. Type en for English.
+step 0005, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [18] [4] 5 (|)
+en  -- user input
+Hello. Type da for Danish.
+step 0006, channel 0, (size: 10)| 0 [12] [1] [14] [2] [16] [17] [32] [4] 5 (|)
+Hello. Type da for Danish.
+step 0007, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
+Hello. Type da for Danish.
+step 0008, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
+Hello. Type da for Danish.
+step 0009, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
+quit  -- user input
+Hello. Type da for Danish.
+step 0010, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
+
+step 0011, channel 0, (size: 10)| 0 [12] [1] [14] [2] 16 17 32 4 [5] (|)
+\end{verbatim}

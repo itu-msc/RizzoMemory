@@ -1,0 +1,24 @@
+fun or a b = if a then true else b
+
+fun greeting msg source = map (fun x -> msg) source
+
+fun mode_function source cmd =
+    match cmd with
+    | "en" -> fun current -> greeting "Hello. Type da for Danish." source
+    | "da" -> fun current -> greeting "Hej. Type en for English." source
+    | _ -> fun current -> greeting "Hello and hej." source
+
+fun sec_to_ms s = s * 1000
+// Creates a signal with 2 modes, printing either "Hello" or "Hej" on a timer.
+// The mode can be changed by typing "en" or "da" in the console.
+fun entry x =
+    let timer = clock (sec_to_ms 3) in
+    let console_sig = mk_sig_of_channel console in
+    let quit_sig = filter_l (fun s -> s == "quit") console_sig in
+    let mode_sig = filter_l (fun s -> or (s == "da") (s == "en")) console_sig in
+    let default = greeting "Hello. Type da for Danish." timer in
+    let mode_funcs = map_l (mode_function timer) mode_sig in
+    let switched = switch_r default mode_funcs in
+    let _out = console_out_signal (switched) in
+    let _quit = quit_at quit_sig in
+    start_event_loop ()

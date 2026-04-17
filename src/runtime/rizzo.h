@@ -47,13 +47,13 @@ static uint64_t rz_debug_heap_step_count = 0;
    Additionally, outputs the head of any registered outputs that was updated during heap update. */
 static inline void rz_step(rz_channel_t chan, rz_box_t v)
 {
+    rz_heap_update(chan, v);
+    rz_refcount_dec_box(v);
+    rz_print_registered_outputs();
 #ifdef __RZ_DEBUG_INFO
     printf("step %.4" PRIu64 ", channel %" PRIu64 ", ", ++rz_debug_heap_step_count, chan);
     rz_debug_print_heap();
 #endif
-    rz_heap_update(chan, v);
-    rz_refcount_dec_box(v);
-    rz_print_registered_outputs();
 }
 
 /* Starts the Rizzo event loop:

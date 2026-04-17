@@ -62,8 +62,15 @@ fun switchS s d =
     switch_s s d
 
 fun switch_r s d =
-    let d_ = (fun s_ -> fun x -> switch_r ((head s_) x) (tail s_)) |> d in
-    switch_s s d_
+    match s with 
+    | x :: xs -> 
+        let cont : Sync (Signal 'a) (Signal ('a -> Signal 'a)) -> Signal 'a = fun s -> 
+            match s with
+            | Left (xs') -> switch_r xs' d
+            | Right (f :: d') -> switch_r (f x) d'
+            | Both (_, f :: d') -> switch_r (f x) d'
+        in
+        x :: (cont |> sync xs d)
 
 fun scan f b s : ('b -> 'a -> 'b) -> 'b -> Signal 'a -> Signal 'b = 
     match s with
