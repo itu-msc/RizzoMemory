@@ -7,3 +7,4 @@ This repository has an OCaml frontend implementation and a C backend implementat
 Using the `package.json` scripts is the easiest for running builds and tests.
 The environment has `opam` but `dune` needs to be activated or run using `opam exec -- dune ...`.
 `dune build` has an empty response if the build is successful.
+Run the tests using `opam exec -- dune runtest`.

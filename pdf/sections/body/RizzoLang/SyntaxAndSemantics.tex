@@ -176,9 +176,29 @@ In Rizzo the reactive semantics require that:
     \item Any new signal must only depend on other signals in the \texttt{Now heap}.
     \item When an input is produced on a channel, all signals with a tail that depends on the clock of that channel must to be updated.
     \item Signals must be updated based on a topological order of their dependencies. If signal B depends on signal A, signal A must appear before signal B in the heap and thus be updated first.
+    \item Evaluating the tail of a signal produces a new signal, which must be copied back into the original signal. %This means that the original signal is updated in place, and any references to it remain valid.
+    \item If no reference exists to the intermediate signal produced by evaluating the tail, then the intermediate signal must be deallocated to prevent duplicate work.
+    \item New signals must be inserted into the \texttt{Now heap}, to prevent it from being evaluated in the current time step.
+    \item 
 \end{itemize}
 
-Based on these requirements, we have chosen to structure our heap as a single linked list. This gives us a simple way to maintain the topological order of signals, as we can ensure that when a new signal is created, it is added after the split between the \texttt{Now} and \texttt{Earlier} heaps. \dots
+Based on these requirements, we have chosen to structure our heap as a linked list. Using a linked list has the advantage of:
+% This gives us a simple way to maintain the topological order of signals, it allows for efficient insertion and removal of signals, 
+%  as we can ensure that when a new signal is created it is added after the split between the \texttt{Now} and \texttt{Earlier} heaps. \dots
+
+\begin{itemize}
+    \item Representing the \texttt{Now} and \texttt{Earlier} heaps in one data structure, and expressing a split between them using a pointer (cursor).
+    \item Moving signals from the \texttt{Now} heap to the \texttt{Earlier} heap in O(1) time by resetting the cursor to the start of the heap. Likewise moving signals back to the \texttt{Now} heap by moving the cursor forward.
+    \item O(1) insertion that maintaining the topological order of signals, by adding them in the end of the \texttt{Now} heap, we ensure that any signal can only depend on signals that were created before it.
+    \item O(1) removal of signals when their reference count drops to zero.
+    \item Stable references to signals, as insertions and removals do not move other signals in memory, so pointers to signals remain valid throughout their lifetime.
+\end{itemize}
+
+
+\subsubsection{Added Constructors for Rizzo}
+
+In the counting immutable beans semantics, it says that a constructor call should return a location to the object that has been created. For Rizzo, we have extended this semantic for signals, by also having the signal constructor add the signal to the signal heap.
+
 
 
 % For RizzoLang we need to adhere to the \texttt{advance} and \texttt{update} semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, but we also need to define the semantics of reference counting for our implementation. In this section we first describe the evaluation strategy of Rizzo, then the reactive semantics for signals, and finally how reference counting interacts with the heap structure.
