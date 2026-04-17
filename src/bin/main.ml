@@ -60,10 +60,15 @@ let () =
 	let add_input_file path =
 		input_files := !input_files @ [path]
 	in
+	let debug_malloc = ref false in
+	let debug_info = ref false in
+
 	Arg.parse
 		[ ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
 		; ("--print-ast", Arg.Unit set_print_ast, "Print parsed, typed, transformed, and reference-counted ASTs during compilation")
 		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
+		; ("--debug-malloc", Arg.Set debug_malloc, "Print debug info about memory allocations and deallocations at runtime")
+		; ("--debug-info"	 , Arg.Set debug_info	 , "Print debug info about function calls and reference count changes at runtime")
 		]
 		add_input_file
 		usage_msg;
@@ -80,7 +85,7 @@ let () =
 	let runtime_include = "src/runtime" in
 	let output_c = "output.c" in
 	let output_file = "output.exe" in
-	let shellCommand = Rizzoc.to_shell_command (Rizzoc.generated_c_compiler_invocation ~runtime_include ~input_file:output_c ~output_file ()) in
+	let shellCommand = Rizzoc.to_shell_command (Rizzoc.generated_c_compiler_invocation ~runtime_include ~input_file:output_c ~output_file ~debug_malloc:!debug_malloc ~debug_info:!debug_info ()) in
 	let returnCode = Sys.command shellCommand in
 	if returnCode <> 0 then (
 		Fmt.epr "@{<red>Error@}: C compilation failed with exit code %d.@." returnCode;

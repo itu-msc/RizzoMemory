@@ -1,3 +1,17 @@
-\todo{Results of running some different Rizzo programs (with valgrind) for extended period/number of iterations. Goal is to convince no space is leaks happen when the program is run.}
+% \todo{Results of running some different Rizzo programs (with valgrind) for extended period/number of iterations. Goal is to convince no space is leaks happen when the program is run.}
 
-\todo{We also check the heap size stays reasonable}
+For this part of the evaluation our focus will be space leaks. For this purpose, we will be using Valgrind \todo{a footnote?}, a framework for building dynamic analysis tools. 
+Valgrind comes with a tool, \textit{memcheck}, for detecting memory errors such as reading uninitialised values, use-after-free, and most importantly memory leak detection. Note, that as a dynamic tool \textit{memcheck} is only able to find errors in the execution paths that we provide.
+
+\todo{We additionally instrument the runtime with logging of various extra information using the \texttt{\_\_RZ\_DEBUG\_MALLOC} compilation flag and \dots}
+
+The first program is an interactive console application by \citeauthor*{gebser_asynchronous_2023}~\cite{gebser_asynchronous_2023}, \todo{the source code is shown in the appendix}.
+The program maintains a counter that is incremented every second and can be printed to the screen when a user writes `\textit{show}'. The counter can be manipulated by writing either `\textit{negate}', to negate the current value, or a number $n$ to increase the current value by $n$.
+To mimic the program running for an extended period, we adjust the timer so the counter is incremented 20 times every second.
+
+\todo{valgrind output? What else?}
+
+\todo{Do it again for?}
+
+\dots
+

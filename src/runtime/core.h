@@ -267,6 +267,9 @@ static rz_object_t* rz_reuse_object(rz_object_t* obj, int16_t tag, int16_t num_f
     for (size_t i = 0; i < end; i++) {
         objf->fields[i] = args[i];
     }
+#ifdef __RZ_DEBUG_MALLOC
+    printf("reuse: %p with tag %d and %d fields\n", (void*)obj, obj->header.tag, obj->header.num_fields);
+#endif
     return obj;
 }
 

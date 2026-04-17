@@ -166,16 +166,19 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
      /* rz_insert_signal_node will update the prev/next ptr,
          so the signal is correctly placed just before the heap cursor */
     rz_insert_signal_node(sig);
+
+#ifdef __RZ_DEBUG_MALLOC
+    printf("reuse: %p - now stores a signal\n", (void*)sig);
+#endif
     return obj;
 }
 
 static void rz_debug_print_heap()
 {
-    printf("| ");
-
     rz_signal_t *sig = &rz_heap_head;
     size_t index = 0;
-
+    
+    printf("(size: %zu)", rz_heap_size);
     while (sig)
     {
         if (sig == &rz_heap_head || sig == &rz_heap_tail)
@@ -201,18 +204,17 @@ static void rz_debug_print_heap()
         if (sig != &rz_heap_tail && sig != NULL)
             index++;
     }
-
-    printf("|\n");
+    printf("\n");
 }
 
 static void rz_debug_print_signal(rz_box_t box)
 {
-    rz_signal_t *signal = (rz_signal_t *)box.as.obj;
+    rz_signal_t *signal = (rz_signal_t *)rz_unbox_ptr(box);
     printf("signal(ref: %d, head: ", signal->_base.refcount);
     rz_debug_print_box(signal->head);
     printf(", tail: ");
     rz_debug_print_box(signal->tail);
-    printf(", updated: %"PRId64")", signal->updated.as.i64);
+    printf(", updated: %"PRId64")", rz_unbox_int(signal->updated));
 }
 
 static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b) 

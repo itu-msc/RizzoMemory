@@ -156,6 +156,7 @@ let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
     (if is_windows then ["-m64"] else [])
     @ (if debug_malloc then ["-D__RZ_DEBUG_MALLOC"] else [])
     @ (if debug_info then ["-D__RZ_DEBUG_INFO"] else [])
+    @ (if debug_info || debug_malloc then ["-g"] else [])
     @ ["-I"; runtime_include; input_file; "-o"; output_file]
     @ (if is_windows then [] else ["-lm"])
   in
