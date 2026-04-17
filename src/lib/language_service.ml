@@ -1034,13 +1034,13 @@ let builtin_completion_symbols : completion_symbol StringMap.t =
 
 let constructor_completion_specs : (string * Ast.typ) list =
   [
-    ("Just", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TOption (Ast.TParam "'a")));
-    ("Nothing", Ast.TOption (Ast.TParam "'a"));
-    ("Cons", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TList (Ast.TParam "'a")]), Ast.TList (Ast.TParam "'a")));
+    (* ("Just", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TOption (Ast.TParam "'a")));
+    ("Nothing", Ast.TOption (Ast.TParam "'a")); *)
+    (* ("Cons", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TList (Ast.TParam "'a")]), Ast.TList (Ast.TParam "'a")));
     ("Nil", Ast.TList (Ast.TParam "'a"));
     ("Left", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
     ("Right", Ast.TFun (Ast.Cons1 (Ast.TParam "'b", []), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
-    ("Both", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TParam "'b"]), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
+    ("Both", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TParam "'b"]), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b"))); *)
   ]
 
 let constructor_completion_symbols : completion_symbol StringMap.t =

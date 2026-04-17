@@ -28,6 +28,7 @@ type typ =
   | TString
   | TBool
   | TName of string
+  | TApp of typ * typ list
   | TParam of string
   | TVar of int
   | TFun of typ list1 * typ
@@ -35,9 +36,6 @@ type typ =
   | TSignal of typ
   | TLater of typ
   | TDelay of typ
-  | TSync of typ * typ
-  | TOption of typ
-  | TList of typ
   | TChan of typ
 
 type parsed

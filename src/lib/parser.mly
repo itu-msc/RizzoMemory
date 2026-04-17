@@ -73,7 +73,7 @@ let rec list_pattern_of_list start_pos end_pos = function
 %token IF THEN ELSE
 %token PIPE_GT ARROW COLON STAR SLASH PERCENT UNDERSCORE EQEQ PLUS MINUS LT GT LEQ GEQ BANG
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY //NOT
-%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION TYPE_LIST
+%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY
 %token <string> ID
 %token <string> TYPE_ID
 %token <string> TYPEVAR
@@ -322,9 +322,8 @@ app_type:
   | TYPE_SIGNAL ta=type_atom { TSignal ta }
   | TYPE_LATER ta=type_atom { TLater ta }
   | TYPE_DELAY ta=type_atom { TDelay ta }
-  | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
-  | TYPE_OPTION ta=type_atom { TOption ta }
-  | TYPE_LIST ta=type_atom { TList ta }
+  // | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
+  | at=app_type ta=type_atom+ { TApp (at, ta) }
   | ta=type_atom { ta }
   (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
   // | at=app_type ta=type_atoma { failwith "type application ..." }

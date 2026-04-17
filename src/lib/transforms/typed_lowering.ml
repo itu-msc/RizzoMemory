@@ -41,7 +41,7 @@ and lower_expr (e : typed expr) : parsed expr =
     let lowered_e1 = lower_expr e1 in
     let lowered_e2 = lower_expr e2 in
     (match ann_get_type ann with
-    | TList _ ->
+    | TApp (TName "List", _) ->
       ECtor (("Cons", parsed_ann ann), [lowered_e1; lowered_e2], parsed_ann ann)
     | _ ->
       EBinary (SigCons, lowered_e1, lowered_e2, parsed_ann ann))

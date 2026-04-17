@@ -78,10 +78,7 @@ rule read = parse
     match x with
     | "Later" -> TYPE_LATER
     | "Delay" -> TYPE_DELAY
-    | "Sync" -> TYPE_SYNC
     | "Signal" -> TYPE_SIGNAL
-    | "Option" -> TYPE_OPTION
-    | "List" -> TYPE_LIST
     | _ -> TYPE_ID x 
     }
   | int as i { INT (int_of_string i) }

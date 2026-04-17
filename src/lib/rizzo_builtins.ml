@@ -18,6 +18,8 @@ let mk name ?(ownership = None) ?(proj_idx = None) ?(public = true) (t: Ast.typ)
   typ = t;
 }
 
+open Ast.Factory
+
 let output_builtins = [
   mk "console_out_signal" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TSignal (TParam "'a"), []), TUnit)) ();
   mk "quit_at" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater (TParam "'a"), []), TUnit)) ();
@@ -27,7 +29,7 @@ let output_builtins = [
 let builtins = [
   mk "start_event_loop" ~ownership:(Some [Refcount_core.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
   mk "clock" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TInt, []), TSignal TInt)) ();
-  mk "parse_int" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TOption TInt)) ();
+  mk "parse_int" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TApp (TName "Option", [TInt]))) ();
   mk "not" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TBool, []), TBool)) ();
   mk "mod" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Borrowed]) (TFun (Cons1(TInt, [TInt]), TInt)) ();
   mk "eq" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Borrowed]) (TFun (Cons1(TParam "'a", [TParam "'a"]), TBool)) ();
@@ -51,17 +53,17 @@ let builtins = [
   mk "string_is_empty" ~public:false ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TBool)) ();
   mk "string_head" ~public:false ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TString)) ();
   mk "string_tail" ~public:false ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TString)) ();
-  mk "string_split" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Borrowed]) (TFun (Cons1(TString, [TString]), TList TString)) ();
-  mk "string_of_int" ~public:true ~ownership: (Some [Refcount_core.Borrowed]) (TFun (Cons1(TInt, []), TString)) ();
-  mk "match_fail" ~public:false ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TParam "'a")) ();
+  mk "string_split" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Borrowed]) (typ_fun [TString; TString] (typ_list TString)) ();
+  mk "string_of_int" ~public:true ~ownership: (Some [Refcount_core.Borrowed]) (typ_fun [TInt] TString) ();
+  mk "match_fail" ~public:false ~ownership:(Some [Refcount_core.Borrowed]) (typ_fun [TString] (typ_param "'a")) ();
 
-  mk "head" ~proj_idx:(Some 0) (TFun (Cons1(TSignal (TParam "'a"), []), TParam "'a")) ();
-  mk "list_head" ~proj_idx:(Some 0) (TFun (Cons1(TList (TParam "'a"), []), TParam "'a")) ();
-  mk "list_tail" ~proj_idx:(Some 1) (TFun (Cons1(TList (TParam "'a"), []), TList (TParam "'a"))) ();
-  mk "list_is_empty" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TList (TParam "'a"), []), TBool)) ();
-  mk "list_length" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TList (TParam "'a"), []), TInt)) ();
-  mk "fst" ~proj_idx: (Some 0) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'a")) ();
-  mk "snd" ~proj_idx: (Some 1) (TFun (Cons1(TTuple (TParam "'a", TParam "'b"), []), TParam "'b")) ();
+  mk "head" ~proj_idx:(Some 0) (typ_fun1 (typ_signal (typ_param "'a")) (typ_param "'a")) ();
+  mk "list_head" ~proj_idx:(Some 0) (typ_fun1 (typ_list (typ_param "'a")) (typ_param "'a")) ();
+  mk "list_tail" ~proj_idx:(Some 1) (typ_fun1 (typ_list (typ_param "'a")) (typ_list (typ_param "'a"))) ();
+  mk "list_is_empty" ~ownership:(Some [Refcount_core.Borrowed]) (typ_fun1 (typ_list (typ_param "'a")) TBool) ();
+  mk "list_length" ~ownership:(Some [Refcount_core.Borrowed]) (typ_fun1 (typ_list (typ_param "'a")) TInt) ();
+  mk "fst" ~proj_idx: (Some 0) (typ_fun1 (typ_tuple (typ_param "'a") (typ_param "'b")) (typ_param "'a")) ();
+  mk "snd" ~proj_idx: (Some 1) (typ_fun1 (typ_tuple (typ_param "'a") (typ_param "'b")) (typ_param "'b")) ();
 
   mk "console" (TChan TString) ();
 

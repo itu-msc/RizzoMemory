@@ -73,11 +73,9 @@ and pp_typ fmt =
   | TParam n -> fprintf fmt "@{<green>%s@}" n
   | TSignal t -> fprintf fmt "(@{<green>Signal@} %a)" pp_typ t
   | TTuple (t1, t2) -> fprintf fmt "(%a * %a)" pp_typ t1 pp_typ t2
-  | TSync (t1, t2) -> fprintf fmt "@{<green>Sync@}(%a, %a)" pp_typ t1 pp_typ t2
-  | TOption t -> fprintf fmt "(@{<green>Option@} %a)" pp_typ t
-  | TList t -> fprintf fmt "(@{<green>List@} %a)" pp_typ t
   | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
   | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
+  | TApp (t, ts) -> fprintf fmt "@{<green>%a@}(@[<hov>%a@])" pp_typ t (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") pp_typ) ts
 
 let pp_top_expr out = function
   | TopLet ((x, _), e, _) -> Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} =@,%a@]" x pp_expr e
