@@ -166,10 +166,15 @@ and free_type_vars_env : unit -> StringSet.t Type_env.t = fun () ->
   let* local_free = free_type_vars_env_scheme env.local in
   return (StringSet.union global_free local_free)
 
-(*
-* Typechecks a program, returns a typed program and a boolean indicating whether there were any type errors (TODO: this is a bit of a hack - we should probably return the errors instead of printing them and returning a bool)
-*)
-let rec typecheck : type stage. stage program -> typed program * ((Location.t * string) list) = fun p -> 
+
+type typing_result = {
+  typed_program: typed program;
+  type_definitions: Type_env.typedefinition_env;
+  type_errors: (Location.t * string) list;
+}
+
+(** Typechecks a program, returns a typed program alongside type definitions and any reported errors *)
+let rec typecheck : type stage. stage program -> typing_result = fun p -> 
   (* decsribes the computations needed to arrive at the builtin schemes *)
   let builtins = List.map (fun ({name; typ; _}:Rizzo_builtins.builtin_info) -> 
     let* typ_free = free_type_vars_typ typ in
@@ -192,9 +197,11 @@ let rec typecheck : type stage. stage program -> typed program * ((Location.t * 
     ]
   in
 
-  let checked_program, env = Type_env.run @@ Type_env.prepare_with builtins builtin_types (typecheck_program p) in
+  let typed_program, env = Type_env.run @@ Type_env.prepare_with builtins builtin_types (typecheck_program p) in
   let errors = List.map (function | Type_env.Typing_error (loc, err) -> (loc, err)) env.errors in
-  (checked_program, errors)
+  { typed_program;
+    type_errors = errors;
+    type_definitions = env.typedefinitions; }
 
 and run_type_env_from_state : 'a. Type_env.typing_state -> 'a Type_env.t -> 'a * Type_env.typing_state =
   fun state m ->

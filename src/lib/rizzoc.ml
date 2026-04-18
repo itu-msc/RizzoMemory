@@ -187,6 +187,7 @@ let apply_transforms p =
 
 let ref_count p = Transformations.auto_ref_count p
 
+type typing_result = Typecheck.typing_result
 let typecheck = Typecheck.typecheck
 let lower_typed_program = Transformations.lower_typed_program
 let apply_typed_transforms p = p |> lower_typed_program |> apply_transforms
@@ -252,7 +253,7 @@ and compile parsed_program output_file =
     | _ -> raise (Source_units.Validation_failed validation_errors)
     );
     if !print_ast_dumps then print_section "------- Parsed -------" Ast.pp_program parsed_program;
-		let (typed, errors) = typecheck parsed_program in
+		let {typed_program = typed; type_errors = errors; _} : Typecheck.typing_result = typecheck parsed_program in
 		(match errors with
     | [] -> if !print_ast_dumps then print_section "------- Type checked -------" Ast.pp_typed_program typed
 		| _ ->

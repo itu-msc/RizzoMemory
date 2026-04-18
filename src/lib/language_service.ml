@@ -90,6 +90,7 @@ type analysis_result = {
 
 type parsed_typed_result = {
   typed_program: Ast.typed Ast.program;
+  type_definitions: Type_env.typedefinition_env;
   diagnostics: diagnostic list;
 }
 
@@ -310,11 +311,16 @@ let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_res
     let parsed = Source_units.parse_document_with_default_prelude ~exclude_paths:[filename] ~filename text in
     let validation_errors = Source_units.validate_program parsed in
     if validation_errors <> [] then
-      Ok { typed_program = []; diagnostics = List.map diagnostic_of_type_error validation_errors }
+      Ok
+        {
+          typed_program = [];
+          type_definitions = Type_env.empty_env.typedefinitions;
+          diagnostics = List.map diagnostic_of_type_error validation_errors;
+        }
     else
-      let typed_program, type_errors = Typecheck.typecheck parsed in
+      let { typed_program; type_definitions; type_errors } : Typecheck.typing_result = Typecheck.typecheck parsed in
       let diagnostics = List.map diagnostic_of_type_error type_errors in
-      Ok { typed_program; diagnostics }
+      Ok { typed_program; type_definitions; diagnostics }
   with
   | Lexer.Error (loc, msg) ->
       Error
@@ -1032,37 +1038,45 @@ let builtin_completion_symbols : completion_symbol StringMap.t =
     StringMap.empty
       Rizzo_builtins.public_builtins
 
-let constructor_completion_specs : (string * Ast.typ) list =
-  [
-    (* ("Just", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TOption (Ast.TParam "'a")));
-    ("Nothing", Ast.TOption (Ast.TParam "'a")); *)
-    (* ("Cons", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TList (Ast.TParam "'a")]), Ast.TList (Ast.TParam "'a")));
-    ("Nil", Ast.TList (Ast.TParam "'a"));
-    ("Left", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
-    ("Right", Ast.TFun (Ast.Cons1 (Ast.TParam "'b", []), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
-    ("Both", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TParam "'b"]), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b"))); *)
-  ]
-
-let constructor_completion_symbols : completion_symbol StringMap.t =
-  let empty_range =
-    {
-      start_pos = { line = 0; character = 0 };
-      end_pos = { line = 0; character = 0 };
-    }
+let constructor_completion_symbol_of_definition
+    ~(type_definitions : Type_env.typedefinition_env)
+    ({ arg_types; result_typ; _ } : Type_env.constructor_defintion) : completion_symbol =
+  let result_type =
+    match StringMap.find_opt result_typ type_definitions.types with
+    | Some type_definition ->
+        if type_definition.type_params = [] then
+          Ast.TName result_typ
+        else
+          Ast.TApp
+            (Ast.TName result_typ, List.map (fun type_param -> Ast.TParam type_param) type_definition.type_params)
+    | None -> Ast.TName result_typ
   in
-  List.fold_left
-    (fun env (name, typ) ->
+  let typ =
+    match arg_types with
+    | [] -> result_type
+    | first_arg :: rest_args -> Ast.TFun (Ast.Cons1 (first_arg, rest_args), result_type)
+  in
+  {
+    kind = SemanticType;
+    range =
+      {
+        start_pos = { line = 0; character = 0 };
+        end_pos = { line = 0; character = 0 };
+      };
+    detail = Some (string_of_typ typ);
+    source = CompletionConstructor;
+  }
+
+let constructor_completion_symbols_of_typedefinitions
+    ~(type_definitions : Type_env.typedefinition_env) : completion_symbol StringMap.t =
+  StringMap.fold
+    (fun _ (constructor_definition : Type_env.constructor_defintion) env ->
       completion_add_prefer_high_priority
-        name
-        {
-          kind = SemanticType;
-          range = empty_range;
-          detail = Some (string_of_typ typ);
-          source = CompletionConstructor;
-        }
+        constructor_definition.name
+        (constructor_completion_symbol_of_definition ~type_definitions constructor_definition)
         env)
+    type_definitions.constructors
     StringMap.empty
-    constructor_completion_specs
 
 let completion_prefix_at_position ~(text : string) ~(position : position) : string =
   let lines = lines_of_text text in
@@ -1138,11 +1152,14 @@ let completions_at_position
   let active_filename = file_name ~uri ~filename in
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> completion_empty_list
-  | Ok { typed_program = program; _ } ->
+  | Ok { typed_program = program; type_definitions; _ } ->
       let _ = uri in
       let base_env =
         let with_constructors =
-          StringMap.fold completion_add_prefer_high_priority constructor_completion_symbols builtin_completion_symbols
+          StringMap.fold
+            completion_add_prefer_high_priority
+            (constructor_completion_symbols_of_typedefinitions ~type_definitions)
+            builtin_completion_symbols
         in
         List.fold_left
           (fun env (top : Ast.typed Ast.top_expr) ->

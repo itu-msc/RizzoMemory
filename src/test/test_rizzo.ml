@@ -132,7 +132,10 @@ let program_has_tvar (program : _ Ast.program) : bool =
 
 let parse_and_typecheck input =
   let parsed = Parser.parse_string input in
-  let typed_program, errors = Rizzoc.typecheck parsed in
+  let typed_program, errors = 
+    let {typed_program; type_errors; _} : Rizzoc.typing_result = typecheck parsed in
+    typed_program, type_errors
+  in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   typed_program
 
@@ -143,7 +146,7 @@ let test_typecheck_normalizes_inner_annotations () =
       \  let swap_nested_left = fun q -> snd (fst q) in\n\
       \  swap_nested_left\n"
   in
-  let typed_program, errors = Rizzoc.typecheck program in
+  let { typed_program; type_errors = errors; _ } : Rizzoc.typing_result = Rizzoc.typecheck program in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
 
@@ -155,7 +158,7 @@ let test_projection_partial_app_survives_refcount () =
       fun entry x =\n\
       \  use snd (1, 2)\n"
   in
-  let typed_program, errors = Rizzoc.typecheck program in
+  let { typed_program; type_errors = errors; _ } : Rizzoc.typing_result = Rizzoc.typecheck program in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   let lowered_program = Rizzoc.apply_typed_transforms typed_program in
   let _ = Rizzoc.ref_count lowered_program in
