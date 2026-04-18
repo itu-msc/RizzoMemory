@@ -335,14 +335,20 @@ prod_type:
   | at=app_type { at }
 
 app_type:
+  // Parse type application in one production so Menhir does not need to guess
+  // whether another type_atom extends the current application or starts a new one.
+  | head=type_apply_head args=type_atom*
+    { match args with
+      | [] -> head
+      | _ -> TApp (head, args) }
+  (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
+  // | at=app_type ta=type_atoma { failwith "type application ..." }
+
+type_apply_head:
   | TYPE_SIGNAL ta=type_atom { TSignal ta }
   | TYPE_LATER ta=type_atom { TLater ta }
   | TYPE_DELAY ta=type_atom { TDelay ta }
-  // | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
-  | at=app_type ta=type_atom+ { TApp (at, ta) }
   | ta=type_atom { ta }
-  (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
-  // | at=app_type ta=type_atoma { failwith "type application ..." }
 
 type_atom:
   | tid=TYPE_ID { 
