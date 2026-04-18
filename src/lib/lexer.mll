@@ -109,6 +109,7 @@ rule read = parse
       | "if" -> IF
       | "then" -> THEN
       | "else" -> ELSE
+      | "type" -> TYPE
       | _ -> ID x
     }
   | eof { EOF }

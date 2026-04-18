@@ -32,7 +32,7 @@
         },
         {
             "name": "keyword.control.rizzo",
-            "match": "\\b(let|fun|match|with|if|then|else|in)\\b"
+            "match": "\\b(let|fun|match|with|if|then|else|in|type)\\b"
         },
         {
             "name": "constant.language.rizzo",
@@ -53,7 +53,7 @@
         },
         {
             "name": "variable.other.readwrite.rizzo",
-            "match": "\\b(?!let\\b|fun\\b|match\\b|with\\b|if\\b|then\\b|else\\b|in\\b|true\\b|false\\b|never\\b|unit\\b)[a-z_][a-zA-Z0-9_']*\\b"
+            "match": "\\b(?!let\\b|fun\\b|match\\b|with\\b|if\\b|then\\b|else\\b|in\\b|type\\b|true\\b|false\\b|never\\b|unit\\b)[a-z_][a-zA-Z0-9_']*\\b"
         },
         {
             "name": "comment.line.double-slash.rizzo",

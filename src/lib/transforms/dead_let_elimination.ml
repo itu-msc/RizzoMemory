@@ -51,4 +51,7 @@ let rec eliminate_dead_let (e : _ expr) : _ expr =
 	| EAnno (e, t, ann) -> EAnno (eliminate_dead_let e, t, ann)
 
 let dead_let_eliminate (p : _ program) : _ program =
-	List.map (fun (TopLet (x, e, ann)) -> TopLet (x, eliminate_dead_let e, ann)) p
+	p
+	|> List.map (function 
+		| TopTypeDef _ as e -> e
+		| TopLet (x, e, ann) -> TopLet (x, eliminate_dead_let e, ann))

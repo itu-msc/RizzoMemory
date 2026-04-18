@@ -424,6 +424,7 @@ let top_level_declarations : type s.
           let top_range = range_of_ann ann in
           let selection_range = range_of_name top_name in
           Some (name, kind, filename, top_range, selection_range)
+        | Ast.TopTypeDef _ -> None
   in
   List.filter_map declaration_of_top program
 
@@ -467,6 +468,7 @@ let top_level_declarations : type s.
         let visit_top = function
           | Ast.TopLet (_, rhs, ann) when ann_in_file ~filename ann -> iter_expr push rhs
           | Ast.TopLet _ -> ()
+          | Ast.TopTypeDef _ -> ()
         in
         List.iter visit_top program;
         !acc
@@ -493,6 +495,11 @@ let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
 
 let type_info_block_of_ann : type s. s Ast.ann -> string =
   fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
+
+let top_level_type_definition_text : type s. s Ast.top_expr -> string =
+  fun top ->
+    let top_text = Format.asprintf "%a" Ast.pp_top_expr top |> dedent_text in
+    Format.asprintf "\n\nType definition:\n```rizz\n%s\n```" top_text
 
 let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
   fun ~label (name, ann) ->
@@ -638,21 +645,20 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
         else
           List.find_map (pattern_hover_at_position ~position) args
 
+let keyword_range_from_start ~(name : string) ~(start_pos : position) : range =
+  {
+    start_pos;
+    end_pos =
+      {
+        line = start_pos.line;
+        character = start_pos.character + String.length name;
+      };
+  }
+
 let keyword_range_from_expr : type s. name:string -> s Ast.expr -> range option =
   fun ~name expr ->
-  let expr_range = range_of_ann (Ast.expr_get_ann expr) in
-  if expr_range.start_pos.line <> expr_range.end_pos.line then
-    None
-  else
-    Some
-      {
-        start_pos = expr_range.start_pos;
-        end_pos =
-          {
-            line = expr_range.start_pos.line;
-            character = expr_range.start_pos.character + String.length name;
-          };
-      }
+    let expr_range = range_of_ann (Ast.expr_get_ann expr) in
+    Some (keyword_range_from_start ~name ~start_pos:expr_range.start_pos)
 
 let semantic_kind_of_symbol_kind = function
   | Function -> SemanticFunction
@@ -831,6 +837,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
       let rec find_in_tops tops =
         match tops with
         | [] -> None
+        | Ast.TopTypeDef _ :: rest -> find_in_tops rest
         | Ast.TopLet (top_name, rhs, ann) :: rest ->
             if not (ann_in_file ~filename:active_filename ann) then
               find_in_tops rest
@@ -869,6 +876,15 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                       | Variable -> "top-level binding: " ^ name_text top_name
                     in
                     Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
+                  else
+                    None
+            | Ast.TopTypeDef (_, _, _, top_ann) as top_def ->
+                if not (ann_in_file ~filename:active_filename top_ann) then
+                  None
+                else
+                  let top_range = range_of_ann top_ann in
+                  if range_contains_position top_range position then
+                    Some { range = top_range; contents = top_level_type_definition_text top_def }
                   else
                     None)
           program
@@ -954,7 +970,8 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                     if ann_in_file ~filename:active_filename top_ann then
                       find_symbol_hover_in_expr rhs
                     else
-                      None)
+                      None
+                | Ast.TopTypeDef _ -> None)
               program
           in
           match symbol_hover with
@@ -1169,7 +1186,8 @@ let completions_at_position
                 completion_add_prefer_high_priority
                   (name_text top_name)
                   (completion_symbol_of_name ~source:CompletionTopLevel ~kind top_name)
-                  env)
+                  env
+            | Ast.TopTypeDef _ -> env)
           with_constructors
           program
       in
@@ -1313,6 +1331,7 @@ let completions_at_position
                  | None -> Some base_env)
             else
               env_in_tops rest
+        | Ast.TopTypeDef _ :: rest -> env_in_tops rest
       in
       let env =
         match env_in_tops program with
@@ -1438,6 +1457,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
       in
       List.iter
         (function
+          | Ast.TopTypeDef _ -> ()
           | Ast.TopLet (top_name, rhs, ann) ->
               if ann_in_file ~filename:active_filename ann then
                 let name = name_text top_name in

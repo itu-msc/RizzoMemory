@@ -78,7 +78,9 @@ let validate_program (program : _ Ast.program) =
   let seen = Hashtbl.create 32 in
   let errors = ref [] in
   List.iter
-    (fun (Ast.TopLet ((name, name_ann), _, _)) ->
+    (function
+    | Ast.TopTypeDef _ -> ()
+    | Ast.TopLet ((name, name_ann), _, _) ->
       let loc = Ast.get_location name_ann in
       match Hashtbl.find_opt seen name with
       | None -> Hashtbl.add seen name loc

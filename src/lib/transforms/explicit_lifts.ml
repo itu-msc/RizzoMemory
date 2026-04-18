@@ -75,6 +75,8 @@ let make_explicit (program : _ program) : _ program =
     |> StringSet.union builtin_function_names
   in
   List.map
-    (fun (TopLet (name, expr, ann)) ->
+    (function
+    | TopTypeDef _ as e -> e
+    | TopLet (name, expr, ann) ->
       TopLet (name, rewrite_expr function_names StringSet.empty ~as_callee:false expr, ann))
     program

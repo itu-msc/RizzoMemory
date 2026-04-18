@@ -75,10 +75,19 @@ and pp_typ fmt =
   | TTuple (t1, t2) -> fprintf fmt "(%a * %a)" pp_typ t1 pp_typ t2
   | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
   | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
-  | TApp (t, ts) -> fprintf fmt "@{<green>%a@}(@[<hov>%a@])" pp_typ t (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") pp_typ) ts
+  | TApp (t, ts) -> fprintf fmt "@{<green>%a@} @[<hov>%a@]" pp_typ t (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " ") pp_typ) ts
 
 let pp_top_expr out = function
   | TopLet ((x, _), e, _) -> Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} =@,%a@]" x pp_expr e
+  | TopTypeDef ((tname,_), params, ctors, _) ->
+    Format.fprintf out "@[<v 2>@{<magenta>type@} @{<green>%s@} @{<lightcyan>%a@} =@,%a@]"
+      tname
+      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out " ") (fun out (param, _) -> Format.fprintf out "@{<lightcyan>%s@}" param))
+      params
+      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") (fun out ((ctor_name,_), arg_types, _) ->
+         Format.fprintf out "@{<green>%s@}(@[<hov>%a@])" ctor_name
+           (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_typ) arg_types))
+      ctors
 
 let pp_program out (p : _ program) =
   let open Format in
@@ -97,6 +106,8 @@ and pp_typed_top_expr out : typed top_expr -> unit = function
     Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} : %a =@,%a@]" x pp_typ t pp_typed_expr e
   | TopLet ((x, _), e, _) ->
     Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} =@,%a@]" x pp_expr e
+  | TopTypeDef _ as e -> 
+    Format.fprintf out "%a" pp_top_expr e
 
 and pp_typed_expr out : typed expr -> unit =
   let open Format in

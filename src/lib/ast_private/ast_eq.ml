@@ -54,6 +54,16 @@ and eq_typ a b =
 let eq_top_expr a b =
   match a, b with
   | TopLet (x1, e1, _), TopLet (x2, e2, _) -> eq_name x1 x2 && eq_expr e1 e2
+  | TopTypeDef (name1, params1, ctors1, _), TopTypeDef (name2, params2, ctors2, _) ->
+    eq_name name1 name2
+    && List.length params1 = List.length params2
+    && List.for_all2 eq_name params1 params2
+    && List.length ctors1 = List.length ctors2
+    && List.for_all2 (fun (ctor_name1, arg_types1, _) (ctor_name2, arg_types2, _) ->
+         eq_name ctor_name1 ctor_name2
+         && List.length arg_types1 = List.length arg_types2
+         && List.for_all2 eq_typ arg_types1 arg_types2) ctors1 ctors2
+  | _ -> false
 
 let eq_program a b =
   List.length a = List.length b && List.for_all2 eq_top_expr a b

@@ -21,6 +21,10 @@ type typedefinition_env = {
   constructors: constructor_defintion StringMap.t; (* name -> constructor, a short cut*)
 }
 
+module TypeDefinitionEnv = struct
+  let to_ctor_mappings t = StringMap.map (fun (c : constructor_defintion) -> c.tag) t.constructors
+end
+
 type unification_env = typ IntMap.t (* id -> typ - union find *)
 
 type typing_state = {
@@ -360,3 +364,13 @@ let get_constructor_signature ann ctor_name : (typ list * typ) t =
       let* arg_types = List.map (fun t -> apply_subst ~subst_map:(Some subst_map) t) ctor_def.arg_types |> collect in
       let result_typ = TApp (TName ctor_def.result_typ, List.map snd type_params) in
       return (arg_types, result_typ)
+
+let has_type_definition type_name : bool t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  return (StringMap.mem type_name typ_def_env.types)
+
+let has_ctor_definition ctor_name : bool t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  return (StringMap.mem ctor_name typ_def_env.constructors)

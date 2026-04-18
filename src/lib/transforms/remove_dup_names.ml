@@ -2,7 +2,10 @@ open! Ast
 open Collections
 
 let rec subst_program (p: _ program) = 
-  List.map (fun (TopLet(x, rhs, ann)) -> TopLet(x, subst StringMap.empty rhs, ann)) p
+  p 
+  |> List.map (function 
+    | TopTypeDef _ as e -> e
+    | TopLet(x, rhs, ann) -> TopLet(x, subst StringMap.empty rhs, ann))
 
 and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
   match e with

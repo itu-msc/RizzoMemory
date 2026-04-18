@@ -4,15 +4,12 @@ open! Rizzoc.RefCount
 
 let parse_and_typecheck input =
   let parsed = Parser.parse_string input in
-  let typed, errors = 
-    let {typed_program; type_errors; _} : Rizzoc.typing_result = typecheck parsed in
-    typed_program, type_errors
-  in
-  Alcotest.(check int) "type errors" 0 (List.length errors);
-  typed
+  let {typed_program; type_errors; type_definitions} : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+  Alcotest.(check int) "type errors" 0 (List.length type_errors);
+  typed_program, TypeCheck.type_definitions_to_ctor_mappings type_definitions
 
 let test_typecheck_int_operators () =
-  let typed =
+  let typed, _ =
     parse_and_typecheck
       ("let diff = 9 - 4\n"
       ^ "let product = 3 * 2\n"
@@ -43,10 +40,10 @@ let test_typecheck_int_operators () =
   | _ -> Alcotest.fail "unexpected typed AST shape for int operators"
 
 let test_rc_lowering_maps_mod_to_builtin () =
-  let typed = parse_and_typecheck "let remainder = 5 % 2\n" in
+  let typed, constructors = parse_and_typecheck "let remainder = 5 % 2\n" in
   let lowered = lower_typed_program typed in
   Utilities.new_name_reset ();
-  let actual = Transformations.ast_to_rc_ir Transformations.builtins lowered in
+  let actual = Transformations.ast_to_rc_ir constructors Transformations.builtins lowered in
   match actual with
   | RefProg
       { functions = [];
@@ -56,14 +53,14 @@ let test_rc_lowering_maps_mod_to_builtin () =
   | _ -> Alcotest.fail "unexpected RC lowering shape for mod"
 
 let test_rc_lowering_maps_greater_ops_to_builtins () =
-  let typed =
+  let typed, constructors =
     parse_and_typecheck
       ("let bigger = 5 > 2\n"
       ^ "let at_least = 5 >= 2\n")
   in
   let lowered = lower_typed_program typed in
   Utilities.new_name_reset ();
-  let actual = Transformations.ast_to_rc_ir Transformations.builtins lowered in
+  let actual = Transformations.ast_to_rc_ir constructors Transformations.builtins lowered in
   match actual with
   | RefProg
       { functions = [];

@@ -180,24 +180,7 @@ let rec typecheck : type stage. stage program -> typing_result = fun p ->
     let* typ_free = free_type_vars_typ typ in
     return (name, forall (StringSet.to_list typ_free) typ)) Rizzo_builtins.builtins
   in
-  let builtin_types = 
-    [ ("Option", ["'a"], [
-        ("Just", [TParam "'a"]);
-        ("Nothing", [])
-      ])
-    ; ("List", ["'a"], [
-        ("Nil", []);
-        ("Cons", [TParam "'a"; TApp (TName "List", [TParam "'a"])])
-      ])
-    ; ("Sync", ["'a"; "'b"], [
-        ("Left", [TParam "'a"]);
-        ("Right", [TParam "'b"]);
-        ("Both", [TParam "'a"; TParam "'b"])
-      ])
-    ]
-  in
-
-  let typed_program, env = Type_env.run @@ Type_env.prepare_with builtins builtin_types (typecheck_program p) in
+  let typed_program, env = Type_env.run @@ Type_env.prepare_with builtins Rizzo_builtins.builtin_types (typecheck_program p) in
   let errors = List.map (function | Type_env.Typing_error (loc, err) -> (loc, err)) env.errors in
   { typed_program;
     type_errors = errors;
@@ -251,15 +234,22 @@ and probe_string_case_on_unresolved_scrutinee
   return (List.length probe_state.errors = base_error_count)
 
 and typecheck_program : type stage. stage program -> typed program Type_env.t = fun p -> 
-  let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
+  let* checked_program = List.fold_left (fun acc te -> 
     let* acc = acc in
-    let name_text = fst name in
+    let* te = typecheck_top_expr te in
+    return (te :: acc)
+  ) (return []) p in
+  let* () = Type_env.flatten_unification_env in
+  normalize_typed_program (List.rev checked_program)
+
+and typecheck_top_expr : type stage. stage top_expr -> typed top_expr Type_env.t = function
+  | TopLet ((name, name_ann), e, ann) ->
     let* te = match e with
     | EFun (params, _, _) | EAnno (EFun (params, _, _), _, _)-> 
       let* param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) params) in
       let* ret_type = Type_env.fresh_type_var () in
       let  t = TFun (Cons1(List.hd param_types, List.tl param_types), ret_type) in
-      let* typed_e = Type_env.with_locals [name_text, mono t] (infer e) in
+      let* typed_e = Type_env.with_locals [name, mono t] (infer e) in
       let* inferred_t = get_typ typed_e in
       let* _ = Type_env.expected_equal ann inferred_t t in
       return typed_e
@@ -268,13 +258,41 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     let* t = get_typ te in
     let* generalized_type = generalize t in
     let* t = Type_env.generalize_type_vars t in
-    let* () = Type_env.add_global name_text generalized_type in
-    let typed_name = (name_text, Ann_typed (get_location (snd name), t)) in
+    let* () = Type_env.add_global name generalized_type in
+    let typed_name = (name, Ann_typed (get_location name_ann, t)) in
     let toplet_expr = TopLet (typed_name, te, Ann_typed (get_location ann, t)) in
-    return (toplet_expr :: acc)
-  ) (return []) p in
-  let* () = Type_env.flatten_unification_env in
-  normalize_typed_program (List.rev checked_program)
+    return toplet_expr
+  | TopTypeDef ((tname, tname_ann), tparams, ctors, ann) -> 
+    (* I took the easy way out - any name clash is an error *)
+    let* already_exists = Type_env.has_type_definition tname in
+    let tname = if already_exists then Utilities.new_name tname else tname in
+    let* _ = Type_env.add_type_def tname (List.map fst tparams) in
+    let defined_type_params = StringSet.of_list (List.map fst tparams) in
+    let* _ = 
+      let mapper ((ctor_name, _), ctor_args, ctor_ann : stage ctor_def) =
+        (* duplicate constructors are just overwritten - so always is the latest - there is probably a better way *) 
+        let* ctor_args_free = Type_env.collect (List.map free_type_vars_typ ctor_args) in
+        let ctor_args_free = List.fold_left StringSet.union StringSet.empty ctor_args_free in
+        let* ctor_args = 
+          if not (StringSet.subset ctor_args_free defined_type_params) then
+            let guilty = StringSet.diff ctor_args_free defined_type_params |> StringSet.elements in
+            let err_msg = Format.asprintf "The following variables were unbound in definition of '%s': [%s]" tname (String.concat ", " guilty) in
+            let* _ = error ctor_ann err_msg in
+            return (List.map (fun _ -> TError) ctor_args)
+          else return ctor_args
+        in 
+        Type_env.add_constructor_of tname ctor_name ctor_args
+      in
+      Type_env.collect (List.map mapper ctors) in
+    let tparams' = List.map (fun (param_name, param_ann) -> (param_name, Ann_typed (get_location param_ann, TParam param_name))) tparams in
+    let ctors' =
+      List.map
+        (fun ((ctor_name, ctor_name_ann), ctor_args, ctor_ann) ->
+          ((ctor_name, Ann_typed (get_location ctor_name_ann, TName tname)), ctor_args, Ann_typed (get_location ctor_ann, TUnit)))
+        ctors
+    in
+    let res = TopTypeDef ((tname, Ann_typed (get_location tname_ann, TName tname)), tparams', ctors', Ann_typed (get_location ann, TUnit)) in
+    return res
 
 (** Infers the type of an expr*)
 and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
@@ -861,6 +879,7 @@ and normalize_typed_top_expr id_to_name : typed top_expr -> typed top_expr Type_
     let* expr = normalize_typed_expr id_to_name expr in
     let* ann = normalize_typed_ann id_to_name ann in
     return (TopLet (name, expr, ann))
+  | TopTypeDef _ as e -> return e
 
 and normalize_typed_program (program : typed program) : typed program Type_env.t =
   let id_to_name = ref IntMap.empty in

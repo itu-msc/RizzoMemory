@@ -67,7 +67,7 @@ let rec list_pattern_of_list start_pos end_pos = function
 *)
 %}
 
-%token LET FUN MATCH WITH IN
+%token LET FUN MATCH WITH IN TYPE
 %token EFFECTFUL
 %token EQ CONS COMMA LPAREN RPAREN LBRACKET RBRACKET BAR
 %token IF THEN ELSE
@@ -119,6 +119,22 @@ top_expr:
       | None -> TopLet (top_name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $symbolstartpos $endpos(body))
       | Some te -> TopLet (top_name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
     }
+  | TYPE type_name=TYPE_ID type_params=type_param_names EQ BAR? type_ctors=separated_nonempty_list(BAR, type_ctor)
+    { let type_name = (type_name, mkloc $startpos(type_name) $endpos(type_name)) in
+      TopTypeDef (type_name, type_params, type_ctors, mkloc $startpos $endpos) }
+
+(* Separate rule because these need to be converted to names, idk - that's how I encoded it in AST *)
+type_param_names:
+  | { [] }
+  | tv=TYPEVAR type_vars=type_param_names { (tv, mkloc $startpos(tv) $endpos(tv)) :: type_vars }
+
+type_ctor:
+  | ctor_name=TYPE_ID 
+    { let loc = mkloc $startpos(ctor_name) $endpos(ctor_name) in
+      (ctor_name, loc), [], loc }
+  | ctor_name=TYPE_ID LPAREN ctor_args=separated_nonempty_list(COMMA, type_expr) RPAREN
+    { let ctor_name = (ctor_name, mkloc $startpos(ctor_name) $endpos(ctor_name)) in
+      (ctor_name, ctor_args, mkloc $startpos $endpos) }
 
 nonempty_id_list:
   | x=ID { [(x, mkloc $startpos(x) $endpos(x))] }

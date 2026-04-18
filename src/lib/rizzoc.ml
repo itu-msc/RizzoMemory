@@ -27,6 +27,16 @@ module RefCount = struct
 include Refcount
 end
 
+module TypeCheck = struct
+  type typing_result = Typecheck.typing_result
+  type type_definition = Type_env.typedefinition
+  type ctor_definition = Type_env.constructor_defintion
+  type type_definition_env = Type_env.typedefinition_env
+
+  let typecheck = Typecheck.typecheck
+  let type_definitions_to_ctor_mappings = Type_env.TypeDefinitionEnv.to_ctor_mappings
+end
+
 module Transformations = struct
   module ANF = struct
     let anf_expr = Transforms.Anf.normalize_expr
@@ -50,8 +60,8 @@ module Transformations = struct
   
   let builtins = Rizzo_builtins.builtins_ownerships_map
   
-  let auto_ref_count (program: Ast.parsed Ast.program) = 
-    let program = ast_to_rc_ir builtins program in
+  let auto_ref_count ctor_mappings (program: Ast.parsed Ast.program) = 
+    let program = ast_to_rc_ir ctor_mappings builtins program in
     RefCount.reference_count_program builtins Rizzo_builtins.builtins_projection_map program
 end
 
@@ -187,8 +197,6 @@ let apply_transforms p =
 
 let ref_count p = Transformations.auto_ref_count p
 
-type typing_result = Typecheck.typing_result
-let typecheck = Typecheck.typecheck
 let lower_typed_program = Transformations.lower_typed_program
 let apply_typed_transforms p = p |> lower_typed_program |> apply_transforms
 
@@ -253,7 +261,7 @@ and compile parsed_program output_file =
     | _ -> raise (Source_units.Validation_failed validation_errors)
     );
     if !print_ast_dumps then print_section "------- Parsed -------" Ast.pp_program parsed_program;
-		let {typed_program = typed; type_errors = errors; _} : Typecheck.typing_result = typecheck parsed_program in
+		let {typed_program = typed; type_errors = errors; type_definitions} : TypeCheck.typing_result = TypeCheck.typecheck parsed_program in
 		(match errors with
     | [] -> if !print_ast_dumps then print_section "------- Type checked -------" Ast.pp_typed_program typed
 		| _ ->
@@ -267,7 +275,8 @@ and compile parsed_program output_file =
 		);
     let transformed = apply_typed_transforms typed in
     if !print_ast_dumps then print_section "------- Transformed -------" Ast.pp_program transformed;
-    let rc_env, rc_program = ref_count transformed in
+    let ctor_mappings = TypeCheck.type_definitions_to_ctor_mappings type_definitions in
+    let rc_env, rc_program = ref_count ctor_mappings transformed in
     if !print_ast_dumps then print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
 		emit rc_program output_file
 	with

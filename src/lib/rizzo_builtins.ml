@@ -93,6 +93,22 @@ let is_builtin_projection name = match M.find_opt name builtins_map with
   | _ -> false
 
 
+let builtin_types = 
+    [ ("Option", ["'a"], [
+        ("Nothing", []);
+        ("Just", [Ast.TParam "'a"]);
+      ])
+    ; ("List", ["'a"], [
+        ("Nil", []);
+        ("Cons", [TParam "'a"; TApp (TName "List", [TParam "'a"])])
+      ])
+    ; ("Sync", ["'a"; "'b"], [
+        ("Left", [TParam "'a"]);
+        ("Right", [TParam "'b"]);
+        ("Both", [TParam "'a"; TParam "'b"])
+      ])
+    ]
+
 (* consider if we can do this in a way that 
   makes the compiler complain if we dont have the entries*)
 let ctor_mappings = 
@@ -124,10 +140,10 @@ let ctor_mappings =
     ("true", 0);
     ("false", 1);
     ("sigcons", -1);
-    ("nothing", 0);
+    (* ("nothing", 0);
     ("just", 1);
     ("nil", 2);
-    ("cons", 3);
+    ("cons", 3); *)
   ]
 
 let ctor_tag_of name = match M.find_opt (String.lowercase_ascii name) ctor_mappings with

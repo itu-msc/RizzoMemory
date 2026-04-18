@@ -14,6 +14,9 @@ let rec lower_program (p : typed program) : parsed program =
   List.map lower_top_expr p
 
 and lower_top_expr = function
+  | TopTypeDef (name, params, ctors, ann) ->
+    let ctors' = List.map (fun (ctor_name, arg_types, ctor_ann) -> (parsed_name ctor_name, arg_types, parsed_ann ctor_ann)) ctors in
+    TopTypeDef (parsed_name name, List.map parsed_name params, ctors', parsed_ann ann)
   | TopLet (name, expr, ann) -> TopLet (parsed_name name, lower_expr expr, parsed_ann ann)
 
 and lower_expr (e : typed expr) : parsed expr =
