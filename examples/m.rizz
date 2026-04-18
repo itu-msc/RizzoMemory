@@ -1,0 +1,25 @@
+type MyOption 'a =
+    | MNothing
+    | MJust('a)
+
+fun some x : 'a -> MyOption 'a = MJust (x)
+
+fun opt_map f x =
+    match x with
+    | MNothing -> MNothing
+    | MJust (x) -> MJust (f x)
+
+fun opt_map2 f x =
+    match x with
+    | Nothing -> Nothing
+    | Just (x) -> Just (f x)
+
+fun opt_get x =
+    match x with
+    | MJust (x) -> x
+
+fun entry x = 
+    match [ opt_get (opt_map (fun y -> y + 1) (some 10)) ] with
+    | [] -> 0
+    | [x] -> x
+    | _ -> 1

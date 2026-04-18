@@ -4,7 +4,10 @@ open Ast_test_helpers
 
 let parse_and_typecheck input =
   let parsed = Parser.parse_string input in
-  let typed, errors = typecheck parsed in
+  let typed, errors = 
+    let {typed_program; type_errors; _} : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+    typed_program, type_errors
+  in
   Alcotest.(check int) "type errors" 0 (List.length errors);
   typed
 
@@ -21,10 +24,10 @@ let test_parse_int_has_expected_type () =
   | [TopLet (_, EApp (EVar ("parse_int", Ann_typed (_, builtin_t)), [_], Ann_typed (_, result_t)), _)] ->
       Alcotest.(check bool) "parse_int builtin type"
         true
-        (Ast.eq_typ builtin_t (TFun (Cons1 (TString, []), TOption TInt)));
+        (Ast.eq_typ builtin_t (TFun (Cons1 (TString, []), TApp (TName "Option", [TInt]))));
       Alcotest.(check bool) "parse_int return type"
         true
-        (Ast.eq_typ result_t (TOption TInt))
+        (Ast.eq_typ result_t (TApp (TName "Option", [TInt])))
   | _ -> Alcotest.fail "unexpected typed AST shape for parse_int builtin"
 
 let test_clock_has_expected_type () =
@@ -86,16 +89,17 @@ let test_list_constructors_and_projection_builtins_have_expected_types () =
       ^ "let first = list_head nums\n"
       ^ "let rest = list_tail nums\n")
   in
+  let open Ast.Factory in
   match typed with
-  | [ TopLet (_, EAnno (_, TList TInt, _), _);
+  | [ TopLet (_, EAnno (_, TApp (TName "List", [TInt]), _), _);
       TopLet (_, EBinary (SigCons, _, _, Ann_typed (_, nums_t)), _);
       TopLet (_, EApp (EVar ("list_head", Ann_typed (_, head_builtin_t)), [_], Ann_typed (_, first_t)), _);
       TopLet (_, EApp (EVar ("list_tail", Ann_typed (_, tail_builtin_t)), [_], Ann_typed (_, rest_t)), _) ] ->
-      Alcotest.(check bool) "cons infers list type" true (Ast.eq_typ nums_t (TList TInt));
-      Alcotest.(check bool) "list_head builtin type" true (Ast.eq_typ head_builtin_t (TFun (Cons1 (TList TInt, []), TInt)));
+      Alcotest.(check bool) "cons infers list type" true (Ast.eq_typ nums_t (typ_list TInt));
+      Alcotest.(check bool) "list_head builtin type" true (Ast.eq_typ head_builtin_t (TFun (Cons1 (typ_list TInt, []), TInt)));
       Alcotest.(check bool) "list_head result type" true (Ast.eq_typ first_t TInt);
-      Alcotest.(check bool) "list_tail builtin type" true (Ast.eq_typ tail_builtin_t (TFun (Cons1 (TList TInt, []), TList TInt)));
-      Alcotest.(check bool) "list_tail result type" true (Ast.eq_typ rest_t (TList TInt))
+      Alcotest.(check bool) "list_tail builtin type" true (Ast.eq_typ tail_builtin_t (TFun (Cons1 (typ_list TInt, []), typ_list TInt)));
+      Alcotest.(check bool) "list_tail result type" true (Ast.eq_typ rest_t (typ_list TInt))
   | _ -> Alcotest.fail "unexpected typed AST shape for list constructors and projection builtins"
 
 let test_list_supporting_builtins_have_expected_types () =
@@ -106,17 +110,18 @@ let test_list_supporting_builtins_have_expected_types () =
       ^ "let count = list_length [1, 2, 3]\n"
       ^ "let words = string_split \"a,b\" \",\"\n")
   in
+  let open Ast.Factory in
   match typed with
   | [ TopLet (_, _, _);
       TopLet (_, EApp (EVar ("list_is_empty", Ann_typed (_, empty_builtin_t)), [_], Ann_typed (_, empty_result_t)), _);
       TopLet (_, EApp (EVar ("list_length", Ann_typed (_, length_builtin_t)), [_], Ann_typed (_, length_result_t)), _);
       TopLet (_, EApp (EVar ("string_split", Ann_typed (_, split_builtin_t)), [_; _], Ann_typed (_, split_result_t)), _) ] ->
-      Alcotest.(check bool) "list_is_empty builtin type" true (Ast.eq_typ empty_builtin_t (TFun (Cons1 (TList TInt, []), TBool)));
+      Alcotest.(check bool) "list_is_empty builtin type" true (Ast.eq_typ empty_builtin_t (typ_fun1 (typ_list TInt) TBool));
       Alcotest.(check bool) "list_is_empty result type" true (Ast.eq_typ empty_result_t TBool);
-      Alcotest.(check bool) "list_length builtin type" true (Ast.eq_typ length_builtin_t (TFun (Cons1 (TList TInt, []), TInt)));
+      Alcotest.(check bool) "list_length builtin type" true (Ast.eq_typ length_builtin_t (typ_fun1 (typ_list TInt) TInt));
       Alcotest.(check bool) "list_length result type" true (Ast.eq_typ length_result_t TInt);
-      Alcotest.(check bool) "string_split builtin type" true (Ast.eq_typ split_builtin_t (TFun (Cons1 (TString, [TString]), TList TString)));
-      Alcotest.(check bool) "string_split result type" true (Ast.eq_typ split_result_t (TList TString))
+      Alcotest.(check bool) "string_split builtin type" true (Ast.eq_typ split_builtin_t (typ_fun [TString; TString] (typ_list TString)));
+      Alcotest.(check bool) "string_split result type" true (Ast.eq_typ split_result_t (typ_list TString))
   | _ -> Alcotest.fail "unexpected typed AST shape for list support builtins"
 
 let test_lower_typed_program_rewrites_list_cons_to_constructor () =

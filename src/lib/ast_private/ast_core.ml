@@ -28,6 +28,7 @@ type typ =
   | TString
   | TBool
   | TName of string
+  | TApp of typ * typ list
   | TParam of string
   | TVar of int
   | TFun of typ list1 * typ
@@ -35,9 +36,6 @@ type typ =
   | TSignal of typ
   | TLater of typ
   | TDelay of typ
-  | TSync of typ * typ
-  | TOption of typ
-  | TList of typ
   | TChan of typ
 
 type parsed
@@ -78,9 +76,11 @@ and _ expr =
 
 and 's case_branch = 's pattern * 's expr * 's ann
 and 's name = string * 's ann
+and 's ctor_def = 's name * typ list * 's ann
 
 type _ top_expr =
   | TopLet : 's name * 's expr * 's ann -> 's top_expr
+  | TopTypeDef : 's name * 's name list * 's ctor_def list * 's ann -> 's top_expr
 
 type 'stage program = 'stage top_expr list
 

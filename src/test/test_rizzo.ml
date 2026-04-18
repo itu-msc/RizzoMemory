@@ -81,8 +81,9 @@ let test_warning () =
 let rec typ_has_tvar = function
   | Ast.TVar _ -> true
   | Ast.TError | Ast.TUnit | Ast.TInt | Ast.TString | Ast.TBool | Ast.TName _ | Ast.TParam _ -> false
-  | Ast.TSignal t | Ast.TLater t | Ast.TDelay t | Ast.TOption t | Ast.TList t | Ast.TChan t -> typ_has_tvar t
-  | Ast.TTuple (t1, t2) | Ast.TSync (t1, t2) -> typ_has_tvar t1 || typ_has_tvar t2
+  | Ast.TSignal t | Ast.TLater t | Ast.TDelay t | Ast.TChan t -> typ_has_tvar t
+  | Ast.TApp (t, ts) -> typ_has_tvar t || List.exists typ_has_tvar ts
+  | Ast.TTuple (t1, t2) -> typ_has_tvar t1 || typ_has_tvar t2
   | Ast.TFun (Ast.Cons1 (front, rest), ret) -> typ_has_tvar front || List.exists typ_has_tvar rest || typ_has_tvar ret
 
 let ann_has_tvar : type s. s Ast.ann -> bool = function
@@ -127,11 +128,15 @@ let rec expr_has_tvar : type s. s Ast.expr -> bool = function
 let program_has_tvar (program : _ Ast.program) : bool =
   List.exists (function
     | Ast.TopLet ((_, name_ann), expr, ann) ->
-        ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar expr) program
+        ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar expr
+    | Ast.TopTypeDef _ -> false) program
 
 let parse_and_typecheck input =
   let parsed = Parser.parse_string input in
-  let typed_program, errors = Rizzoc.typecheck parsed in
+  let typed_program, errors = 
+    let {typed_program; type_errors; _} : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+    typed_program, type_errors
+  in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   typed_program
 
@@ -142,7 +147,7 @@ let test_typecheck_normalizes_inner_annotations () =
       \  let swap_nested_left = fun q -> snd (fst q) in\n\
       \  swap_nested_left\n"
   in
-  let typed_program, errors = Rizzoc.typecheck program in
+  let { typed_program; type_errors = errors; _ } : TypeCheck.typing_result = TypeCheck.typecheck program in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
 
@@ -154,10 +159,10 @@ let test_projection_partial_app_survives_refcount () =
       fun entry x =\n\
       \  use snd (1, 2)\n"
   in
-  let typed_program, errors = Rizzoc.typecheck program in
+  let { typed_program; type_errors = errors; type_definitions } : TypeCheck.typing_result = TypeCheck.typecheck program in
   Alcotest.(check int) "no type errors" 0 (List.length errors);
   let lowered_program = Rizzoc.apply_typed_transforms typed_program in
-  let _ = Rizzoc.ref_count lowered_program in
+  let _ = Rizzoc.ref_count (TypeCheck.type_definitions_to_ctor_mappings type_definitions) lowered_program in
   Alcotest.(check pass) "projection partial application reaches RC" () ()
 
 let test_annotated_list_map_typechecks () =

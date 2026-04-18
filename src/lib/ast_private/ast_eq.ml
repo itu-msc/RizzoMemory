@@ -42,18 +42,28 @@ and eq_typ a b =
   | TVar v1, TVar v2 -> v1 = v2
   | TFun (Cons1 (p1, p_rest1), r1), TFun (Cons1 (p2, p_rest2), r2) ->
     eq_typ p1 p2 && eq_typ r1 r2 && List.length p_rest1 = List.length p_rest2 && List.for_all2 eq_typ p_rest1 p_rest2
-  | TTuple (a1, b1), TTuple (a2, b2) | TSync (a1, b1), TSync (a2, b2) -> eq_typ a1 a2 && eq_typ b1 b2
+  | TTuple (a1, b1), TTuple (a2, b2) -> eq_typ a1 a2 && eq_typ b1 b2
   | TSignal t1, TSignal t2
   | TLater t1, TLater t2
   | TDelay t1, TDelay t2
-  | TOption t1, TOption t2
-  | TList t1, TList t2
   | TChan t1, TChan t2 -> eq_typ t1 t2
+  | TApp (t1, ts1), TApp (t2, ts2) ->
+    eq_typ t1 t2 && List.length ts1 = List.length ts2 && List.for_all2 eq_typ ts1 ts2
   | _ -> false
 
 let eq_top_expr a b =
   match a, b with
   | TopLet (x1, e1, _), TopLet (x2, e2, _) -> eq_name x1 x2 && eq_expr e1 e2
+  | TopTypeDef (name1, params1, ctors1, _), TopTypeDef (name2, params2, ctors2, _) ->
+    eq_name name1 name2
+    && List.length params1 = List.length params2
+    && List.for_all2 eq_name params1 params2
+    && List.length ctors1 = List.length ctors2
+    && List.for_all2 (fun (ctor_name1, arg_types1, _) (ctor_name2, arg_types2, _) ->
+         eq_name ctor_name1 ctor_name2
+         && List.length arg_types1 = List.length arg_types2
+         && List.for_all2 eq_typ arg_types1 arg_types2) ctors1 ctors2
+  | _ -> false
 
 let eq_program a b =
   List.length a = List.length b && List.for_all2 eq_top_expr a b

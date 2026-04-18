@@ -570,6 +570,47 @@ let test_hover_and_completion_for_typed_top_level_function () =
   | None -> Alcotest.fail "expected annotated top-level function completion"
   | Some item -> Alcotest.(check int) "completion kind is function" 3 item.Language_service.kind
 
+let test_hover_on_top_type_definition_uses_definition_text () =
+  let text =
+    "type MyOption 'a =\n"
+    ^ "    | MNothing\n"
+    ^ "    | MJust('a)\n"
+    ^ "\n"
+    ^ "fun some x = MJust (x)\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 0; character = 0 }
+  with
+  | None -> Alcotest.fail "expected hover for type definition"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover shows type definition text"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"type MyOption 'a =");
+      Alcotest.(check bool)
+        "hover uses a syntax-highlighted code block"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
+      Alcotest.(check bool)
+        "hover includes constructors"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"MNothing");
+      Alcotest.(check bool)
+        "hover includes constructor args"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"MJust('a)");
+      Alcotest.(check bool)
+        "hover omits expression block"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Expr:");
+      Alcotest.(check int)
+        "hover range starts at type keyword"
+        0
+        hover.Language_service.range.start_pos.character
+
 let test_hover_on_function_parameter_uses_name_range () =
   let text = "fun pair first second = first\n" in
   match Language_service.hover_at_position
@@ -748,6 +789,7 @@ let tests = [
    "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
    "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
+  "hover on type definition uses definition text", `Quick, test_hover_on_top_type_definition_uses_definition_text;
   "hover on function parameter uses name range", `Quick, test_hover_on_function_parameter_uses_name_range;
    "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;

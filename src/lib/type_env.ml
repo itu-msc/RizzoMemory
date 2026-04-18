@@ -6,8 +6,24 @@ type typing_error = Typing_error of Location.t * string
 type scheme = Forall of string list * typ
 type scheme_env = scheme StringMap.t
 
-type typedefinition = typ list
-type typedefinition_env = typedefinition StringMap.t
+type constructor_defintion = {
+  name: string;
+  arg_types: typ list;
+  result_typ: string;
+  tag: int;
+}
+type typedefinition = { 
+  constructors: constructor_defintion list;
+  type_params: string list;
+}
+type typedefinition_env = {
+  types: typedefinition StringMap.t;
+  constructors: constructor_defintion StringMap.t; (* name -> constructor, a short cut*)
+}
+
+module TypeDefinitionEnv = struct
+  let to_ctor_mappings t = StringMap.map (fun (c : constructor_defintion) -> c.tag) t.constructors
+end
 
 type unification_env = typ IntMap.t (* id -> typ - union find *)
 
@@ -24,7 +40,7 @@ let empty_env = {
   errors = [];
   global = StringMap.empty;
   local = StringMap.empty;
-  typedefinitions = StringMap.empty;
+  typedefinitions = { types = StringMap.empty; constructors = StringMap.empty };
   unification_env = IntMap.empty;
   tvar_counter = 0;
 }
@@ -82,6 +98,10 @@ let add_global name scheme : unit t =
   modify_state (fun env -> 
     { env with global = StringMap.add name scheme env.global })
 
+let add_globals names_and_schemes : unit t = 
+  modify_state (fun env -> 
+    { env with global = StringMap.add_seq (List.to_seq names_and_schemes) env.global })
+
 let with_local_scope action : 'a t = 
   let open Operators in
   let* original_local = get_state |> map (fun s -> s.local) in
@@ -96,6 +116,46 @@ let with_local name scheme m =
   let open Operators in
   with_local_scope (let* () = add_local name scheme in m)
 
+let add_type_def name tparams : unit t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  let typ_def = {constructors = []; type_params = tparams} in
+  let typ_def_env' = { typ_def_env with types = StringMap.add name typ_def typ_def_env.types } in
+  modify_state (fun s -> { s with typedefinitions = typ_def_env' })
+  
+let add_constructor_of type_name ctor_name arg_types : unit t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  let* typ_def_env' = 
+    match StringMap.find_opt type_name typ_def_env.types with
+    | None -> failwith "Compiler error - attempting to add a constructor for a type that doesn't exist"
+    | Some typ_def -> 
+      let ctor_def = { name = ctor_name; arg_types; result_typ = type_name; tag = List.length typ_def.constructors } in
+      let updated_typ_def = { typ_def with constructors = ctor_def :: typ_def.constructors } in
+      let types = StringMap.add type_name updated_typ_def typ_def_env.types in
+      let constructors = StringMap.add ctor_name ctor_def typ_def_env.constructors in
+      return { types; constructors }
+  in
+  modify_state (fun s -> { s with typedefinitions = typ_def_env' })
+
+let prepare_with builtin_vars builtin_types action =
+  let open Operators in
+  (* print builtin_vars *)
+  let* _ = let* vars = collect builtin_vars in add_globals vars in
+  let* _ = 
+    builtin_types
+    |> List.fold_left (fun acc (type_name, type_params, ctors) -> 
+        let* _ = acc in
+        List.fold_left (fun acc (name, arg_types) -> 
+          let* _ = acc in 
+          add_constructor_of type_name name arg_types) 
+        (add_type_def type_name type_params) ctors
+      )
+    (return ())
+  in
+  let* action_result = action in
+  return action_result
+  
 (*  |-----------------------|
     |     UNIFICATION       |
     |-----------------------| *)
@@ -105,8 +165,9 @@ let rec occurs_in (tyvar_id: int) (t: typ) : bool =
   | TVar id -> tyvar_id = id
   | TError -> false
   | TUnit | TInt | TBool | TString | TName _ | TParam _-> false
-  | TSignal t | TLater t | TDelay t | TOption t | TList t | TChan t-> occurs_in tyvar_id t
-  | TSync (t1, t2) | TTuple (t1, t2) -> occurs_in tyvar_id t1 || occurs_in tyvar_id t2
+  | TSignal t | TLater t | TDelay t  | TChan t-> occurs_in tyvar_id t
+  | TTuple (t1, t2) -> occurs_in tyvar_id t1 || occurs_in tyvar_id t2
+  | TApp (t, ts) -> occurs_in tyvar_id t || List.exists (occurs_in tyvar_id) ts
   | TFun (Cons1(front, rest), t2) ->
     occurs_in tyvar_id front || List.exists (occurs_in tyvar_id) rest || occurs_in tyvar_id t2
 
@@ -127,11 +188,17 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
   | TName n1, TName n2 when n1 = n2 -> return ()
   | TParam p1, TParam p2 when p1 = p2 -> return ()
   | TSignal t1, TSignal t2 | TLater t1, TLater t2 | TDelay t1, TDelay t2 
-  | TChan t1, TChan t2 | TOption t1, TOption t2 | TList t1, TList t2 -> 
+  | TChan t1, TChan t2 -> 
     unify ann t1 t2
-  | TSync (t1a, t1b), TSync (t2a, t2b) | TTuple (t1a, t1b), TTuple (t2a, t2b) ->
+  | TTuple (t1a, t1b), TTuple (t2a, t2b) ->
     let* () = unify ann t1a t2a in
     unify ann t1b t2b
+  | TApp (t1, ts1), TApp (t2, ts2) ->
+    if List.length ts1 <> List.length ts2
+    then report_error ann (Format.asprintf "Type mismatch: cannot unify '%a' with '%a' because they have different number of type arguments" Ast.pp_typ t1 Ast.pp_typ t2)
+    else 
+      let* () = unify ann t1 t2 in
+      List.fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) ts1 ts2
   | TFun (ts1, rt1), TFun (ts2, rt2) ->
     if List1.length ts1 <> List1.length ts2
     then
@@ -189,6 +256,10 @@ let rec apply_subst ?(subst_map = None) (t: typ) : typ t =
     | Some t' -> return t'
     | None -> return t)
   | TParam _ -> return t
+  | TApp (t, ts) -> 
+    let* t = apply_subst t in
+    let* ts = collect (List.map apply_subst ts) in
+    return (TApp (t, ts))
   | TSignal t -> 
     let* t = apply_subst t in
     return (TSignal t)
@@ -198,20 +269,10 @@ let rec apply_subst ?(subst_map = None) (t: typ) : typ t =
   | TDelay t -> 
     let* t = apply_subst t in
     return (TDelay t)
-  | TSync (t1, t2) -> 
-    let* t1 = apply_subst t1 in
-    let* t2 = apply_subst t2 in
-    return (TSync (t1,t2))
   | TTuple (t1, t2) -> 
     let* t1 = apply_subst t1 in
     let* t2 = apply_subst t2 in
     return (TTuple (t1,t2))
-  | TOption t -> 
-    let* t = apply_subst t in
-    return (TOption t)
-  | TList t ->
-    let* t = apply_subst t in
-    return (TList t)
   | TChan t -> 
     let* t = apply_subst t in
     return (TChan t)
@@ -261,16 +322,16 @@ let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t =
     match typ with
     | TError -> return TError
     | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return typ
+    | TApp (t, ts) -> 
+      let* t = go t in
+      let* ts = collect (List.map go ts) in
+      return (TApp (t, ts))
     | TSignal t -> let* t = go t in return (TSignal t)
     | TLater t  -> let* t = go t in return (TLater t)
     | TDelay t  -> let* t = go t in return (TDelay t)
-    | TOption t -> let* t = go t in return (TOption t)
-    | TList t -> let* t = go t in return (TList t)
     | TChan t   -> let* t = go t in return (TChan t)
     | TTuple (t1, t2) ->
       let* t1 = go t1 in let* t2 = go t2 in return (TTuple (t1, t2))
-    | TSync (t1, t2) ->
-      let* t1 = go t1 in let* t2 = go t2 in return (TSync (t1, t2))
     | TFun (Cons1(front, rest), ret) ->
       let* params = collect (List.map go (front :: rest)) in
       let* ret = go ret in
@@ -286,3 +347,30 @@ let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t =
   in
   let* typ = apply_subst typ in
   go typ
+
+let get_constructor_signature ann ctor_name : (typ list * typ) t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  match StringMap.find_opt ctor_name typ_def_env.constructors with
+  | None -> 
+    report_error ann (Format.asprintf "Unknown constructor: '%s'" ctor_name) 
+    |> map (fun () -> ([], TError))
+  | Some ctor_def -> 
+    match StringMap.find_opt ctor_def.result_typ typ_def_env.types with
+    | None -> failwith (Printf.sprintf "Compiler error - constructor '%s' refers to a type '%s' that doesn't exist" ctor_name ctor_def.result_typ)
+    | Some type_def ->
+      let* type_params = collect (List.map (fun v -> let* t = fresh_type_var () in return (v,t)) type_def.type_params) in
+      let subst_map = StringMap.of_list type_params in
+      let* arg_types = List.map (fun t -> apply_subst ~subst_map:(Some subst_map) t) ctor_def.arg_types |> collect in
+      let result_typ = TApp (TName ctor_def.result_typ, List.map snd type_params) in
+      return (arg_types, result_typ)
+
+let has_type_definition type_name : bool t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  return (StringMap.mem type_name typ_def_env.types)
+
+let has_ctor_definition ctor_name : bool t =
+  let open Operators in
+  let* typ_def_env = get_state |> map (fun s -> s.typedefinitions) in
+  return (StringMap.mem ctor_name typ_def_env.constructors)

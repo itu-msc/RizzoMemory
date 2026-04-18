@@ -57,20 +57,18 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
       if IntSet.mem id generalized_tvars
       then return (TParam (fresh_param_name id))
       else return (TVar id)
+    | TApp (t, ts) ->
+      let* t = replace_generalized_tvars t in
+      let* ts = Type_env.collect (List.map replace_generalized_tvars ts) in
+      return (TApp (t, ts))
     | TSignal t -> let* t = replace_generalized_tvars t in return (TSignal t)
     | TLater t -> let* t = replace_generalized_tvars t in return (TLater t)
     | TDelay t -> let* t = replace_generalized_tvars t in return (TDelay t)
-    | TOption t -> let* t = replace_generalized_tvars t in return (TOption t)
-    | TList t -> let* t = replace_generalized_tvars t in return (TList t)
     | TChan t -> let* t = replace_generalized_tvars t in return (TChan t)
     | TTuple (t1, t2) ->
       let* t1 = replace_generalized_tvars t1 in
       let* t2 = replace_generalized_tvars t2 in
       return (TTuple (t1, t2))
-    | TSync (t1, t2) ->
-      let* t1 = replace_generalized_tvars t1 in
-      let* t2 = replace_generalized_tvars t2 in
-      return (TSync (t1, t2))
     | TFun (Cons1 (front, rest), ret) ->
       let* params = Type_env.collect (List.map replace_generalized_tvars (front :: rest)) in
       let* ret = replace_generalized_tvars ret in
@@ -90,12 +88,16 @@ and free_tvar_ids_typ : typ -> IntSet.t Type_env.t = fun t ->
   match t with
   | TError -> return IntSet.empty
   | TVar id -> return (IntSet.singleton id)
-  | TTuple (t1, t2) | TSync (t1, t2) ->
+  | TTuple (t1, t2) ->
     let* t1_free = free_tvar_ids_typ t1 in
     let* t2_free = free_tvar_ids_typ t2 in
     return (IntSet.union t1_free t2_free)
-  | TSignal t | TDelay t | TLater t | TOption t | TList t | TChan t -> free_tvar_ids_typ t
+  | TSignal t | TDelay t | TLater t | TChan t -> free_tvar_ids_typ t
   | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return IntSet.empty
+  | TApp (t, ts) ->
+    let* t_free = free_tvar_ids_typ t in
+    let* ts_free = Type_env.collect (List.map free_tvar_ids_typ ts) in
+    return (List.fold_left IntSet.union t_free ts_free)
   | TFun (Cons1 (front, rest), ret_type) ->
     let* param_free =
       List.fold_left
@@ -127,12 +129,16 @@ and free_tvar_ids_env : unit -> IntSet.t Type_env.t = fun () ->
 and free_type_vars_typ : typ -> StringSet.t Type_env.t = function
   | TError -> return StringSet.empty
   | TVar _ -> return StringSet.empty
-  | TTuple (t1, t2) | TSync (t1, t2) -> 
+  | TTuple (t1, t2) -> 
     let* t1_free = free_type_vars_typ t1 in
     let* t2_free = free_type_vars_typ t2 in
     return (StringSet.union t1_free t2_free)
-  | TSignal t | TDelay t | TLater t | TOption t | TList t | TChan t -> free_type_vars_typ t
-  | TUnit | TInt | TBool | TString | TName _ -> return StringSet.empty
+  | TApp (t, ts) ->
+    let* t_free = free_type_vars_typ t in
+    let* ts_free = Type_env.collect (List.map free_type_vars_typ ts) in
+    return (List.fold_left StringSet.union t_free ts_free)
+  | TSignal t | TDelay t | TLater t | TChan t -> free_type_vars_typ t
+  | TUnit | TInt | TBool | TString  | TName _ -> return StringSet.empty
   | TParam v -> return (StringSet.singleton v)
   | TFun (Cons1(front, rest), ret_type) -> 
     let* param_free = List.fold_left (fun acc t -> 
@@ -160,18 +166,25 @@ and free_type_vars_env : unit -> StringSet.t Type_env.t = fun () ->
   let* local_free = free_type_vars_env_scheme env.local in
   return (StringSet.union global_free local_free)
 
-(*
-* Typechecks a program, returns a typed program and a boolean indicating whether there were any type errors (TODO: this is a bit of a hack - we should probably return the errors instead of printing them and returning a bool)
-*)
-let rec typecheck : type stage. stage program -> typed program * ((Location.t * string) list) = fun p -> 
-  let builtins,_ = Type_env.run @@ Type_env.collect (List.map 
-    (fun ({name; typ; _}:Rizzo_builtins.builtin_info) -> 
-      let* typ_free = free_type_vars_typ typ in
-      return (name, forall (StringSet.to_list typ_free) typ)) 
-    Rizzo_builtins.builtins) in
-  let checked_program, env  = Type_env.run (typecheck_program p) ~builtins:(Some builtins) in
+
+type typing_result = {
+  typed_program: typed program;
+  type_definitions: Type_env.typedefinition_env;
+  type_errors: (Location.t * string) list;
+}
+
+(** Typechecks a program, returns a typed program alongside type definitions and any reported errors *)
+let rec typecheck : type stage. stage program -> typing_result = fun p -> 
+  (* decsribes the computations needed to arrive at the builtin schemes *)
+  let builtins = List.map (fun ({name; typ; _}:Rizzo_builtins.builtin_info) -> 
+    let* typ_free = free_type_vars_typ typ in
+    return (name, forall (StringSet.to_list typ_free) typ)) Rizzo_builtins.builtins
+  in
+  let typed_program, env = Type_env.run @@ Type_env.prepare_with builtins Rizzo_builtins.builtin_types (typecheck_program p) in
   let errors = List.map (function | Type_env.Typing_error (loc, err) -> (loc, err)) env.errors in
-  (checked_program, errors)
+  { typed_program;
+    type_errors = errors;
+    type_definitions = env.typedefinitions; }
 
 and run_type_env_from_state : 'a. Type_env.typing_state -> 'a Type_env.t -> 'a * Type_env.typing_state =
   fun state m ->
@@ -180,7 +193,7 @@ and run_type_env_from_state : 'a. Type_env.typing_state -> 'a Type_env.t -> 'a *
 
 and tail_expr_has_known_list_shape : type stage. stage expr -> bool Type_env.t = function
   | ECtor (("Nil", _), _, _) | ECtor (("Cons", _), _, _) -> return true
-  | EAnno (_, TList _, _) -> return true
+  | EAnno (_, TApp (TName "List", _), _) -> return true
   | tail_expr ->
     let* state = Type_env.get_state in
     let probe : bool Type_env.t =
@@ -188,7 +201,7 @@ and tail_expr_has_known_list_shape : type stage. stage expr -> bool Type_env.t =
       let* tail_t = get_typ inferred_tail in
       let* tail_t = Type_env.apply_subst tail_t in
       match tail_t with
-      | TList _ -> return true
+      | TApp (TName "List", _) -> return true
       | _ -> return false
     in
     let result, _ = run_type_env_from_state state probe in
@@ -221,15 +234,22 @@ and probe_string_case_on_unresolved_scrutinee
   return (List.length probe_state.errors = base_error_count)
 
 and typecheck_program : type stage. stage program -> typed program Type_env.t = fun p -> 
-  let* checked_program = List.fold_left (fun acc (TopLet (name, e, ann)) -> 
+  let* checked_program = List.fold_left (fun acc te -> 
     let* acc = acc in
-    let name_text = fst name in
+    let* te = typecheck_top_expr te in
+    return (te :: acc)
+  ) (return []) p in
+  let* () = Type_env.flatten_unification_env in
+  normalize_typed_program (List.rev checked_program)
+
+and typecheck_top_expr : type stage. stage top_expr -> typed top_expr Type_env.t = function
+  | TopLet ((name, name_ann), e, ann) ->
     let* te = match e with
     | EFun (params, _, _) | EAnno (EFun (params, _, _), _, _)-> 
       let* param_types = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) params) in
       let* ret_type = Type_env.fresh_type_var () in
       let  t = TFun (Cons1(List.hd param_types, List.tl param_types), ret_type) in
-      let* typed_e = Type_env.with_locals [name_text, mono t] (infer e) in
+      let* typed_e = Type_env.with_locals [name, mono t] (infer e) in
       let* inferred_t = get_typ typed_e in
       let* _ = Type_env.expected_equal ann inferred_t t in
       return typed_e
@@ -238,13 +258,41 @@ and typecheck_program : type stage. stage program -> typed program Type_env.t = 
     let* t = get_typ te in
     let* generalized_type = generalize t in
     let* t = Type_env.generalize_type_vars t in
-    let* () = Type_env.add_global name_text generalized_type in
-    let typed_name = (name_text, Ann_typed (get_location (snd name), t)) in
+    let* () = Type_env.add_global name generalized_type in
+    let typed_name = (name, Ann_typed (get_location name_ann, t)) in
     let toplet_expr = TopLet (typed_name, te, Ann_typed (get_location ann, t)) in
-    return (toplet_expr :: acc)
-  ) (return []) p in
-  let* () = Type_env.flatten_unification_env in
-  normalize_typed_program (List.rev checked_program)
+    return toplet_expr
+  | TopTypeDef ((tname, tname_ann), tparams, ctors, ann) -> 
+    (* I took the easy way out - any name clash is an error *)
+    let* already_exists = Type_env.has_type_definition tname in
+    let tname = if already_exists then Utilities.new_name tname else tname in
+    let* _ = Type_env.add_type_def tname (List.map fst tparams) in
+    let defined_type_params = StringSet.of_list (List.map fst tparams) in
+    let* _ = 
+      let mapper ((ctor_name, _), ctor_args, ctor_ann : stage ctor_def) =
+        (* duplicate constructors are just overwritten - so always is the latest - there is probably a better way *) 
+        let* ctor_args_free = Type_env.collect (List.map free_type_vars_typ ctor_args) in
+        let ctor_args_free = List.fold_left StringSet.union StringSet.empty ctor_args_free in
+        let* ctor_args = 
+          if not (StringSet.subset ctor_args_free defined_type_params) then
+            let guilty = StringSet.diff ctor_args_free defined_type_params |> StringSet.elements in
+            let err_msg = Format.asprintf "The following variables were unbound in definition of '%s': [%s]" tname (String.concat ", " guilty) in
+            let* _ = error ctor_ann err_msg in
+            return (List.map (fun _ -> TError) ctor_args)
+          else return ctor_args
+        in 
+        Type_env.add_constructor_of tname ctor_name ctor_args
+      in
+      Type_env.collect (List.map mapper ctors) in
+    let tparams' = List.map (fun (param_name, param_ann) -> (param_name, Ann_typed (get_location param_ann, TParam param_name))) tparams in
+    let ctors' =
+      List.map
+        (fun ((ctor_name, ctor_name_ann), ctor_args, ctor_ann) ->
+          ((ctor_name, Ann_typed (get_location ctor_name_ann, TName tname)), ctor_args, Ann_typed (get_location ctor_ann, TUnit)))
+        ctors
+    in
+    let res = TopTypeDef ((tname, Ann_typed (get_location tname_ann, TName tname)), tparams', ctors', Ann_typed (get_location ann, TUnit)) in
+    return res
 
 (** Infers the type of an expr*)
 and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
@@ -278,8 +326,7 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let* env = Type_env.get_state in
     let* var_type = 
       match StringMap.find_opt name env.local with
-      | Some scheme ->
-        Type_env.instantiate_scheme scheme
+      | Some scheme -> Type_env.instantiate_scheme scheme
       | None -> (
         match StringMap.find_opt name env.global with
         | Some scheme -> Type_env.instantiate_scheme scheme
@@ -364,9 +411,8 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let fun_type = TFun (Cons1(List.hd param_types, List.tl param_types), body_type) in
     let param_names = List.map2 (fun (p, pann) pt -> (p, Ann_typed(get_location pann, pt))) param_names param_types in
     return (EFun (param_names, typed_body, Ann_typed(get_location ann, fun_type)))
-  | ECtor ((typ_name, typ_name_ann), args, ann) ->
-    (* TODO: proper handling here - [get_constructor_signature] returns an error message mentioning patterns! *)
-    let* arg_types, ctor_type = get_constructor_signature typ_name typ_name_ann in
+  | ECtor ((ctor_name, ctor_name_ann), args, ann) ->
+    let* arg_types, ctor_type = get_constructor_signature ctor_name ann in
     let* inferred_args = Type_env.collect (List.map infer args) in
     let* inferred_arg_types = Type_env.collect (List.map get_typ inferred_args) in
     let* _ = 
@@ -375,11 +421,11 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
       if n_args = n_inferred
       then Type_env.collect (List.map2 (Type_env.expected_equal ann) arg_types inferred_arg_types)
       else
-        let* _ = error ann (Format.asprintf "Constructor '%s' expects %d argument(s), but got %d" typ_name n_args n_inferred) in
+        let* _ = error ann (Format.asprintf "Constructor '%s' expects %d argument(s), but got %d" ctor_name n_args n_inferred) in
         return []
     in
     let* ctor_type = Type_env.apply_subst ctor_type in
-    let name = (typ_name, Ann_typed (get_location typ_name_ann, ctor_type)) in
+    let name = (ctor_name, Ann_typed (get_location ctor_name_ann, ctor_type)) in
     return (ECtor (name, inferred_args, Ann_typed (get_location ann, ctor_type)))
 
 (** Checks a type against an expected type *)
@@ -465,10 +511,11 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
     return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, result_type)))
   | EBinary (SigCons, e1, e2, ann) ->
     (match expected with
-    | TList elem_t ->
+    | TApp (TName "List", [elem_t]) ->
       let* typed_hd = check e1 elem_t in
-      let* typed_tl = check e2 (TList elem_t) in
-      let* result_type = Type_env.apply_subst (TList elem_t) in
+      let lst_t = TApp (TName "List", [elem_t]) in
+      let* typed_tl = check e2 lst_t in
+      let* result_type = Type_env.apply_subst lst_t in
       return (EBinary (SigCons, typed_hd, typed_tl, Ann_typed (get_location ann, result_type)))
     | TSignal elem_t ->
       let* typed_hd = check e1 elem_t in
@@ -498,34 +545,12 @@ and infer_const_type : type stage. stage ann -> const -> typ Type_env.t =
 
 and get_constructor_signature : type stage. string -> stage ann -> (typ list * typ) Type_env.t =
   fun ctor_name ann ->
-  match ctor_name with
-  | "Just" ->
-    let* a = Type_env.fresh_type_var () in
-    return ([a], TOption a)
-  | "Nothing" ->
-    let* a = Type_env.fresh_type_var () in
-    return ([], TOption a)
-  | "Nil" ->
-    let* a = Type_env.fresh_type_var () in
-    return ([], TList a)
-  | "Cons" ->
-    let* a = Type_env.fresh_type_var () in
-    return ([a; TList a], TList a)
-  | "Left" ->
-    let* a = Type_env.fresh_type_var () in
-    let* b = Type_env.fresh_type_var () in
-    return ([a], TSync (a, b))
-  | "Right" ->
-    let* a = Type_env.fresh_type_var () in
-    let* b = Type_env.fresh_type_var () in
-    return ([b], TSync (a, b))
-  | "Both" ->
-    let* a = Type_env.fresh_type_var () in
-    let* b = Type_env.fresh_type_var () in
-    return ([a; b], TSync (a, b))
-  | _ ->
-    let* _ = error ann (Format.asprintf "Unknown constructor pattern '%s'" ctor_name) in
-    return ([], TError)
+    let* res = Type_env.get_constructor_signature ann ctor_name in
+    match snd res with
+    | TError -> 
+      let* _ = error ann (Format.asprintf "Unknown constructor '%s' in pattern" ctor_name) in
+      return res
+    | _ -> return res
 
 and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string * scheme) list) Type_env.t =
   fun pattern expected_type ->
@@ -567,13 +592,13 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
       let tail_binding = (tail_name, mono TString) in
       let typed_tail = (tail_name, Ann_typed (get_location tail_ann, TString)) in
       return (PStringCons (typed_hd, typed_tail, Ann_typed (get_location ann, TString)), hd_bindings @ [tail_binding])
-    | TList a ->
+    | TApp (TName "List", [a]) ->
       let* a = Type_env.apply_subst a in
       let* typed_hd, hd_bindings = check_pattern hd_pattern a in
-      let tail_type = TList a in
+      let tail_type = TApp (TName "List", [a]) in
       let tail_binding = (tail_name, mono tail_type) in
       let typed_tail = PVar (tail_name, Ann_typed (get_location tail_ann, tail_type)) in
-      let pattern_type = TList a in
+      let pattern_type = TApp (TName "List", [a]) in
       let typed_ctor = ("Cons", Ann_typed (get_location ann, pattern_type)) in
       return (PCtor (typed_ctor, [typed_hd; typed_tail], Ann_typed (get_location ann, pattern_type)), hd_bindings @ [tail_binding])
     | _ ->
@@ -584,7 +609,7 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
     let* _ = error ann "Internal error: string-cons pattern should not appear before typed lowering" in
     return (PWildcard (Ann_typed (get_location ann, TError)), [])
   | PCtor ((ctor_name, ctor_ann), args, ann) ->
-    let* param_types, ctor_result = get_constructor_signature ctor_name ctor_ann in
+    let* param_types, ctor_result = Type_env.get_constructor_signature ctor_ann ctor_name in
     let* _ = Type_env.expected_equal ann expected_type ctor_result in
     let expected_arity = List.length param_types in
     let actual_arity = List.length args in
@@ -622,8 +647,8 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     let* t1 = get_typ te1 in
     let* prefers_list = tail_expr_has_known_list_shape e2 in
     if prefers_list then
-      let* te2 = check e2 (TList t1) in
-      let* result_t = Type_env.apply_subst (TList t1) in
+      let* te2 = check e2 (TApp (TName "List", [t1])) in
+      let* result_t = Type_env.apply_subst (TApp (TName "List", [t1])) in
       return (EBinary (SigCons, te1, te2, Ann_typed (get_location ann, result_t)))
     else
       let* te2 = check e2 (TLater (TSignal t1)) in
@@ -660,7 +685,7 @@ and infer_binary : type stage. binary_op -> stage expr -> stage expr -> stage an
     let* te2 = check e2 (TLater a2)in 
     let* a1 = Type_env.apply_subst a1 in
     let* a2 = Type_env.apply_subst a2 in
-    return (EBinary (BSync, te1, te2, Ann_typed (get_location ann, TLater (TSync (a1, a2))))) 
+    return (EBinary (BSync, te1, te2, Ann_typed (get_location ann, TLater (TApp (TName "Sync", [a1; a2]))))) 
   | BOStar ->
     let* a = Type_env.fresh_type_var () in
     let* b = Type_env.fresh_type_var () in
@@ -688,7 +713,7 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
     return (EUnary (UNot, te, Ann_typed (get_location ann, TBool)))
   | UWatch -> 
     let* fresh_t = Type_env.fresh_type_var () in
-    let* te = check e (TSignal (TOption (fresh_t))) in (* Signal (Option A) *)
+    let* te = check e (TSignal (TApp (TName "Option", [fresh_t]))) in (* Signal (Option A) *)
     let* t = Type_env.apply_subst fresh_t in
     return (EUnary (UWatch, te, Ann_typed (get_location ann, TLater t)))
   | UTail ->
@@ -706,8 +731,19 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
     let* t = get_typ te in
     match t with 
     | TError -> return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))) (* stop cascading errors *)
-    | TString | TUnit | TInt | TBool | TName _ | TParam _ | TVar _| TFun _ | TChan _ -> 
+    | TApp (TName "List", [t]) as lst_t->
+      (match i with
+      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t)))
+      | 1 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, lst_t)))
+      | _ ->
+        let* _ = error ann "List has 2 projections: 0 for head and 1 for tail" in
+        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
+    | TApp _ -> failwith "todo TAPP in infer unary"
+    | TString | TUnit | TInt | TBool | TParam _ | TVar _| TFun _ | TChan _ -> 
       let* _ = error ann (Format.asprintf "Cannot project from non-constructor '%a'" Ast.pp_typ t) in
+      return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
+    | TName typ_name -> 
+      let* _ = error ann (Format.asprintf "Cannot project from type name '%s'" typ_name) in
       return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
     | TLater _ -> 
       let* _ = error ann (Format.asprintf "Cannot project a LATER! '%a'" Ast.pp_typ t) in
@@ -722,19 +758,6 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
       | _ -> 
         let* _ = error ann "Signal only has 2 projections: 0 for head and 1 for tail" in
         return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
-    | TOption t -> 
-      (match i with
-      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t))) 
-      | _ -> 
-        let* _ = error ann "Option has at most one projection" in
-        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
-    | TList t ->
-      (match i with
-      | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t)))
-      | 1 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, TList t)))
-      | _ ->
-        let* _ = error ann "List has 2 projections: 0 for head and 1 for tail" in
-        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
     | TTuple (t1, t2) -> 
       (match i with
       | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t1))) 
@@ -742,9 +765,6 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
       | _ -> 
         let* _ = error ann "Tuple only has 2 projections: 0 for first and 1 for second" in
         return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
-    | TSync _ -> 
-      let* _ = error ann "Cannot project a sync?" in
-      return (EUnary (UProj i, te, Ann_typed (get_location ann, TError)))
 and normalize_typed_ann : type stage. (string IntMap.t ref) -> stage ann -> stage ann Type_env.t =
   fun id_to_name -> function
   | Ann_typed (loc, typ) ->
@@ -859,6 +879,7 @@ and normalize_typed_top_expr id_to_name : typed top_expr -> typed top_expr Type_
     let* expr = normalize_typed_expr id_to_name expr in
     let* ann = normalize_typed_ann id_to_name ann in
     return (TopLet (name, expr, ann))
+  | TopTypeDef _ as e -> return e
 
 and normalize_typed_program (program : typed program) : typed program Type_env.t =
   let id_to_name = ref IntMap.empty in

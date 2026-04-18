@@ -16,8 +16,8 @@ static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b);
 
 enum
 {
-	RZ_TAG_LIST_NIL = 2,
-	RZ_TAG_LIST_CONS = 3,
+	RZ_TAG_LIST_NIL = 0,
+	RZ_TAG_LIST_CONS = 1,
 };
 
 static inline void rz_builtin_expect_arity(const char *name, size_t expected, size_t actual)

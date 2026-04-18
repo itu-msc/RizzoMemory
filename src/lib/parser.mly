@@ -67,13 +67,13 @@ let rec list_pattern_of_list start_pos end_pos = function
 *)
 %}
 
-%token LET FUN MATCH WITH IN
+%token LET FUN MATCH WITH IN TYPE
 %token EFFECTFUL
 %token EQ CONS COMMA LPAREN RPAREN LBRACKET RBRACKET BAR
 %token IF THEN ELSE
 %token PIPE_GT ARROW COLON STAR SLASH PERCENT UNDERSCORE EQEQ PLUS MINUS LT GT LEQ GEQ BANG
 %token NEVER WAIT WATCH TAIL SYNC LATERAPP OSTAR DELAY //NOT
-%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY TYPE_SYNC TYPE_OPTION TYPE_LIST
+%token TYPE_SIGNAL TYPE_LATER TYPE_DELAY
 %token <string> ID
 %token <string> TYPE_ID
 %token <string> TYPEVAR
@@ -119,6 +119,22 @@ top_expr:
       | None -> TopLet (top_name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $symbolstartpos $endpos(body))
       | Some te -> TopLet (top_name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
     }
+  | TYPE type_name=TYPE_ID type_params=type_param_names EQ BAR? type_ctors=separated_nonempty_list(BAR, type_ctor)
+    { let type_name = (type_name, mkloc $startpos(type_name) $endpos(type_name)) in
+      TopTypeDef (type_name, type_params, type_ctors, mkloc $startpos $endpos) }
+
+(* Separate rule because these need to be converted to names, idk - that's how I encoded it in AST *)
+type_param_names:
+  | { [] }
+  | tv=TYPEVAR type_vars=type_param_names { (tv, mkloc $startpos(tv) $endpos(tv)) :: type_vars }
+
+type_ctor:
+  | ctor_name=TYPE_ID 
+    { let loc = mkloc $startpos(ctor_name) $endpos(ctor_name) in
+      (ctor_name, loc), [], loc }
+  | ctor_name=TYPE_ID LPAREN ctor_args=separated_nonempty_list(COMMA, type_expr) RPAREN
+    { let ctor_name = (ctor_name, mkloc $startpos(ctor_name) $endpos(ctor_name)) in
+      (ctor_name, ctor_args, mkloc $startpos $endpos) }
 
 nonempty_id_list:
   | x=ID { [(x, mkloc $startpos(x) $endpos(x))] }
@@ -319,15 +335,20 @@ prod_type:
   | at=app_type { at }
 
 app_type:
+  // Parse type application in one production so Menhir does not need to guess
+  // whether another type_atom extends the current application or starts a new one.
+  | head=type_apply_head args=type_atom*
+    { match args with
+      | [] -> head
+      | _ -> TApp (head, args) }
+  (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
+  // | at=app_type ta=type_atoma { failwith "type application ..." }
+
+type_apply_head:
   | TYPE_SIGNAL ta=type_atom { TSignal ta }
   | TYPE_LATER ta=type_atom { TLater ta }
   | TYPE_DELAY ta=type_atom { TDelay ta }
-  | TYPE_SYNC ta1=type_atom ta2=type_atom { TSync (ta1, ta2) }
-  | TYPE_OPTION ta=type_atom { TOption ta }
-  | TYPE_LIST ta=type_atom { TList ta }
   | ta=type_atom { ta }
-  (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
-  // | at=app_type ta=type_atoma { failwith "type application ..." }
 
 type_atom:
   | tid=TYPE_ID { 

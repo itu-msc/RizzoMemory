@@ -90,6 +90,7 @@ type analysis_result = {
 
 type parsed_typed_result = {
   typed_program: Ast.typed Ast.program;
+  type_definitions: Type_env.typedefinition_env;
   diagnostics: diagnostic list;
 }
 
@@ -310,11 +311,16 @@ let parse_with_filename ~(filename : string) (text : string) : (parsed_typed_res
     let parsed = Source_units.parse_document_with_default_prelude ~exclude_paths:[filename] ~filename text in
     let validation_errors = Source_units.validate_program parsed in
     if validation_errors <> [] then
-      Ok { typed_program = []; diagnostics = List.map diagnostic_of_type_error validation_errors }
+      Ok
+        {
+          typed_program = [];
+          type_definitions = Type_env.empty_env.typedefinitions;
+          diagnostics = List.map diagnostic_of_type_error validation_errors;
+        }
     else
-      let typed_program, type_errors = Typecheck.typecheck parsed in
+      let { typed_program; type_definitions; type_errors } : Typecheck.typing_result = Typecheck.typecheck parsed in
       let diagnostics = List.map diagnostic_of_type_error type_errors in
-      Ok { typed_program; diagnostics }
+      Ok { typed_program; type_definitions; diagnostics }
   with
   | Lexer.Error (loc, msg) ->
       Error
@@ -418,6 +424,7 @@ let top_level_declarations : type s.
           let top_range = range_of_ann ann in
           let selection_range = range_of_name top_name in
           Some (name, kind, filename, top_range, selection_range)
+        | Ast.TopTypeDef _ -> None
   in
   List.filter_map declaration_of_top program
 
@@ -461,6 +468,7 @@ let top_level_declarations : type s.
         let visit_top = function
           | Ast.TopLet (_, rhs, ann) when ann_in_file ~filename ann -> iter_expr push rhs
           | Ast.TopLet _ -> ()
+          | Ast.TopTypeDef _ -> ()
         in
         List.iter visit_top program;
         !acc
@@ -487,6 +495,11 @@ let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
 
 let type_info_block_of_ann : type s. s Ast.ann -> string =
   fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
+
+let top_level_type_definition_text : type s. s Ast.top_expr -> string =
+  fun top ->
+    let top_text = Format.asprintf "%a" Ast.pp_top_expr top |> dedent_text in
+    Format.asprintf "\n\nType definition:\n```rizz\n%s\n```" top_text
 
 let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
   fun ~label (name, ann) ->
@@ -632,21 +645,20 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
         else
           List.find_map (pattern_hover_at_position ~position) args
 
+let keyword_range_from_start ~(name : string) ~(start_pos : position) : range =
+  {
+    start_pos;
+    end_pos =
+      {
+        line = start_pos.line;
+        character = start_pos.character + String.length name;
+      };
+  }
+
 let keyword_range_from_expr : type s. name:string -> s Ast.expr -> range option =
   fun ~name expr ->
-  let expr_range = range_of_ann (Ast.expr_get_ann expr) in
-  if expr_range.start_pos.line <> expr_range.end_pos.line then
-    None
-  else
-    Some
-      {
-        start_pos = expr_range.start_pos;
-        end_pos =
-          {
-            line = expr_range.start_pos.line;
-            character = expr_range.start_pos.character + String.length name;
-          };
-      }
+    let expr_range = range_of_ann (Ast.expr_get_ann expr) in
+    Some (keyword_range_from_start ~name ~start_pos:expr_range.start_pos)
 
 let semantic_kind_of_symbol_kind = function
   | Function -> SemanticFunction
@@ -825,6 +837,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
       let rec find_in_tops tops =
         match tops with
         | [] -> None
+        | Ast.TopTypeDef _ :: rest -> find_in_tops rest
         | Ast.TopLet (top_name, rhs, ann) :: rest ->
             if not (ann_in_file ~filename:active_filename ann) then
               find_in_tops rest
@@ -863,6 +876,15 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                       | Variable -> "top-level binding: " ^ name_text top_name
                     in
                     Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
+                  else
+                    None
+            | Ast.TopTypeDef (_, _, _, top_ann) as top_def ->
+                if not (ann_in_file ~filename:active_filename top_ann) then
+                  None
+                else
+                  let top_range = range_of_ann top_ann in
+                  if range_contains_position top_range position then
+                    Some { range = top_range; contents = top_level_type_definition_text top_def }
                   else
                     None)
           program
@@ -948,7 +970,8 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                     if ann_in_file ~filename:active_filename top_ann then
                       find_symbol_hover_in_expr rhs
                     else
-                      None)
+                      None
+                | Ast.TopTypeDef _ -> None)
               program
           in
           match symbol_hover with
@@ -1032,37 +1055,45 @@ let builtin_completion_symbols : completion_symbol StringMap.t =
     StringMap.empty
       Rizzo_builtins.public_builtins
 
-let constructor_completion_specs : (string * Ast.typ) list =
-  [
-    ("Just", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TOption (Ast.TParam "'a")));
-    ("Nothing", Ast.TOption (Ast.TParam "'a"));
-    ("Cons", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TList (Ast.TParam "'a")]), Ast.TList (Ast.TParam "'a")));
-    ("Nil", Ast.TList (Ast.TParam "'a"));
-    ("Left", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", []), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
-    ("Right", Ast.TFun (Ast.Cons1 (Ast.TParam "'b", []), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
-    ("Both", Ast.TFun (Ast.Cons1 (Ast.TParam "'a", [Ast.TParam "'b"]), Ast.TSync (Ast.TParam "'a", Ast.TParam "'b")));
-  ]
-
-let constructor_completion_symbols : completion_symbol StringMap.t =
-  let empty_range =
-    {
-      start_pos = { line = 0; character = 0 };
-      end_pos = { line = 0; character = 0 };
-    }
+let constructor_completion_symbol_of_definition
+    ~(type_definitions : Type_env.typedefinition_env)
+    ({ arg_types; result_typ; _ } : Type_env.constructor_defintion) : completion_symbol =
+  let result_type =
+    match StringMap.find_opt result_typ type_definitions.types with
+    | Some type_definition ->
+        if type_definition.type_params = [] then
+          Ast.TName result_typ
+        else
+          Ast.TApp
+            (Ast.TName result_typ, List.map (fun type_param -> Ast.TParam type_param) type_definition.type_params)
+    | None -> Ast.TName result_typ
   in
-  List.fold_left
-    (fun env (name, typ) ->
+  let typ =
+    match arg_types with
+    | [] -> result_type
+    | first_arg :: rest_args -> Ast.TFun (Ast.Cons1 (first_arg, rest_args), result_type)
+  in
+  {
+    kind = SemanticType;
+    range =
+      {
+        start_pos = { line = 0; character = 0 };
+        end_pos = { line = 0; character = 0 };
+      };
+    detail = Some (string_of_typ typ);
+    source = CompletionConstructor;
+  }
+
+let constructor_completion_symbols_of_typedefinitions
+    ~(type_definitions : Type_env.typedefinition_env) : completion_symbol StringMap.t =
+  StringMap.fold
+    (fun _ (constructor_definition : Type_env.constructor_defintion) env ->
       completion_add_prefer_high_priority
-        name
-        {
-          kind = SemanticType;
-          range = empty_range;
-          detail = Some (string_of_typ typ);
-          source = CompletionConstructor;
-        }
+        constructor_definition.name
+        (constructor_completion_symbol_of_definition ~type_definitions constructor_definition)
         env)
+    type_definitions.constructors
     StringMap.empty
-    constructor_completion_specs
 
 let completion_prefix_at_position ~(text : string) ~(position : position) : string =
   let lines = lines_of_text text in
@@ -1138,11 +1169,14 @@ let completions_at_position
   let active_filename = file_name ~uri ~filename in
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> completion_empty_list
-  | Ok { typed_program = program; _ } ->
+  | Ok { typed_program = program; type_definitions; _ } ->
       let _ = uri in
       let base_env =
         let with_constructors =
-          StringMap.fold completion_add_prefer_high_priority constructor_completion_symbols builtin_completion_symbols
+          StringMap.fold
+            completion_add_prefer_high_priority
+            (constructor_completion_symbols_of_typedefinitions ~type_definitions)
+            builtin_completion_symbols
         in
         List.fold_left
           (fun env (top : Ast.typed Ast.top_expr) ->
@@ -1152,7 +1186,8 @@ let completions_at_position
                 completion_add_prefer_high_priority
                   (name_text top_name)
                   (completion_symbol_of_name ~source:CompletionTopLevel ~kind top_name)
-                  env)
+                  env
+            | Ast.TopTypeDef _ -> env)
           with_constructors
           program
       in
@@ -1296,6 +1331,7 @@ let completions_at_position
                  | None -> Some base_env)
             else
               env_in_tops rest
+        | Ast.TopTypeDef _ :: rest -> env_in_tops rest
       in
       let env =
         match env_in_tops program with
@@ -1421,6 +1457,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
       in
       List.iter
         (function
+          | Ast.TopTypeDef _ -> ()
           | Ast.TopLet (top_name, rhs, ann) ->
               if ann_in_file ~filename:active_filename ann then
                 let name = name_text top_name in

@@ -4,7 +4,10 @@ open Ast_test_helpers
 
 let parse_and_typecheck input =
   let parsed = Parser.parse_string input in
-  let typed, errors = typecheck parsed in
+  let typed, errors = 
+    let {typed_program; type_errors; _} : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+    typed_program, type_errors
+  in
   Alcotest.(check int) "type errors" 0 (List.length errors);
   typed
 

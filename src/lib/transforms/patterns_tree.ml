@@ -349,4 +349,7 @@ and compile_match e =
 	| EAnno (e, t, ann) -> EAnno (compile_match e, t, ann)
 
 let transform_patterns (program: 's Ast.program) =
-	List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) program
+	program 
+	|> List.map (function
+		| TopLet (name, expr, ann) -> TopLet (name, compile_match expr, ann)
+		| TopTypeDef _ as e -> e)
