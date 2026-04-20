@@ -412,7 +412,7 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let param_names = List.map2 (fun (p, pann) pt -> (p, Ann_typed(get_location pann, pt))) param_names param_types in
     return (EFun (param_names, typed_body, Ann_typed(get_location ann, fun_type)))
   | ECtor ((ctor_name, ctor_name_ann), args, ann) ->
-    let* arg_types, ctor_type = get_constructor_signature ctor_name ann in
+    let* arg_types, ctor_type = Type_env.get_constructor_signature ann ctor_name in
     let* inferred_args = Type_env.collect (List.map infer args) in
     let* inferred_arg_types = Type_env.collect (List.map get_typ inferred_args) in
     let* _ = 
@@ -542,15 +542,6 @@ and infer_const_type : type stage. stage ann -> const -> typ Type_env.t =
   | CNever -> 
     let* _ = error ann "Never cannot be inferred (yet) - consider annotating (never : Later T)" in
     return TError
-
-and get_constructor_signature : type stage. string -> stage ann -> (typ list * typ) Type_env.t =
-  fun ctor_name ann ->
-    let* res = Type_env.get_constructor_signature ann ctor_name in
-    match snd res with
-    | TError -> 
-      let* _ = error ann (Format.asprintf "Unknown constructor '%s' in pattern" ctor_name) in
-      return res
-    | _ -> return res
 
 and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string * scheme) list) Type_env.t =
   fun pattern expected_type ->
