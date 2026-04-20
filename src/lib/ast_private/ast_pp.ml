@@ -75,7 +75,7 @@ and pp_typ fmt =
   | TTuple (t1, t2) -> fprintf fmt "(%a * %a)" pp_typ t1 pp_typ t2
   | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
   | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
-  | TApp (t, ts) -> fprintf fmt "@{<green>%a@} @[<hov>%a@]" pp_typ t (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " ") pp_typ) ts
+  | TApp (t, ts) -> fprintf fmt "@{<green>%a@} (@[<hov>%a@])" pp_typ t (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt " * ") pp_typ) ts
 
 let pp_top_expr out = function
   | TopLet ((x, _), e, _) -> Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} =@,%a@]" x pp_expr e

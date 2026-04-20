@@ -337,10 +337,12 @@ prod_type:
 app_type:
   // Parse type application in one production so Menhir does not need to guess
   // whether another type_atom extends the current application or starts a new one.
-  | head=type_apply_head args=type_atom*
+  | head=type_apply_head LPAREN ta=type_expr COMMA args=separated_nonempty_list(COMMA, type_expr) RPAREN
     { match args with
       | [] -> head
-      | _ -> TApp (head, args) }
+      | _ -> TApp (head, ta :: args) }
+  | head=type_apply_head ta=type_atom { TApp (head, [ta]) }
+  | head=type_apply_head { head }
   (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
   // | at=app_type ta=type_atoma { failwith "type application ..." }
 
