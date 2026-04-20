@@ -80,9 +80,9 @@ and pp_typ fmt =
 let pp_top_expr out = function
   | TopLet ((x, _), e, _) -> Format.fprintf out "@[<v 2>@{<magenta>let@} @{<lightcyan>%s@} =@,%a@]" x pp_expr e
   | TopTypeDef ((tname,_), params, ctors, _) ->
-    Format.fprintf out "@[<v 2>@{<magenta>type@} @{<green>%s@} @{<lightcyan>%a@} =@,%a@]"
+    Format.fprintf out "@[<v 2>@{<magenta>type@} @{<green>%s@}@{<lightcyan>%a@} =@,%a@]"
       tname
-      (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out " ") (fun out (param, _) -> Format.fprintf out "@{<lightcyan>%s@}" param))
+      (Format.pp_print_list ~pp_sep:Format.pp_print_nothing (fun out (param, _) -> Format.fprintf out " @{<lightcyan>%s@}" param))
       params
       (Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@,") (fun out ((ctor_name,_), arg_types, _) ->
          Format.fprintf out "@{<green>%s@}(@[<hov>%a@])" ctor_name

@@ -358,8 +358,10 @@ let get_constructor_signature ann ctor_name : (typ list * typ) t =
   | Some ctor_def -> 
     match StringMap.find_opt ctor_def.result_typ typ_def_env.types with
     | None -> failwith (Printf.sprintf "Compiler error - constructor '%s' refers to a type '%s' that doesn't exist" ctor_name ctor_def.result_typ)
-    | Some type_def ->
-      let* type_params = collect (List.map (fun v -> let* t = fresh_type_var () in return (v,t)) type_def.type_params) in
+    | Some {type_params = []; _} -> 
+      return (ctor_def.arg_types, TName ctor_def.result_typ)
+    | Some {type_params;_ } ->
+      let* type_params = collect (List.map (fun v -> let* t = fresh_type_var () in return (v,t)) type_params) in
       let subst_map = StringMap.of_list type_params in
       let* arg_types = List.map (fun t -> apply_subst ~subst_map:(Some subst_map) t) ctor_def.arg_types |> collect in
       let result_typ = TApp (TName ctor_def.result_typ, List.map snd type_params) in
