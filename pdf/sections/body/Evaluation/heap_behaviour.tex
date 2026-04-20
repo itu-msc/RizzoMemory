@@ -3,7 +3,7 @@
 In order to evaluate the heap behaviour, we will be running a small Rizzo. The program has two modes, an English mode and a Danish mode, and will print a greeting every second in a language that depends on the selected mode.
 The source code for the program is available in our repository at the path \todo{examples/eval\_small.rizz}.
 
-When compiling the program we enable the \texttt{--debug-info} flag, which enables the logging of debug information. Specifically, the flag enables printing of the heap every time a channel produces a value, and it will assign a unique identifier to each signal so it can be traced through a series of prints. 
+When compiling the program we enable the \texttt{--debug-info} flag, which enables the logging of debug information. Specifically, the flag enables printing of the heap every time a channel produces a value. A unique identifier will also be given to each signal so it can be traced through a series of prints.
 To compile the program, first run \texttt{rizzoc examples/eval\_small.rizz --debug-info} and then run the generated executable \texttt{output.exe}.
 Running the program we get the output as seen in \todo{appendix}. The first is the initial print that occurs when registering a signal as a console output. The second line is from the stepping which is triggered by a second passing and on the third line we see the first print of the heap. After initialisation (and the first time step) the heap consists of six signals.
 
@@ -17,21 +17,21 @@ And similarly, signals 16 through 18 are the signals created by evaluation the d
 
 \todo{Finish by something like: notice how beyond this point, when all signals have materialised, the heap size grows no more. Both the Danish and the English mode require the same amount of signal \dots and there are no signal ids unaccounted for.}
 
-\begin{verbatim}
+\begin{Verbatim}[commandchars=\\\{\}]
 Hello. Type da for Danish.
 Hello. Type da for Danish.
 step 0001, channel 1, (size: 6)| [0] 1 2 [3] [4] 5 (|)
 Hello. Type da for Danish.
 step 0002, channel 1, (size: 6)| [0] 1 2 [3] [4] 5 (|)
-da  --user input
 Hej. Type en for English.
+\textcolor{blue}{da}
 step 0003, channel 0, (size: 10)| 0 [12] [1] [14] [2] [16] [17] [18] [4] 5 (|)
 Hej. Type en for English.
 step 0004, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [18] [4] 5 (|)
 Hej. Type en for English.
 step 0005, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [18] [4] 5 (|)
-en  -- user input
 Hello. Type da for Danish.
+\textcolor{blue}{en}
 step 0006, channel 0, (size: 10)| 0 [12] [1] [14] [2] [16] [17] [32] [4] 5 (|)
 Hello. Type da for Danish.
 step 0007, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
@@ -39,9 +39,8 @@ Hello. Type da for Danish.
 step 0008, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
 Hello. Type da for Danish.
 step 0009, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
-quit  -- user input
 Hello. Type da for Danish.
 step 0010, channel 1, (size: 10)| [0] 12 1 14 2 16 17 [32] [4] 5 (|)
-
+\textcolor{blue}{quit}
 step 0011, channel 0, (size: 10)| 0 [12] [1] [14] [2] 16 17 32 4 [5] (|)
-\end{verbatim}
+\end{Verbatim}
