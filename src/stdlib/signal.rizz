@@ -37,6 +37,20 @@ fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =
     in
     f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))
 
+fun map2_l f xs later_ys =
+    let cont = fun mysync -> match mysync with
+        | Left (xs_)      -> map2_l f xs_ later_ys
+        | Right (ys_)     -> map2_l f xs ys_
+        | Both (xs_, ys_) -> map2_l f xs_ ys_
+    in
+    (fun ys -> f (head xs) (head ys)) |> later_ys
+
+fun sync_signals f s1 s2 : (Sync (Signal 'a, Signal 'b) -> Signal 'c) -> Signal 'a -> Signal 'b -> Signal 'c = 
+    head (f (Both(s1,s2))) :: (f |> sync (tail s1) (tail s2)) 
+
+fun sync_signals_l f s1 s2 : (Sync (Signal 'a, Signal 'b) -> 'c) -> Later (Signal 'a) -> Later (Signal 'b) -> Later 'c =
+    f |> sync s1 s2
+
 fun switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
     | x :: xs ->
         let cont= fun mysync -> match mysync with
@@ -64,7 +78,7 @@ fun switchS s d =
 fun switch_r s d =
     match s with 
     | x :: xs -> 
-        let cont : Sync (Signal 'a) (Signal ('a -> Signal 'a)) -> Signal 'a = fun s -> 
+        let cont : Sync (Signal 'a, Signal ('a -> Signal 'a)) -> Signal 'a = fun s -> 
             match s with
             | Left (xs') -> switch_r xs' d
             | Right (f :: d') -> switch_r (f x) d'
