@@ -5,13 +5,19 @@ open Collections
 
 let rec lift (p: _ program) : _ program =
   let lifted_lambdas = ref [] in
-  let top_decl_names = StringSet.of_list @@ List.map (fun (TopLet(name,_,_)) -> fst name) p in
+  let top_decl_names = 
+    StringSet.of_list (
+      p
+      |> List.filter_map (function 
+      | TopTypeDef _ -> None
+      | TopLet((name, _),_,_) -> Some name))in
   let lifted_program = List.fold_right (fun te acc -> lift_top_expr top_decl_names lifted_lambdas te :: acc) p [] in
   List.rev_append !lifted_lambdas lifted_program
 
 and lift_top_expr top_names (lifted_lambdas: _ top_expr list ref) (te: _ top_expr) : _ top_expr =
   let lift_expr = lift_expr top_names lifted_lambdas in
   match te with
+  | TopTypeDef _ as e -> e
   | TopLet (x, EFun (params, body, fun_loc), let_loc) -> TopLet (x, EFun (params, lift_expr body, fun_loc), let_loc)
   | TopLet (x, EAnno (EFun (params, body, fun_loc), t, annotation_loc), let_loc) ->
     TopLet (x, EAnno (EFun (params, lift_expr body, fun_loc), t, annotation_loc), let_loc)

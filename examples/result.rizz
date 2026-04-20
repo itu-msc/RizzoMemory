@@ -1,0 +1,29 @@
+type Result 'ok 'err =
+    | Ok ('ok)
+    | Err ('err)
+
+fun ok x = Ok (x)
+fun err x = Err (x)
+
+fun opt_to_result o err_f =
+    match o with
+    | Nothing -> Err (err_f ())
+    | Just (x) -> Ok (x)
+
+fun result_map f r =
+    match r with
+    | Ok (x) -> Ok (f x)
+    | Err (_) -> r
+
+fun result_bind f r =
+    match r with
+    | Ok (x) -> f x
+    | _ -> r
+
+fun result_iter f r = 
+    match r with
+    | Ok (x) -> f x
+    | _ -> ()
+
+fun entry x = 
+    result_map (fun x -> x + 1) (opt_to_result (Just (10)) (fun unit -> 0))

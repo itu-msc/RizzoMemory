@@ -133,6 +133,21 @@ let test_list_literals_and_patterns_parse () =
   in
   Alcotest.check program_testable "list literals and patterns parse" expected parsed
 
+let test_type_annotation_with_applied_tuple_type () =
+  let input =
+    "let xs : List Int * Option (List String) = value\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  match parsed with
+  | [ TopLet (_, EAnno (_, annotated_type, _), _) ] ->
+    let expected_type =
+      TTuple
+        (TApp (TName "List", [TInt]),
+         TApp (TName "Option", [TApp (TName "List", [TString])]))
+    in
+    Alcotest.(check bool) "annotation parses as expected" true (eq_typ annotated_type expected_type)
+  | _ -> Alcotest.fail "expected a single annotated top-level let"
+
 let parser_tests =
   [
     "parser accepts syntax", `Quick, test_parser_program;
@@ -143,4 +158,5 @@ let parser_tests =
     "effectful decorator", `Quick, test_effectful_decorator_marks_function;
     "constructor application with parenthesized let", `Quick, test_constructor_application_with_parenthesized_let;
     "list literals and patterns", `Quick, test_list_literals_and_patterns_parse;
+    "type annotation with applied tuple type", `Quick, test_type_annotation_with_applied_tuple_type;
   ]

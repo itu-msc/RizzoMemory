@@ -3,6 +3,7 @@ include Ast_private.Ast_core
 module Core = Ast_private.Ast_core
 module Eq = Ast_private.Ast_eq
 module Pp = Ast_private.Ast_pp
+module Factory = Ast_private.Ast_factory
 
 let eq_expr = Ast_private.Ast_eq.eq_expr
 let eq_name = Ast_private.Ast_eq.eq_name

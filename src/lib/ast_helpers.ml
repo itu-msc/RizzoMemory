@@ -40,4 +40,3 @@ and free_vars_expr top_decl_names e : StringSet.t =
       branches
   | EFun (params, body, _) -> free_vars_fun top_decl_names params body
   | EAnno (e, _, _) -> free_vars_expr e
-

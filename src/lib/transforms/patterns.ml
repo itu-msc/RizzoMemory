@@ -20,7 +20,10 @@ let match_fail ann message =
 	app (match_fail, ann) [EConst (CString message, ann)]
 
 let rec transform_patterns (program: 's Ast.program) =
-	List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) program
+	program 
+	|> List.map (function
+    | TopTypeDef _ as e -> e
+    | (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann))
 
 and compile_pattern p scrutinee good bad =
 	match p with

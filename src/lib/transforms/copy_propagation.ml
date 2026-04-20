@@ -57,4 +57,7 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
   aux [] e
 
 let copy_propagate (p: _ program) : _ program =
-  List.map (fun (TopLet (x, e, ann)) -> TopLet(x, eliminate_copy_propagation e, ann)) p
+  p
+  |> List.map (function 
+    | TopTypeDef _ as e -> e
+    | TopLet (x, e, ann) -> TopLet(x, eliminate_copy_propagation e, ann))

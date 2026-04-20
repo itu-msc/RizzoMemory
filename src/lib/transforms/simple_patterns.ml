@@ -69,8 +69,10 @@ let rec sink_until_first_use name proj ann e =
   | _ -> e
 
 let rec transform_patterns (p: 's Ast.program) = 
-  List.map (fun (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann)) p
-  
+  p |> List.map (function
+    | TopTypeDef _ as e -> e
+    | (TopLet (name, expr, ann)) -> TopLet (name, compile_match expr, ann))
+    
 and compile_simple_pattern scrutinee case_body = function
   | PWildcard _ ->
     Some (case_body ())

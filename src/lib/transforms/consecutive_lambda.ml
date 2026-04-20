@@ -45,4 +45,6 @@ let rec eliminate_consecutive_lambdas_expr (e : _ expr) : _ expr =
   | EAnno (e, t, loc) -> EAnno (eliminate_consecutive_lambdas_expr e, t, loc)
 
 let eliminate_consecutive_lambdas_program (p : _ program) : _ program =
-  List.map (fun (TopLet (x, e, loc)) -> TopLet (x, eliminate_consecutive_lambdas_expr e, loc)) p
+  p |> List.map (function 
+    | TopTypeDef _ as e -> e
+    | TopLet (x, e, loc) -> TopLet (x, eliminate_consecutive_lambdas_expr e, loc))
