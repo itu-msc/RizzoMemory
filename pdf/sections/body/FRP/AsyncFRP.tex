@@ -70,17 +70,26 @@ If it weren't for the mutable semantics, this combinator would instead reuse the
 
 \subsubsection{Signals and the heap}\label{section:frp:signal_heap}
 
-%Should we explain somewhere how "time" works in Rizzo? Rizzo has discrete time steps, they happen one after the other. The heap 
+%Goal of section: A very high level explain what happens when time is progressed in Rizzo. Iterate through all signals to update them. This creates intermediate signals, think mk_sig which calls itself recursively, producing a new signal each time which is only used to update the original in place! If these intermediate signals still exist by the time the next value is produced, we are doing unnecessary work because the intermediate signal isn't used anymore...
+% This is what we need precise clean-up for, and that is why reference counting. 
 
-In Rizzo, time will step forward whenever a value is produced by a channel. This could be as a result of a message from a network socket, a sensor reading, or a user entering something into the console. 
+In Rizzo, time will step forward when a value is produced by any channel. This could be the result of receiving messages on a network socket, a sensor reading, or user input from the console. 
 Time steps are discrete and sequential, meaning they happen one-after-the-other and never at the same time. 
-This is important because whenever time advances, Rizzo must bring all signals into this new time step by updating them. In order for signals to be reachable during update, they are all stored in a signal-only heap. The heap is structured as a list because the ordering is important for making sure signals are updated in the correct order.
 
-The reactive semantics describe how signals are updated when time is progressed. Described at a high level, the procedure will mark all signals as old, by moving them to the \texttt{Earlier Heap}. We then iterate through all signals in the heap. 
-For each signal it checks if the signal was dependent, either directly or indirectly, on the channel that produced a value and if so the signal is updated otherwise it is skipped. 
-A signal is then updated by evaluating the delayed computation in the tail, resulting in a new signal which is copied back into the old signal. When done, we move the original signal back to the \texttt{Now Heap} and continue with the next signal.
-
-The copying action is important for any implementation of a Rizzo runtime, as the new signal, carries the new value and the delayed computation for the next time step of the original signal. The process could essentially leave a fresh (possibly) intermediate signal and the original signal in the heap.
-If clean-up is not performed before the next time step then both these signals are considered for update, creating duplicate work.
+When time moves forward, the data of all signals immediately becomes stale (belonging to the past).
+This is no good and so it is the job of a Rizzo runtime to bring all signals into the new time step by going through every signal, evaluating its tail to obtain a (possibly fresh) intermediate signal and writing the data back to the old signal.
+Without proper clean-up this will leave the intermediate signal and the original signal existing as duplicates, which must then both be brought into future time steps, leading to duplicate work.\ \todo{None of this reads nicely.}
 
 This precise clean-up is what we intend to solve using reference counting. With reference counting, we can immediately identify when a signal is no longer needed and can be safely discarded, thus avoiding unnecessary work during the update process.
+
+
+
+% \todo{move to semantics sections:}
+% In order for signals to be reachable during update, they are all stored in a signal-only heap. The heap is structured as a list because the ordering is important for making sure signals are updated in the correct order.
+
+% The reactive semantics describe how signals are updated when time is progressed. Described at a high level, the procedure will mark all signals as old, by moving them to the \texttt{Earlier Heap}. We then iterate through all signals in the heap. 
+% For each signal it checks if the signal was dependent, either directly or indirectly, on the channel that produced a value and if so the signal is updated otherwise it is skipped. 
+% A signal is then updated by evaluating the delayed computation in the tail, resulting in a new signal which is copied back into the old signal. When done, we move the original signal back to the \texttt{Now Heap} and continue with the next signal.
+
+% The copying action is important for any implementation of a Rizzo runtime, as the new signal, carries the new value and the delayed computation for the next time step of the original signal. The process could essentially leave a fresh (possibly) intermediate signal and the original signal in the heap.
+% If clean-up is not performed before the next time step then both these signals are considered for update, creating duplicate work.

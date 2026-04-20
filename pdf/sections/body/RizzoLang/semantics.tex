@@ -1,0 +1,147 @@
+% In order for signals to be reachable during update, they are all stored in a signal-only heap. The heap is structured as a list because the ordering is important for making sure signals are updated in the correct order.
+
+% The reactive semantics describe how signals are updated when time is progressed. Described at a high level, the procedure will mark all signals as old, by moving them to the \texttt{Earlier Heap}. We then iterate through all signals in the heap. 
+% For each signal it checks if the signal was dependent, either directly or indirectly, on the channel that produced a value and if so the signal is updated otherwise it is skipped. 
+% A signal is then updated by evaluating the delayed computation in the tail, resulting in a new signal which is copied back into the old signal. When done, we move the original signal back to the \texttt{Now Heap} and continue with the next signal.
+
+
+\todo{This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
+We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).}
+
+Our implementation depends on adhering to the reactive semantics of Rizzo as defined in \citetitle{rizzo_modal_2025}~\cite{rizzo_modal_2025}, while also implementing the reference counting semantics from \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. In this section we describe how we have structured our implementation to meet these requirements, and how the design of the heap and AST supports these semantics.
+
+\subsubsection{Semantics: Rizzo}
+
+In Rizzo the semantics are split into two layers: the standard evaluation semantics for expressions, and the reactive semantics that describe how Rizzo programs react when time is stepped forward. 
+The evaluation semantics follow a standard eager evaluation strategy. The only the exception is $\text{delay} \; e$ which lazily evaluates its the argument $e$.
+Since the evaluation semantics do not enforce further restrictions, the focus of this section will be the the reactive semantics of Rizzo.
+
+The reactive semantics consists of three parts: 
+The \textit{advance semantics} which describe how \texttt{Later} values are advanced to produce a value for the new time step; 
+the \textit{update semantics} which, using the advance semantics, describe how each signal is updated in order to bring it into the current time step;
+and \text{step semantics} which describe a complete move of all signals from an earlier time step to the current one. For the purpose of this paper, the step semantics is a while-loop wrapped around the update semantics.
+
+%Goal: describe the semantics of Rizzo primitives: Later- and Delayed constructors. Advance semantics?
+\todo{Probably not necessary to mention advance a whole lot more}
+
+%Goal: Goal is to explain the update semantics. Explain the now vs. earlier heap.
+\todo{To update signals, we iterate all signals in the topological order / the order of data dependency}. 
+
+\todo{To move a signal from the earlier heap to the now heap, we check if its tail was dependent on the channel that produced a value. If it did not then it is moved unchanged, but we set the updated flag to false (we should explain where this flag belongs). If it did depend on the channel, then we \textit{advance} its tail to obtain a new signal. The data of this signal is copied over the original signal. Perform these steps for every signal!}
+
+%Goal: Here comes a digest, what does all of the above mean? 
+In Rizzo the reactive semantics require that:
+\begin{itemize}
+    \item Any new signal must only depend on other signals in the \texttt{Now heap}.
+    \item When an input is produced on a channel, all signals with a tail that depends on the clock of that channel must to be updated.
+    \item Signals must be updated based on a topological order of their dependencies. If signal B depends on signal A, signal A must appear before signal B in the heap and thus be updated first.
+    \item Evaluating the tail of a signal produces a new signal, which must be copied back into the original signal. %This means that the original signal is updated in place, and any references to it remain valid.
+    \item If no reference exists to the intermediate signal produced by evaluating the tail, then the intermediate signal must be deallocated to prevent duplicate work.
+    \item New signals must be inserted into the \texttt{Now heap}, to prevent it from being evaluated in the current time step.
+    \item 
+\end{itemize}
+
+%Goal: Okay, so now we know what is required of the heap structure. How do we represent it? -> Linked list, advantages thereof.
+
+Based on these requirements, we have chosen to structure our heap as a linked list. Using a linked list has the advantage of:
+% This gives us a simple way to maintain the topological order of signals, it allows for efficient insertion and removal of signals, 
+%  as we can ensure that when a new signal is created it is added after the split between the \texttt{Now} and \texttt{Earlier} heaps. \dots
+
+\begin{itemize}
+    \item Representing the \texttt{Now} and \texttt{Earlier} heaps in one data structure, and expressing a split between them using a pointer (cursor).
+    \item Moving signals from the \texttt{Now} heap to the \texttt{Earlier} heap in O(1) time by resetting the cursor to the start of the heap. Likewise moving signals back to the \texttt{Now} heap by moving the cursor forward.
+    \item O(1) insertion that maintaining the topological order of signals, by adding them in the end of the \texttt{Now} heap, we ensure that any signal can only depend on signals that were created before it.
+    \item O(1) removal of signals when their reference count drops to zero.
+    \item Stable references to signals, as insertions and removals do not move other signals in memory, so pointers to signals remain valid throughout their lifetime.
+\end{itemize}
+
+\subsubsection{How does reference counting fit}
+
+\todo{Where do we reference count in the reactive semantics of Rizzo? The intermediate signal created inside update is decremented after the data has been written over \textemdash\ to allow immediate erasure \dots}
+
+\subsubsection{Added Constructors for Rizzo}
+%Operational semantics: signals are different from normal constructors, they should go in the signal heap ... That is the goal below?
+
+In the counting immutable beans semantics, it says that a constructor call should return a location to the object that has been created. For Rizzo, we have extended this semantic for signals, by also having the signal constructor add the signal to the signal heap.
+
+\todo{We should mention that all constructors are heap allocated. We could show example of general heap to show how the signal heap is just a subset.}
+
+
+
+% For RizzoLang we need to adhere to the \texttt{advance} and \texttt{update} semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, but we also need to define the semantics of reference counting for our implementation. In this section we first describe the evaluation strategy of Rizzo, then the reactive semantics for signals, and finally how reference counting interacts with the heap structure.
+
+% % Rizzo has two layers of semantics: the standard evaluation semantics for expressions, and the reactive semantics that govern how signals are updated over time. Understanding both is essential for implementing an efficient runtime.
+
+% \subsubsection{Eager Evaluation}
+
+% Rizzo uses eager (strict) evaluation for all expressions. Function arguments are evaluated before the function body executes, and let bindings evaluate their right-hand side before the body. This is in contrast to lazy languages like Haskell where evaluation is deferred until values are needed.
+
+% However, there is an important exception: \texttt{Delayed} and \texttt{Later} computations are not evaluated immediately. When we write \texttt{delay e}, the expression \texttt{e} is not evaluated---instead, a thunk (suspended computation) is created. Similarly, when we write \texttt{f |> later}, the application of \texttt{f} is deferred until the \texttt{later} value becomes available.
+
+% This combination of eager evaluation with explicit delayed computations gives programmers precise control over when computations occur. Signal combinators use \texttt{delay} to ensure that recursive calls happen only when time advances, preventing infinite loops.
+
+% \subsubsection{Reactive Semantics: Time Steps and Updates}
+
+% The reactive semantics describe how signals evolve over time. Time in Rizzo is discrete: it advances in steps, with each step triggered by input arriving on a channel. Between time steps, signals maintain their current values.
+
+% When a channel produces a value, the runtime must update all signals that depend (directly or indirectly) on that channel. This is done through two key operations: \texttt{ticked} and \texttt{advance}.
+
+% \paragraph{The Ticked Predicate.} Given a \texttt{Later} computation and a channel that just produced a value, the \texttt{ticked} predicate determines whether the computation should produce a value in this time step:
+
+% \begin{itemize}
+%     \item $\texttt{ticked}(\texttt{never}, c, v) = \texttt{false}$ --- never produces a value
+%     \item $\texttt{ticked}(\texttt{wait } k, c, v) = (k = c)$ --- ticks when the waited channel fires
+%     \item $\texttt{ticked}(\texttt{tail } s, c, v) = \texttt{updated}(s)$ --- ticks when the signal was updated
+%     \item $\texttt{ticked}(\texttt{sync } l_1 \; l_2, c, v) = \texttt{ticked}(l_1, c, v) \lor \texttt{ticked}(l_2, c, v)$
+%     \item $\texttt{ticked}(f \triangleright l, c, v) = \texttt{ticked}(l, c, v)$ --- follows the later argument
+% \end{itemize}
+
+% \paragraph{The Advance Operation.} When a \texttt{Later} computation has ticked, the \texttt{advance} operation extracts the value it produces:
+
+% \begin{itemize}
+%     \item $\texttt{advance}(\texttt{wait } k, c, v) = v$ --- returns the channel's value
+%     \item $\texttt{advance}(\texttt{tail } s, c, v) = s$ --- returns the (now updated) signal
+%     \item $\texttt{advance}(f \triangleright l, c, v) = f(\texttt{advance}(l, c, v))$ --- applies the delayed function
+%     \item $\texttt{advance}(\texttt{sync } l_1 \; l_2, c, v)$ returns \texttt{Left}, \texttt{Right}, or \texttt{Both} depending on which computations ticked
+% \end{itemize}
+
+% \paragraph{The Heap Update Procedure.} The runtime maintains all signals in a heap (see Section~\ref{section:rizzolang:heap}). When a channel fires, the update procedure iterates through the heap:
+
+% \begin{enumerate}
+%     \item For each signal $s$ with tail $t$:
+%     \item If $\texttt{ticked}(t, c, v)$:
+%     \begin{enumerate}
+%         \item Compute $s' = \texttt{advance}(t, c, v)$ --- this produces a new signal
+%         \item Copy $\texttt{head}(s')$ and $\texttt{tail}(s')$ back into $s$
+%         \item Mark $s$ as updated
+%         \item The intermediate signal $s'$ can now be deallocated
+%     \end{enumerate}
+%     \item Otherwise, mark $s$ as not updated
+% \end{enumerate}
+
+% The copying step is crucial: it ensures that references to $s$ remain valid while the signal's contents are updated. This is the ``mutable reference'' semantics that distinguishes Rizzo from other FRP languages.
+% % this will become important as to why we cant reuse the intermediate signal
+
+% \subsubsection{Update Ordering and Cascading}
+
+% The order in which signals are updated matters. Consider a signal $s_2$ whose tail depends on another signal $s_1$. If $s_1$ updates, then $s_2$ may also need to update (if its tail uses \texttt{tail} $s_1$). For correct semantics, $s_1$ must be updated before $s_2$.
+
+% The heap maintains signals in creation order, which ensures that dependencies are respected: a signal can only depend on signals created before it. When a new signal is created during an update (e.g., by advancing a \texttt{Later} computation), it is inserted into the now heap, ensuring the signal will not be updated until the next time step. This allows for cascading updates without risking infinite loops within a single time step.
+
+% \subsubsection{Reference Counting Semantics}
+
+% The \citetitle{ullrich_counting_2021} paper defines a reference-counted intermediate representation ($\lambda_{\text{RC}}$) with explicit \texttt{inc}, \texttt{dec}, \texttt{reset}, and \texttt{reuse} operations. Our compiler transforms Rizzo programs into this representation before generating C code.
+
+% The key semantic rules are:
+
+% \begin{itemize}
+%     \item Every variable starts with a reference count of 1 when bound
+%     \item Passing a variable to an \emph{owned} parameter consumes one reference
+%     \item Passing a variable to a \emph{borrowed} parameter does not consume a reference
+%     \item \texttt{inc x} increments the reference count of \texttt{x}
+%     \item \texttt{dec x} decrements the reference count; if it reaches zero, the object is freed
+%     \item \texttt{reset x} prepares \texttt{x} for potential reuse if its count is 1
+%     \item \texttt{reuse x in C(...)} reuses the memory of \texttt{x} for a new constructor
+% \end{itemize}
+
+% These operations are inserted automatically by the compiler based on ownership analysis. The details of this transformation are covered in Section~\ref{section:refcount}.
