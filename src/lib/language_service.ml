@@ -699,10 +699,22 @@ let keyword_range_from_start ~(name : string) ~(start_pos : position) : range =
       };
   }
 
-let keyword_range_from_expr : type s. name:string -> s Ast.expr -> range option =
-  fun ~name expr ->
+let text_has_keyword_at_position ~(text : string) ~(name : string) ~(start_pos : position) : bool =
+  let lines = lines_of_text text in
+  match line_at lines start_pos.line with
+  | None -> false
+  | Some line_text ->
+      let available = String.length line_text - start_pos.character in
+      available >= String.length name
+      && String.sub line_text start_pos.character (String.length name) = name
+
+let keyword_range_from_expr : type s. text:string -> name:string -> s Ast.expr -> range option =
+  fun ~text ~name expr ->
     let expr_range = range_of_ann (Ast.expr_get_ann expr) in
-    Some (keyword_range_from_start ~name ~start_pos:expr_range.start_pos)
+    if text_has_keyword_at_position ~text ~name ~start_pos:expr_range.start_pos then
+      Some (keyword_range_from_start ~name ~start_pos:expr_range.start_pos)
+    else
+      None
 
 let semantic_kind_of_symbol_kind = function
   | Function -> SemanticFunction
@@ -1823,28 +1835,28 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
              walk_expr env fn;
              List.iter (walk_expr env) args
          | Ast.EUnary (Ast.UWait, e, _) ->
-             (match keyword_range_from_expr ~name:"wait" expr with
+           (match keyword_range_from_expr ~text ~name:"wait" expr with
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
               | None -> ());
              walk_expr env e
          | Ast.EUnary (Ast.UWatch, e, _) ->
-             (match keyword_range_from_expr ~name:"watch" expr with
+           (match keyword_range_from_expr ~text ~name:"watch" expr with
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
               | None -> ());
              walk_expr env e
           | Ast.EUnary (Ast.UDelay, e, _) ->
-              (match keyword_range_from_expr ~name:"delay" expr with
+            (match keyword_range_from_expr ~text ~name:"delay" expr with
                | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
                | None -> ());
               walk_expr env e
           | Ast.EUnary (Ast.UNot, e, _) ->
-              (match keyword_range_from_expr ~name:"not" expr with
+            (match keyword_range_from_expr ~text ~name:"not" expr with
                | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
                | None -> ());
               walk_expr env e
           | Ast.EUnary (_, e, _) -> walk_expr env e
          | Ast.EBinary (Ast.BSync, e1, e2, _) ->
-             (match keyword_range_from_expr ~name:"sync" expr with
+           (match keyword_range_from_expr ~text ~name:"sync" expr with
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
               | None -> ());
              walk_expr env e1;

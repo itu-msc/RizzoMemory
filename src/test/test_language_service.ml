@@ -214,6 +214,24 @@ let has_semantic_token ~(tokens : Language_service.semantic_token list) ~(line :
       && Language_service.semantic_token_is_declaration token = declaration)
     tokens
 
+let has_semantic_token_span
+    ~(tokens : Language_service.semantic_token list)
+    ~(line : int)
+    ~(start_character : int)
+    ~(end_character : int)
+    ~(kind : Language_service.semantic_token_kind)
+    ~(declaration : bool) : bool =
+  List.exists
+    (fun (token : Language_service.semantic_token) ->
+      let token_range = Language_service.semantic_token_range token in
+      token_range.start_pos.line = line
+      && token_range.start_pos.character = start_character
+      && token_range.end_pos.line = line
+      && token_range.end_pos.character = end_character
+      && Language_service.semantic_token_kind token = kind
+      && Language_service.semantic_token_is_declaration token = declaration)
+    tokens
+
 let completion_labels ~(text : string) ~(position : Language_service.position) : string list =
   let completion =
     Language_service.completions_at_position
@@ -444,6 +462,34 @@ let test_semantic_tokens_include_builtin_function_references () =
        ~character:2
        ~kind:Language_service.SemanticFunction
        ~declaration:false)
+
+let test_pipe_left_operand_keeps_function_reference_metadata () =
+  let text =
+    "fun update_greeting x = x\n"
+    ^ "fun entry later_x : Later Int -> Later Int =\n"
+    ^ "  update_greeting |> later_x\n"
+  in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "pipe left operand token spans the full function name"
+    true
+    (has_semantic_token_span
+       ~tokens
+       ~line:2
+       ~start_character:2
+       ~end_character:17
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  match Language_service.definition_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 2; character = 2 }
+  with
+  | None -> Alcotest.fail "expected definition for pipe left operand"
+  | Some defn ->
+      Alcotest.(check string) "pipe left operand resolves to update_greeting" "update_greeting" defn.Language_service.name;
+      Alcotest.(check int) "pipe left operand definition line" 0 defn.Language_service.range.start_pos.line
 
 let test_semantic_tokens_include_function_parameters () =
   let text = "fun consf x = x :: never\n" in
@@ -849,6 +895,7 @@ let tests = [
   "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
   "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
   "semantic tokens builtin function references", `Quick, test_semantic_tokens_include_builtin_function_references;
+  "pipe left operand keeps function metadata", `Quick, test_pipe_left_operand_keeps_function_reference_metadata;
    "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
    "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
    "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
