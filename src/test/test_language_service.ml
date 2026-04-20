@@ -766,6 +766,75 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
         false
         (contains_substring ~text:hover.Language_service.contents ~substring:"match expression")
 
+let string_of_range (range : Language_service.range) : string =
+  Printf.sprintf
+    "%d:%d-%d:%d"
+    range.start_pos.line
+    range.start_pos.character
+    range.end_pos.line
+    range.end_pos.character
+
+let test_rename_top_level_function_updates_declaration_and_use () =
+  let text = "fun id x = x\nlet y = id 1\n" in
+  match Language_service.rename_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 8 }
+  with
+  | None -> Alcotest.fail "expected rename info"
+  | Some rename ->
+      Alcotest.(check string) "selected range" "1:8-1:10" (string_of_range rename.Language_service.range);
+      Alcotest.(check (list string))
+        "rename edits"
+        ["0:4-0:6"; "1:8-1:10"]
+        (List.map string_of_range rename.Language_service.edits)
+
+let test_rename_local_binding_respects_shadowing () =
+  let text = "let x = 1\nlet y = let x = x in x\nlet z = x\n" in
+  match Language_service.rename_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 21 }
+  with
+  | None -> Alcotest.fail "expected rename info"
+  | Some rename ->
+      Alcotest.(check (list string))
+        "rename edits"
+        ["1:12-1:13"; "1:21-1:22"]
+        (List.map string_of_range rename.Language_service.edits)
+
+let test_rename_constructor_updates_declaration_expression_and_pattern () =
+  let text =
+    "type Option = None | Some(Int)\n"
+    ^ "fun make x = Some(x)\n"
+    ^ "fun read x = match x with | Some(y) -> y | None -> 0\n"
+  in
+  match Language_service.rename_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 13 }
+  with
+  | None -> Alcotest.fail "expected rename info"
+  | Some rename ->
+      Alcotest.(check (list string))
+        "rename edits"
+        ["0:21-0:25"; "1:13-1:17"; "2:28-2:32"]
+        (List.map string_of_range rename.Language_service.edits)
+
+let test_rename_rejects_external_stdlib_symbol () =
+  let text = "fun entry x : Int -> Int =\n  map (fun y -> y) x\n" in
+  match Language_service.rename_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 2 }
+  with
+  | None -> ()
+  | Some _ -> Alcotest.fail "expected stdlib rename to be rejected"
+
 let tests = [
   "dedent code block trims common indentation", `Quick, test_dedent_code_block_trims_common_indentation;
   "expression info block dedents pretty-printed expression", `Quick, test_expression_info_block_dedents_pretty_printed_expression;
@@ -864,4 +933,8 @@ let tests = [
             "hover mentions top-level binding"
             true
             (contains_substring ~text:hover.Language_service.contents ~substring:"top-level binding: x"));
+  "rename top-level function", `Quick, test_rename_top_level_function_updates_declaration_and_use;
+  "rename local binding shadowing", `Quick, test_rename_local_binding_respects_shadowing;
+  "rename constructor occurrences", `Quick, test_rename_constructor_updates_declaration_expression_and_pattern;
+  "rename rejects stdlib symbol", `Quick, test_rename_rejects_external_stdlib_symbol;
 ]

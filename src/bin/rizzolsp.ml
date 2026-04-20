@@ -144,6 +144,19 @@ let json_of_location ~uri (range : LS.range) : Yojson.Safe.t =
     ("range", json_of_range range)
   ]
 
+let json_of_text_edit ~(new_text : string) (range : LS.range) : Yojson.Safe.t =
+  `Assoc [
+    ("range", json_of_range range);
+    ("newText", `String new_text)
+  ]
+
+let json_of_workspace_edit ~(new_text : string) (rename : LS.rename_result) : Yojson.Safe.t =
+  `Assoc [
+    ("changes", `Assoc [
+      (uri_of_path rename.filename, `List (List.map (json_of_text_edit ~new_text) rename.edits))
+    ])
+  ]
+
 let json_of_hover (hover : LS.hover_info) : Yojson.Safe.t =
   `Assoc [
     ("contents", `Assoc [
@@ -320,6 +333,9 @@ let process_request ~method_name ~id ~params =
             ("textDocumentSync", `Int 1);
             ("documentSymbolProvider", `Bool true);
             ("definitionProvider", `Bool true);
+            ("renameProvider", `Assoc [
+              ("prepareProvider", `Bool true)
+            ]);
             ("hoverProvider", `Bool true);
             ("completionProvider", `Assoc [
               ("resolveProvider", `Bool false);
@@ -370,6 +386,51 @@ let process_request ~method_name ~id ~params =
           | None -> `Null)
       in
       response ~id ~result:(match result with Some value -> value | None -> `Null)
+  | "textDocument/prepareRename" ->
+      let result =
+        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
+        let* uri = text_document |> member "uri" |> to_option to_string in
+        let* text = text_for_uri uri in
+        let* position_json = params |> member "position" |> to_option (fun x -> x) in
+        let* line = position_json |> member "line" |> to_option to_int in
+        let* character = position_json |> member "character" |> to_option to_int in
+        let filename = path_of_uri uri in
+        let rename =
+          LS.rename_at_position
+            ~uri
+            ~filename:(Some filename)
+            ~text
+            ~position:{ LS.line; character }
+        in
+        Some (match rename with Some info -> json_of_range info.LS.range | None -> `Null)
+      in
+      response ~id ~result:(match result with Some value -> value | None -> `Null)
+  | "textDocument/rename" ->
+      let result =
+        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
+        let* uri = text_document |> member "uri" |> to_option to_string in
+        let* text = text_for_uri uri in
+        let* new_name = params |> member "newName" |> to_option to_string in
+        let* position_json = params |> member "position" |> to_option (fun x -> x) in
+        let* line = position_json |> member "line" |> to_option to_int in
+        let* character = position_json |> member "character" |> to_option to_int in
+        let filename = path_of_uri uri in
+        let* rename =
+          LS.rename_at_position
+            ~uri
+            ~filename:(Some filename)
+            ~text
+            ~position:{ LS.line; character }
+        in
+        if LS.valid_rename_name ~kind:rename.LS.kind new_name then
+          Some (`Ok (json_of_workspace_edit ~new_text:new_name rename))
+        else
+          Some (`Error "New name is not a valid identifier for this symbol.")
+      in
+      (match result with
+       | Some (`Ok value) -> response ~id ~result:value
+       | Some (`Error message) -> error_response ~id ~code:(-32602) ~message
+       | None -> response ~id ~result:`Null)
   | "textDocument/hover" ->
       let result =
         let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
