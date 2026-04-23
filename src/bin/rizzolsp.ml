@@ -351,7 +351,7 @@ let process_request ~method_name ~id ~params =
           ]);
           ("serverInfo", `Assoc [
             ("name", `String "rizzolsp");
-            ("version", `String "0.1.0")
+            ("version", `String Rizzoc.Build_version.current)
           ])
         ])
   | "textDocument/documentSymbol" ->

@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number for the release (e.g. 1.2.3)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-toolchain:
+    name: Build toolchain (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset-platform: linux
+            asset-arch: x86_64
+          - os: macos-13
+            asset-platform: darwin
+            asset-arch: x86_64
+          - os: windows-latest
+            asset-platform: windows
+            asset-arch: x86_64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install OCaml dependencies
+        run: opam install . --deps-only --yes
+
+      - name: Build compiler and language server
+        run: opam exec -- dune build src/bin/main.exe src/bin/rizzolsp.exe
+
+      - name: Package toolchain archive
+        run: node ./scripts/package-toolchain.mjs --platform ${{ matrix.asset-platform
+          }} --arch ${{ matrix.asset-arch }} --version ${{
+          github.event.inputs.version || github.ref_name }}
+
+      - name: Upload toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-${{ matrix.asset-platform }}-${{ matrix.asset-arch }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/checksums.txt
+
+  build-extension:
+    name: Build VS Code extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode-rizzo-lsp/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: vscode-rizzo-lsp
+        run: npm ci
+
+      - name: Package VSIX
+        working-directory: vscode-rizzo-lsp
+        run: npm run package:vsix
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: vscode-rizzo-lsp/out/*.vsix
+
+  publish-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - build-toolchain
+      - build-extension
+
+    steps:
+      - name: Download toolchain artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          pattern: toolchain-*
+
+      - name: Combine checksum manifests
+        shell: bash
+        run: |
+          find release-assets -name checksums.txt -type f -print0 \
+            | xargs -0 cat \
+            | sort -u > release-assets/checksums.txt
+
+      - name: Download extension artifact
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          name: vscode-extension
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/**/*.zip
+            release-assets/**/*.tar.gz
+            release-assets/**/*.vsix
+            release-assets/checksums.txt
+          generate_release_notes: true

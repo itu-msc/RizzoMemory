@@ -1,6 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc [--overwrite-stdpath <path>] [--print-ast] [-I <path>] <program.rizz> [more-files.rizz ...]"
+let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast] [-I <path>] <program.rizz> [more-files.rizz ...]"
 
 
 let ansi_of_tag = function
@@ -44,6 +44,10 @@ let ensure_rizz_extension path =
 
 let () =
 	setup_tty ();
+	let print_version () =
+		Fmt.pr "%s@." Rizzoc.Build_version.current;
+		exit 0
+	in
 	let stdlib_path = ref None in
 	let include_paths = ref [] in
 	let input_files = ref [] in
@@ -64,7 +68,8 @@ let () =
 	let debug_info = ref false in
 
 	Arg.parse
-		[ ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
+		[ ("--version", Arg.Unit print_version, "Print compiler version and exit")
+		; ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
 		; ("--print-ast", Arg.Unit set_print_ast, "Print parsed, typed, transformed, and reference-counted ASTs during compilation")
 		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
 		; ("--debug-malloc", Arg.Set debug_malloc, "Print debug info about memory allocations and deallocations at runtime")

@@ -67,6 +67,8 @@ end
 
 module Utilities = struct include Utilities end
 module Collections = struct include Collections end
+module Build_version = struct include Build_version end
+
 type generated_c_compiler_invocation = {
   compiler : string;
   arguments : string list;
@@ -74,7 +76,7 @@ type generated_c_compiler_invocation = {
 
 let c_compiler_candidates = ["gcc"; "clang"]
 
-let runtime_installed_relative_parts = [".."; "runtime"]
+let runtime_installed_relative_parts = [".."; "lib"; "rizzoc"; "runtime"]
 let runtime_dev_relative_parts = [".."; ".."; ".."; ".."; "src"; "runtime"]
 
 let path_exists path =
