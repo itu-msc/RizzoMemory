@@ -90,7 +90,7 @@ jobs:
         run: npm run package:vsix
 
       - name: Upload extension artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vscode-extension
           path: vscode-rizzo-lsp/out/*.vsix
@@ -104,7 +104,7 @@ jobs:
 
     steps:
       - name: Download toolchain artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           pattern: toolchain-*
@@ -117,13 +117,13 @@ jobs:
             | sort -u > release-assets/checksums.txt
 
       - name: Download extension artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           name: vscode-extension
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release-assets/**/*.zip
