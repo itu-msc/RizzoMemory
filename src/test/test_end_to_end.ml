@@ -241,6 +241,25 @@ let test_issue_map_l_variant_outputs_hello_world () =
     | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
     | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
 
+let test_console_out_signal_l_registers_when_later_ticks () =
+  let program =
+    {|
+      fun entry x =
+        let console_sig = mk_sig (wait console) in
+        let quit_sig = filter_l (fun command -> command == "quit") console_sig in
+        let _o = console_out_signal_l quit_sig in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~delay_s:1.0 ~program ~input:"ls\nquit" () in
+  let signal_outputs = List.filter (fun line -> not (String.starts_with ~prefix:"result: " line)) outputs in
+  Alcotest.(check (list string)) "deferred output starts when later resolves" ["quit"] signal_outputs;
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
 let test_clock_signal_outputs_ticks () =
   let progam =
     {|
@@ -341,6 +360,7 @@ let end_to_end_tests = [
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
   "Issue filterL variant outputs quit after non-match", `Quick, test_issue_filterl_variant_outputs_quit_after_non_match;
   "Issue map_l variant outputs Hello world", `Quick, test_issue_map_l_variant_outputs_hello_world;
+  "console_out_signal_l registers when later ticks", `Quick, test_console_out_signal_l_registers_when_later_ticks;
   "runtime mod and string helpers", `Quick, test_runtime_mod_and_string_helpers;
   "string_split and list_length output count", `Quick, test_string_split_and_list_length_output_count;
   "list pattern match outputs head", `Quick, test_list_pattern_match_outputs_head;

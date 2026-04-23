@@ -22,8 +22,8 @@ open Ast.Factory
 
 let output_builtins = [
   mk "console_out_signal" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TSignal (TParam "'a"), []), TUnit)) ();
+  mk "console_out_signal_l" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater(TSignal (TParam "'a")), []), TUnit)) ();
   mk "quit_at" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater (TParam "'a"), []), TUnit)) ();
-  (* mk "output_string_signal" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TSignal TString, []), TUnit)) (); *)
 ]
 
 let builtins = [

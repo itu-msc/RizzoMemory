@@ -120,6 +120,28 @@ static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args
     return rz_make_int(0); /* return unit */
 }
 
+/* Registers a signal after heap update has already started for the current tick.
+   Signals that already updated this tick are printed by the normal output pass. */
+static inline rz_box_t rz_register_output_signal_deferred(size_t num_args, rz_box_t *args)
+{
+    (void)num_args;
+    rz_box_t sig = args[0];
+    if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL)
+    {
+        rz_debug_print_box(sig);
+        fprintf(stderr, "Runtime error: rz_register_output_signal_deferred got a non-signal value (%d)\n", sig.kind);
+        exit(1);
+    }
+
+    rz_signal_t *signal = (rz_signal_t *)rz_unbox_ptr(sig);
+    if (!rz_unbox_int(signal->updated))
+    {
+        rz_print_registered_output_head(signal, true);
+    }
+    rz_signal_list_add(&rz_global_output_signals, (rz_object_t *)signal);
+    return rz_make_int(0);
+}
+
 /*  |------------------------------|
     |         OUTPUT HELPERS       |
     |------------------------------| */

@@ -12,6 +12,7 @@
 
 static rz_box_t rz_start_event_loop();
 static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args);
+static inline rz_box_t rz_register_output_signal_deferred(size_t num_args, rz_box_t *args);
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b);
 
 enum
@@ -223,6 +224,29 @@ static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *
 {
 	rz_builtin_expect_arity("console_out_signal", 1, num_args);
 	return rz_register_output_signal(num_args, args);
+}
+
+static inline rz_box_t rz_builtin_console_out_signal_l_step(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("console_out_signal_l_step", 1, num_args);
+	rz_register_output_signal_deferred(num_args, args);
+	return rz_make_ptr_sig(rz_signal_ctor(rz_make_int(0), RZ_NEVER));
+}
+
+static inline rz_box_t rz_builtin_console_out_signal_l(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("console_out_signal_l", 1, num_args);
+	rz_box_t later = args[0];
+	if (later.kind != RZ_BOX_PTR)
+	{
+		fprintf(stderr, "Runtime error: console_out_signal_l expected a later value, got box kind %d\n", later.kind);
+		exit(1);
+	}
+
+	rz_box_t lifted_register = rz_lift_c_fun(rz_builtin_console_out_signal_l_step, 1, NULL, 0);
+	rz_box_t delayed_register = rz_make_ptr(rz_ctor_var(RZ_TAG_DELAY, 1, lifted_register));
+	rz_signal_ctor(rz_make_int(0), rz_make_ptr(rz_ctor(RZ_TAG_LATER_APP, 2, (rz_box_t[]){ delayed_register, later })));
+	return rz_make_int(0);
 }
 
 static inline rz_box_t rz_builtin_string_contains(size_t num_args, rz_box_t *args)
