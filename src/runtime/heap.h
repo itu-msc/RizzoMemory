@@ -188,7 +188,7 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
 #ifdef __RZ_DEBUG_INFO
 static inline void rz_debug_print_heap()
 {
-    printf("(size: %zu)", rz_heap_size);
+    printf("(size: %zu) ", rz_heap_size);
     for (rz_signal_t *sig = &rz_heap_head; sig != NULL; sig = (rz_signal_t *)rz_unbox_ptr(sig->next))
     {
         if (sig == &rz_heap_head || sig == &rz_heap_tail)

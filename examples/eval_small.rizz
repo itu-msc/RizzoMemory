@@ -1,24 +1,45 @@
-fun or a b = if a then true else b
+type Language = EN | DA
 
-fun greeting msg source = map (fun x -> msg) source
+fun parse_language command =
+    match command with
+    | "en" -> Just (EN)
+    | "da" -> Just (DA)
+    | _ -> Nothing
 
-fun mode_function source cmd =
-    match cmd with
-    | "en" -> fun current -> greeting "Hello. Type da for Danish." source
-    | "da" -> fun current -> greeting "Hej. Type en for English." source
-    | _ -> fun current -> greeting "Hello and hej." source
+fun is_regular_input command =
+    if command == "quit"
+    then false
+    else
+        match parse_language command with
+        | Just (_) -> false
+        | Nothing -> true
 
-fun sec_to_ms s = s * 1000
-// Creates a signal with 2 modes, printing either "Hello" or "Hej" on a timer.
-// The mode can be changed by typing "en" or "da" in the console.
-fun entry x =
-    let timer = clock (sec_to_ms 3) in
+fun switch_message language =
+    match language with
+    | EN -> "Switched to English."
+    | DA -> "Skiftet til Dansk."
+
+fun echo_message language command =
+    match language with
+    | EN -> "You typed: " + command 
+    | DA -> "Du skrev: " + command
+
+fun language_signal regular_inputs language =
+    map_l (echo_message language) regular_inputs
+
+fun language_switch regular_inputs language =
+    fun current_output ->
+        switch_message language :: map_l (echo_message language) regular_inputs
+
+// Console input is the only driver, but `switch_r` still swaps the active output signal.
+fun entry unused =
     let console_sig = mk_sig_of_channel console in
-    let quit_sig = filter_l (fun s -> s == "quit") console_sig in
-    let mode_sig = filter_l (fun s -> or (s == "da") (s == "en")) console_sig in
-    let default = greeting "Hello. Type da for Danish." timer in
-    let mode_funcs = map_l (mode_function timer) mode_sig in
+    // let quit_sig = filter_l (fun command -> command == "quit") console_sig in
+    let regular_inputs = filter_l is_regular_input console_sig in
+    let language_sig = filter_map_l parse_language console_sig in
+    let default = "Type en for English (Default).\nSkriv da for Dansk." :: language_signal regular_inputs EN in
+    let mode_funcs = map_l (language_switch regular_inputs) language_sig in
     let switched = switch_r default mode_funcs in
-    let _out = console_out_signal (switched) in
-    let _quit = quit_at quit_sig in
+    let _out = console_out_signal switched in
+    // let _quit = quit_at quit_sig in
     start_event_loop ()

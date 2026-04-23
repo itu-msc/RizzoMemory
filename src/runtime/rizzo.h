@@ -51,7 +51,7 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
     rz_refcount_dec_box(v);
     rz_print_registered_outputs();
 #ifdef __RZ_DEBUG_INFO
-    printf("step %.4" PRIu64 ", channel %" PRIu64 ", ", ++rz_debug_heap_step_count, chan);
+    printf("step %.4" PRIu64 ", channel %" PRIu64 ", Sig index %" PRIu64 ", ", ++rz_debug_heap_step_count, chan, rz_debug_signal_next_index);
     rz_debug_print_heap();
 #endif
 }
