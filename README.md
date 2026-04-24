@@ -13,6 +13,43 @@ MSc thesis project implementing **Rizzo**, a programming language based on the w
 - **GCC** or **Clang** — for compiling generated C code
 - **Node.js** and **npm** — for the VS Code extension (optional)
 
+## Installation
+
+### Linux and macOS
+
+Run the install script to download and install the latest version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.sh | bash
+```
+
+To install a specific version, pass the `--version` flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.sh | bash -s -- --version v0.1.2
+```
+
+> **Security Note**: For added security, you can download and inspect the script before running it:
+> ```sh
+> curl -fsSL https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.sh -o install.sh
+> # Review the script
+> cat install.sh
+> # Run it
+> bash install.sh
+> ```
+
+By default the installer:
+
+- installs versioned toolchains under `${XDG_DATA_HOME:-$HOME/.local/share}/rizzo/toolchains`
+- updates `${XDG_DATA_HOME:-$HOME/.local/share}/rizzo/current`
+- links `rizzoc` and `rizzolsp` into `$HOME/.local/bin`
+
+You can override the managed install root with `RIZZO_HOME` and the symlink directory with `RIZZO_BIN_DIR`.
+
+### Windows
+
+Windows does not have a raw installer yet; use the release archives directly for now.
+
 ## Development
 
 - Build: `opam exec -- dune build`

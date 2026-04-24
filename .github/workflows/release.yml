@@ -77,6 +77,9 @@ jobs:
       - name: Install OCaml dependencies
         run: opam install . --deps-only --yes
 
+      - name: Inject release version into build
+        run: RIZZO_VERSION=${{ needs.prepare-release.outputs.version }} node ./scripts/inject-build-version.mjs
+
       - name: Build compiler and language server
         run: opam exec -- dune build src/bin/main.exe src/bin/rizzolsp.exe
 

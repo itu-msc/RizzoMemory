@@ -1,4 +1,4 @@
-let current =
-  match "%%VERSION%%" with
-  | "" | "%%VERSION%%" -> "dev"
+let current =  
+  match "##Build_version##" with  
+  | "" | "##Build_version##" -> "dev"
   | version -> version
