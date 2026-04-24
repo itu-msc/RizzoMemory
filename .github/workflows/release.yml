@@ -83,7 +83,7 @@ jobs:
           RIZZO_VERSION: ${{ needs.prepare-release.outputs.version }}
 
       - name: Build compiler and language server
-        run: opam exec -- dune build src/bin/main.exe src/bin/rizzolsp.exe
+        run: opam exec -- dune build --release src/bin/main.exe src/bin/rizzolsp.exe
 
       - name: Package toolchain archive
         run: node ./scripts/package-toolchain.mjs --platform ${{ matrix.asset-platform
