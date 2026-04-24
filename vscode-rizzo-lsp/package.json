@@ -121,7 +121,7 @@
         "watch": "tsc -watch -p ./",
         "vscode:prepublish": "npm run typecheck && npm run bundle",
         "package:vsix": "vsce package --out ./out",
-        "install:local": "npm run package:vsix && code --install-extension ./out/rizzo-lsp-0.0.5.vsix --force"
+        "install:local": "npm run package:vsix && node ./scripts/install-local.mjs"
     },
     "devDependencies": {
         "@vscode/vsce": "^3.9.0",

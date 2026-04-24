@@ -114,6 +114,11 @@ jobs:
         working-directory: vscode-rizzo-lsp
         run: npm ci
 
+      - name: Set extension release version
+        working-directory: vscode-rizzo-lsp
+        run: npm version ${{ needs.prepare-release.outputs.version }}
+          --no-git-tag-version
+
       - name: Package VSIX
         working-directory: vscode-rizzo-lsp
         run: npm run package:vsix
