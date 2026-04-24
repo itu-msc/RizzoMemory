@@ -34,7 +34,7 @@
 - [x] Do we keep around the distinction between `fn_body` and `(r)expr`? => yes, limit how much we change the actual inc/dec code.
 - [ ] How do the semantics of Rizzo constructions change the inc/dec rules?
 - [ ] Push down tail instructions as far down the AST as possible, to allow more reuse opportunities.
-- [ ] Ensure that `delay` calls are lazy evaluated
+- [x] Ensure that `delay` calls are lazy evaluated
 
 ## Perceus paper
 
