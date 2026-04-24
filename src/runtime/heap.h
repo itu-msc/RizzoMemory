@@ -345,9 +345,9 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
         rz_box_t arg_later = rz_object_get_field(later, 1);
         rz_box_t arg = rz_advance(rz_unbox_ptr(arg_later), chan, v);
         rz_box_t delayed_fun = rz_object_get_field(later, 0);
-        rz_box_t fun = rz_object_get_field(rz_unbox_ptr(delayed_fun), 0);
-        rz_refcount_inc_box(fun);
+        rz_box_t fun = rz_advance_delayed(delayed_fun);
         // although arg is used in apply1 (varapp), it doesn't need inc because advance returns +1
+        // and the same applies to fun, which is also returned with rc+1 by advance_delayed
         return rz_apply1(rz_unbox_ptr(fun), arg);
     }
     case RZ_TAG_LATER_TAIL:
