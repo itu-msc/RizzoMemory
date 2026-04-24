@@ -101,10 +101,8 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
         "    rz_box_t res = rz_call(%s, 1, (rz_box_t[]){rz_make_int(0)});\n" entry_name (* TODO: notice, should we have this line here?*)
       ^ "#ifdef __RZ_DEBUG_INFO\n"
       ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
-      ^ "#else\n"
-      ^ "    (void)res;\n"
       ^ "#endif\n"
-      ^ "    return 0;\n}\n")
+      ^ "    return rz_unbox_int(res);\n}\n")
     | None -> failwith "No entry point found"
   and declare_globals (globals: (string * Refcount_core.fn_body) list) : unit = 
     List.iter (fun (name, _) ->

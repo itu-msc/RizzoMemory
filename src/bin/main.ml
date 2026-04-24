@@ -1,6 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast] [-I <path>] [more-files.rizz ...] <program.rizz>"
+let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast] [-I <path>] [more-files.rizz ...] <entrypoint.rizz>"
 
 let ansi_of_tag = function
 	| "red" -> "\027[31m"
