@@ -45,9 +45,10 @@ static inline rz_box_t rz_advance_delayed(rz_box_t delayed) {
         }
         default: {
             printf("Unknown delayed tag in 'rz_advance_delayed': %d", rz_object_tag(ptr_delayed));
-        } break;
+            exit(1);
+        }
     }
-
+    
 }
 
 static inline void rz_debug_print_delayed(rz_box_t delay);
