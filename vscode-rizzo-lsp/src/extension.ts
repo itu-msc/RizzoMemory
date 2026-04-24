@@ -131,11 +131,11 @@ function getRizzocCommand(
             "main.exe"
         );
         if (fs.existsSync(localBuild)) {
-            return { command: localBuild, args: [] };
+            return { command: localBuild, args: ["-o", "output"] };
         }
     }
 
-    return { command: "opam", args: ["exec", "--", "dune", "exec", "rizzoc", "--"] };
+    return { command: "opam", args: ["exec", "--", "dune", "exec", "rizzoc", "-o", "output", "--"] };
 }
 
 /**

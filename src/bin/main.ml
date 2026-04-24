@@ -1,7 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast] [-I <path>] <program.rizz> [more-files.rizz ...]"
-
+let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast] [-I <path>] [more-files.rizz ...] <program.rizz>"
 
 let ansi_of_tag = function
 	| "red" -> "\027[31m"
@@ -66,6 +65,7 @@ let () =
 	in
 	let debug_malloc = ref false in
 	let debug_info = ref false in
+	let out_name = ref "output" in
 
 	Arg.parse
 		[ ("--version", Arg.Unit print_version, "Print compiler version and exit")
@@ -73,7 +73,8 @@ let () =
 		; ("--print-ast", Arg.Unit set_print_ast, "Print parsed, typed, transformed, and reference-counted ASTs during compilation")
 		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
 		; ("--debug-malloc", Arg.Set debug_malloc, "Print debug info about memory allocations and deallocations at runtime")
-		; ("--debug-info"	 , Arg.Set debug_info	 , "Print debug info about function calls and reference count changes at runtime")
+		; ("--debug-info"	 , Arg.Set debug_info	 , "Print debug info about the signal heap, when new time steps occur, and which channels produced the input")
+		; ("-o", Arg.Set_string out_name, "Set the output executable name - defaults to output.exe")
 		]
 		add_input_file
 		usage_msg;
@@ -86,10 +87,18 @@ let () =
 	in
 	List.iter ensure_rizz_extension input_files;
 	print_ast_dumps := !print_ast;
-	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files "output.c";
+	if Sys.file_exists !out_name && Sys.is_directory !out_name then (
+		Fmt.epr "@{<red>Error@}: output path cannot be a directory: %s@." !out_name;
+		exit 1
+	);
+	let output_name = Filename.remove_extension !out_name in
+	let output_c = output_name ^ ".c" in
+	let output_file = 
+		if Filename.extension !out_name = "" && Sys.win32 then output_name ^ ".exe"
+		else !out_name
+	in
+	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files output_c;
 	let runtime_include = "src/runtime" in
-	let output_c = "output.c" in
-	let output_file = "output.exe" in
 	let shellCommand = Rizzoc.to_shell_command (Rizzoc.generated_c_compiler_invocation ~runtime_include ~input_file:output_c ~output_file ~debug_malloc:!debug_malloc ~debug_info:!debug_info ()) in
 	let returnCode = Sys.command shellCommand in
 	if returnCode <> 0 then (
