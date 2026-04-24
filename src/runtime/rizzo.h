@@ -117,7 +117,7 @@ static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args
     /* we've just read a signal, which has a head value in the current time tick - output that */
     rz_print_registered_output_head((rz_signal_t *)rz_unbox_ptr(sig), true);
     rz_signal_list_add(&rz_global_output_signals, rz_unbox_ptr(sig));
-    return rz_make_int(0); /* return unit */
+    return RZ_UNIT;
 }
 
 /* Registers a signal after heap update has already started for the current tick.
@@ -139,7 +139,7 @@ static inline rz_box_t rz_register_output_signal_deferred(size_t num_args, rz_bo
         rz_print_registered_output_head(signal, true);
     }
     rz_signal_list_add(&rz_global_output_signals, (rz_object_t *)signal);
-    return rz_make_int(0);
+    return RZ_UNIT;
 }
 
 /*  |------------------------------|
