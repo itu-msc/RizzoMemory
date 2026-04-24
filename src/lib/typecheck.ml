@@ -166,6 +166,30 @@ and free_type_vars_env : unit -> StringSet.t Type_env.t = fun () ->
   let* local_free = free_type_vars_env_scheme env.local in
   return (StringSet.union global_free local_free)
 
+(* TODO: should it return boolean to mark the result? so we can do other logic based on the result? 
+  Also, it would be great if any typ in the AST part (not annotations) had a location! Similar to names ... *)
+let rec is_valid_type ann = function
+  | TName n -> 
+    let* type_defs = Type_env.get_state |> Type_env.map (fun (s: Type_env.typing_state) -> s.typedefinitions.types) in
+    (match StringMap.find_opt n type_defs with
+    | None -> error ann (Printf.sprintf "Unbound type '%s'" n)
+    | Some { type_params = []; _ } -> return ()
+    | Some {type_params; _} -> error ann (Printf.sprintf "Type '%s' expects %d type arguments but got 0" n (List.length type_params)))
+  | TApp (TName n, ts) ->
+    let* type_defs = Type_env.get_state |> Type_env.map (fun (s: Type_env.typing_state) -> s.typedefinitions.types) in
+    (match StringMap.find_opt n type_defs with
+    | None -> error ann (Printf.sprintf "Unbound type '%s'" n)
+    | Some { type_params; _ } when List.length ts <> List.length type_params -> 
+      error ann (Printf.sprintf "Type '%s' expects %d type arguments but got %d" n (List.length type_params) (List.length ts))
+    | Some _ -> return ()) 
+  | TBool | TInt | TUnit | TVar _ | TError | TString | TParam _ -> return ()
+  | TChan t | TDelay t | TSignal t | TLater t -> is_valid_type ann t
+  | TTuple (t1,t2) -> let* _ = is_valid_type ann t1 in is_valid_type ann t2
+  | TFun (Cons1(t, ts), rt) -> 
+    List.fold_left (fun acc t -> let* _ = acc in is_valid_type ann t) (is_valid_type ann rt) (t :: ts)
+  | TApp (t, _) -> 
+    error ann (Format.asprintf "Type application on primitive type '%a'" Ast.pp_typ t)
+      
 
 type typing_result = {
   typed_program: typed program;
@@ -273,6 +297,8 @@ and typecheck_top_expr : type stage. stage top_expr -> typed top_expr Type_env.t
         (* duplicate constructors are just overwritten - so always is the latest - there is probably a better way *) 
         let* ctor_args_free = Type_env.collect (List.map free_type_vars_typ ctor_args) in
         let ctor_args_free = List.fold_left StringSet.union StringSet.empty ctor_args_free in
+        (* below just reports that any arg is invalid - possibly remove invalid ones? *)
+        let* _ = Type_env.collect (List.map (is_valid_type ctor_ann) ctor_args) in
         let* ctor_args = 
           if not (StringSet.subset ctor_args_free defined_type_params) then
             let guilty = StringSet.diff ctor_args_free defined_type_params |> StringSet.elements in
@@ -301,6 +327,7 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
     let* const_type = infer_const_type ann c in
     return (EConst (c, Ann_typed (get_location ann, const_type)))
   | EAnno (e, t, ann) -> 
+    let* () = is_valid_type ann t in
     let* te = check e t in
     return (EAnno (te, t, Ann_typed (get_location ann, t)))
   | ELet ((name, name_ann), rhs, body, ann) ->

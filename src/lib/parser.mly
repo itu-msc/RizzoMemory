@@ -105,9 +105,10 @@ top_expr:
     { 
       if Option.is_some effect_dec then Effectful.mark_effectful name;
       let top_name = (name, mkloc $startpos(name) $endpos(name)) in
-      if Option.is_none te_opt 
-      then TopLet (top_name, body, mkloc $symbolstartpos $endpos(body)) 
-      else TopLet (top_name, EAnno(body, Option.get te_opt, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
+      match te_opt with
+      | None -> TopLet (top_name, body, mkloc $symbolstartpos $endpos(body)) 
+      | Some (te, anno_loc) ->
+        TopLet (top_name, EAnno(body, te, anno_loc), mkloc $symbolstartpos $endpos(body))
     }
   | effect_dec=option(EFFECTFUL)
     FUN name=ID params=nonempty_id_list te_opt=option(type_annotation) EQ body=expr
@@ -117,7 +118,9 @@ top_expr:
       let top_name = (name, mkloc $startpos(name) $endpos(name)) in
       match te_opt with
       | None -> TopLet (top_name, EFun (params, body, mkloc $startpos(params) $endpos(body)), mkloc $symbolstartpos $endpos(body))
-      | Some te -> TopLet (top_name, EAnno(EFun (params, body, mkloc $startpos(params) $endpos(body)), te, mkloc $startpos(body) $endpos(body)), mkloc $symbolstartpos $endpos(body))
+      | Some (te, anno_loc) -> 
+        let fun_loc = mkloc $startpos(params) $endpos(body) in
+        TopLet (top_name, EAnno(EFun (params, body, fun_loc), te, anno_loc), mkloc $symbolstartpos $endpos(body))
     }
   | TYPE type_name=TYPE_ID type_params=type_param_names EQ BAR? type_ctors=separated_nonempty_list(BAR, type_ctor)
     { let type_name = (type_name, mkloc $startpos(type_name) $endpos(type_name)) in
@@ -145,7 +148,7 @@ expr:
     { let name = (x, mkloc $startpos(x) $endpos(x)) in
       match te_opt with
       | None    -> ELet (name, e1, e2, mkloc $startpos $endpos) 
-      | Some te -> ELet (name, EAnno(e1, te, mkloc $startpos(e1) $endpos(e1)), e2, mkloc $startpos $endpos) 
+      | Some (te, anno_loc) -> ELet (name, EAnno(e1, te, anno_loc), e2, mkloc $startpos $endpos) 
     }
   | IF e1=expr THEN e2=expr ELSE e3=expr
     { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
@@ -313,7 +316,7 @@ comma_separated_patterns:
       { p :: rest }
 
 type_annotation:
-  | COLON te=type_expr { te }
+  | COLON te=type_expr { (te, mkloc $startpos(te) $endpos(te)) }
 
 type_expr:
   | ft=fun_type { ft }
