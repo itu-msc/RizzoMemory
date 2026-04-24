@@ -57,28 +57,21 @@ Windows does not have a raw installer yet; use the release archives directly for
 
 By default the compiler is quiet and only emits `output.c`. To inspect the intermediate ASTs while compiling, pass `--print-ast` to `rizzoc`.
 
-## Full flow: compile and run a `.rizz` file
+## How to Compile and Run Rizzo Programs
 
-The full pipeline compiles one or more Rizzo source files to C and then runs them:
+The compiler translates Rizzo source files (`.rizz`) to C (`output.c`), and triggers a C compile with either `gcc` or `clang` to produce an executable.
 
-```bash
-# 1. Compile .rizz → output.c
-opam exec -- dune exec rizzoc <file.rizz> [more-files.rizz ...]
-
-# 2. Compile output.c with the C runtime headers
-gcc -I./src/runtime output.c -o output
-
-# 3. Run
-./output
-```
-
-Or use the convenience npm script from the repo root (after step 1):
+All you need to do is invoke the compiler on your Rizzo source file(s), and it will handle the rest:
 
 ```bash
-npm run rizzo
+rizzoc [more-files.rizz ...] <entrypoint.rizz>
 ```
 
-> **Windows**: The extension automatically handles Windows-specific details (`.exe` extension, `-m64` flag). Both GCC and Clang are supported.
+For help run:
+
+```bash
+rizzoc --help
+```
 
 ### Implicit stdlib
 
@@ -107,6 +100,11 @@ The extension will:
 
 ## LSP and VS Code extension
 
+The Extension can be installed from the GitHub releases page, or built locally from the `vscode-rizzo-lsp` folder. 
+> The LSP (`rizzolsp`) is installed alongside the compiler, so make sure to have the compiler in your PATH or configure the extension to find it.
+
+The extension will automatically start the LSP server when you open a `.rizz` file, but you can also run it manually for development or debugging purposes.
+
 To run the LSP server, use the command:
 
 - LSP server: `opam exec -- dune exec rizzolsp`
@@ -117,12 +115,11 @@ The VS Code extension is located in the `vscode-rizzo-lsp` folder.
 It can easily be installed with
 
 ```bash
-cd vscode-rizzo-lsp && npm install && cd ..
+npm run ext:install:deps
 npm run ext:install
 ```
-This installs the dependencies, builds the project and then installs the extension locally.
 
-> To compile the bundle with no VSIX: `npm run compile`
+This installs the dependencies, builds the project and then installs the extension locally.
 
 ### Debugging the extension
 
