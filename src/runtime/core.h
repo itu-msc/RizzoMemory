@@ -78,6 +78,7 @@ static inline rz_box_kind_t rz_box_kind(rz_box_t box) {
 }
 
 #define rz_make_int(v) ((rz_box_t){ .kind = RZ_BOX_INT, .as.i64 = (v) })
+#define RZ_UNIT (rz_make_int(0))
 
 static inline int64_t rz_unbox_int(rz_box_t box) {
     return (int64_t)box.as.i64;

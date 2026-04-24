@@ -40,6 +40,15 @@ static inline int64_t rz_builtin_expect_int(const char *name, size_t index, rz_b
 	return rz_unbox_int(arg);
 }
 
+static inline void rz_builtin_expect_unit(const char *name, size_t index, rz_box_t arg)
+{
+	if (arg.kind != RZ_BOX_INT || rz_unbox_int(arg) != 0)
+	{
+		fprintf(stderr, "Runtime error: builtin '%s' expected unit for argument %zu\n", name, index + 1);
+		exit(1);
+	}
+}
+
 static inline rz_box_t rz_builtin_expect_string(const char *name, size_t index, rz_box_t arg)
 {
 	if (!rz_box_is_string(arg))
@@ -117,7 +126,7 @@ static inline rz_box_t rz_builtin_make_clock_signal(rz_channel_t chan, rz_box_t 
 	delayed_step = rz_make_ptr(rz_ctor_var(
 		RZ_TAG_DELAY,
 		1,
-		rz_lift_c_fun(rz_builtin_clock_step, 2, (rz_box_t[]){rz_make_channel(chan)}, 1)));
+		rz_lift_c_fun(rz_builtin_clock_step, 3, (rz_box_t[]){rz_make_channel(chan)}, 1)));
 	wait_later = rz_builtin_make_wait_later(chan);
 	tail = rz_make_ptr(rz_ctor_var(RZ_TAG_LATER_APP, 2, delayed_step, wait_later));
 	return rz_make_ptr_sig(rz_signal_ctor(head, tail));
@@ -126,9 +135,10 @@ static inline rz_box_t rz_builtin_make_clock_signal(rz_channel_t chan, rz_box_t 
 static inline rz_box_t rz_builtin_clock_step(size_t num_args, rz_box_t *args)
 {
 	rz_channel_t chan;
-	rz_builtin_expect_arity("clock_step", 2, num_args);
+	rz_builtin_expect_arity("clock_step", 3, num_args);
 	chan = rz_builtin_expect_int("clock_step", 0, args[0]);
-	return rz_builtin_make_clock_signal(chan, args[1]);
+	rz_builtin_expect_unit("clock_step", 1, args[1]); 
+	return rz_builtin_make_clock_signal(chan, args[2]);
 }
 
 static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *args)
@@ -228,9 +238,10 @@ static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *
 
 static inline rz_box_t rz_builtin_console_out_signal_l_step(size_t num_args, rz_box_t *args)
 {
-	rz_builtin_expect_arity("console_out_signal_l_step", 1, num_args);
-	rz_register_output_signal_deferred(num_args, args);
-	return rz_make_ptr_sig(rz_signal_ctor(rz_make_int(0), RZ_NEVER));
+	rz_builtin_expect_arity("console_out_signal_l_step", 2, num_args);
+	rz_builtin_expect_unit("console_out_signal_l_step", 0, args[0]);  //Expect unit to make the type (Unit -> Signal 'a -> Unit) so it can be safely advanced in delay
+	rz_register_output_signal_deferred(num_args, &args[1]);
+	return rz_make_ptr_sig(rz_signal_ctor(RZ_UNIT, RZ_NEVER));
 }
 
 static inline rz_box_t rz_builtin_console_out_signal_l(size_t num_args, rz_box_t *args)
@@ -243,10 +254,10 @@ static inline rz_box_t rz_builtin_console_out_signal_l(size_t num_args, rz_box_t
 		exit(1);
 	}
 
-	rz_box_t lifted_register = rz_lift_c_fun(rz_builtin_console_out_signal_l_step, 1, NULL, 0);
+	rz_box_t lifted_register = rz_lift_c_fun(rz_builtin_console_out_signal_l_step, 2, NULL, 0);
 	rz_box_t delayed_register = rz_make_ptr(rz_ctor_var(RZ_TAG_DELAY, 1, lifted_register));
 	rz_signal_ctor(rz_make_int(0), rz_make_ptr(rz_ctor(RZ_TAG_LATER_APP, 2, (rz_box_t[]){ delayed_register, later })));
-	return rz_make_int(0);
+	return RZ_UNIT;
 }
 
 static inline rz_box_t rz_builtin_string_contains(size_t num_args, rz_box_t *args)
@@ -419,9 +430,10 @@ static inline rz_box_t rz_builtin_clock(size_t num_args, rz_box_t *args)
 
 static inline rz_box_t rz_quit(size_t num_args, rz_box_t *args)
 {
-	rz_builtin_expect_arity("quit", 1, num_args);
+	rz_builtin_expect_arity("quit", 2, num_args);
+	rz_builtin_expect_unit("quit", 0, args[0]);
 	rz_should_quit = true;
-	return args[0];
+	return args[1];
 }
 
 /* This function takes a Later and constructs a signal 
@@ -436,10 +448,10 @@ static inline rz_box_t rz_builtin_quit_at(size_t num_args, rz_box_t *args)
         exit(1);
     }
 
-    rz_box_t lifted_quit = rz_lift_c_fun(rz_quit, 1, NULL, 0);
-    rz_box_t delayed_quit = rz_make_ptr(rz_ctor_var(0, 1, lifted_quit));
+    rz_box_t lifted_quit = rz_lift_c_fun(rz_quit, 2, NULL, 0);
+    rz_box_t delayed_quit = rz_make_ptr(rz_ctor_var(RZ_TAG_DELAY, 1, lifted_quit));
     rz_signal_ctor(rz_make_int(0), rz_make_ptr(rz_ctor(RZ_TAG_LATER_APP, 2, (rz_box_t[]){ delayed_quit, later })));
-    return rz_make_int(0); /* return unit */
+    return RZ_UNIT;
 }
 
 static inline rz_box_t rz_builtin_parse_int(size_t num_args, rz_box_t *args)

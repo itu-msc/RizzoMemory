@@ -30,7 +30,6 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
   | ECtor (name, args, loc) -> ECtor (name, List.map lift_expr args, loc)
   | EApp (f, args, loc) -> EApp (lift_expr f, List.map lift_expr args, loc)
   | EBinary (op, e1, e2, loc) -> EBinary (op, lift_expr e1, lift_expr e2, loc)
-  | EUnary (op, e, loc) -> EUnary (op, lift_expr e, loc)
   | ELet (x, e1, e2, loc) ->
       let lifted_e1 = lift_expr e1 in
       let lifted_e2 = lift_expr e2 in
@@ -40,6 +39,20 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
     EIfe (lift_expr cond, lift_expr e1, lift_expr e2, loc)
   | ECase (scrutinee, branches, loc) -> 
     ECase (lift_expr scrutinee, List.map (fun (p, b, loc) -> (p, lift_expr b, loc)) branches, loc)
+  | EAnno (e, t, loc) -> EAnno (lift_expr e, t, loc)
+  | EUnary (UDelay, e, loc) -> 
+    let fv = StringSet.to_list (Ast_helpers.free_vars_fun top_names [] e) in
+    let fv_with_loc = List.map (fun v -> (v, loc)) fv in
+    let name = Utilities.new_name "thunk_" in
+    let unit_name = Utilities.new_name "unit_arg" in
+    let lifted_body = lift_expr e in
+    let thunk = TopLet((name, loc), EFun (fv_with_loc @ [unit_name, loc], lifted_body, loc), loc) in
+    (* it's fine to leave it as an EApp even when there were no free variables, 
+       since a later transformation [explicit_lifts] produces exactly this anyway *)
+    let access_thunk = EApp (EVar (name, loc), List.map (fun v -> EVar (v, loc)) fv, loc) in
+    lifted_lambdas := thunk :: !lifted_lambdas;
+    EUnary (UDelay, access_thunk, loc)
+  | EUnary (op, e, loc) -> EUnary (op, lift_expr e, loc)
   | EFun (params, body, loc) ->
     let fv = StringSet.to_list (Ast_helpers.free_vars_fun top_names params body) in
     let fv_with_loc = List.map (fun v -> (v, loc)) fv in
@@ -49,4 +62,3 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
     lifted_lambdas := TopLet ((name, lifted_loc), EFun(fv_with_loc @ params, lifted_body, lifted_loc), lifted_loc) :: !lifted_lambdas;
     if List.length fv = 0 then EVar (name, loc)
     else EApp (EVar (name, loc), List.map (fun v -> EVar (v, loc)) fv, loc) (* TODO optimise with partial application when possible *)
-  | EAnno (e, t, loc) -> EAnno (lift_expr e, t, loc)
