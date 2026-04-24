@@ -98,7 +98,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
       
       write (
         Printf.sprintf 
-        "    rz_box_t res = rz_call(%s, 1, (rz_box_t[]){rz_make_int(0)});\n" entry_name (* TODO: notice, should we have this line here?*)
+        "    rz_box_t res = rz_call(%s, 1, (rz_box_t[]){ RZ_UNIT });\n" entry_name (* TODO: notice, should we have this line here?*)
       ^ "#ifdef __RZ_DEBUG_INFO\n"
       ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
       ^ "#endif\n"
@@ -209,7 +209,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     | Const (CString s) -> 
       let var_name = List.assoc s string_consts in
       Printf.sprintf "rz_make_str_lit(%s)" var_name
-    | Const Ast.CUnit -> Printf.sprintf "rz_make_int(0)"
+    | Const Ast.CUnit -> "RZ_UNIT"
   and as_possible_function_access name args =
     match M.find_opt name arity_map with
     | None -> mangle name  (* was just a regular name - output as such *)
