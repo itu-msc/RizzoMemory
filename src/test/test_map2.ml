@@ -37,10 +37,8 @@ let rec find_typed_let_binding target (e : typed expr) : (typ * typ * typed expr
     (match find_typed_let_binding target e1 with
       | Some _ as found -> found
     | None -> find_typed_let_binding target e2)
-  | ETuple (e1, e2, _) ->
-    (match find_typed_let_binding target e1 with
-      | Some _ as found -> found
-    | None -> find_typed_let_binding target e2)
+  | ETuple (e1, e2, es, _) ->
+    List.find_map (find_typed_let_binding target) (e1 :: e2 :: es)
   | ECase (scrutinee, branches, _) ->
     (match find_typed_let_binding target scrutinee with
       | Some _ as found -> found

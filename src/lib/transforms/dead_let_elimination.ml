@@ -12,8 +12,9 @@ let rec has_effectful_call (e : _ expr) : bool =
 			in
 			direct_effectful || has_effectful_call f || List.exists has_effectful_call args
 	| EUnary (_, e, _) -> has_effectful_call e
-	| EBinary (_, e1, e2, _) | ETuple (e1, e2, _) ->
-			has_effectful_call e1 || has_effectful_call e2
+	| EBinary (_, e1, e2, _) -> has_effectful_call e1 || has_effectful_call e2
+	| ETuple (e1, e2, es, _) ->
+			has_effectful_call e1 || has_effectful_call e2 || List.exists has_effectful_call es
 	| EIfe (cond, e1, e2, _) ->
 			has_effectful_call cond || has_effectful_call e1 || has_effectful_call e2
 	| ECase (scrutinee, branches, _) ->
@@ -31,7 +32,7 @@ let rec eliminate_dead_let (e : _ expr) : _ expr =
 	| EUnary (op, e, ann) -> EUnary (op, eliminate_dead_let e, ann)
 	| EBinary (op, e1, e2, ann) ->
 			EBinary (op, eliminate_dead_let e1, eliminate_dead_let e2, ann)
-	| ETuple (e1, e2, ann) -> ETuple (eliminate_dead_let e1, eliminate_dead_let e2, ann)
+	| ETuple (e1, e2, es, ann) -> ETuple (eliminate_dead_let e1, eliminate_dead_let e2, List.map eliminate_dead_let es, ann)
 	| EIfe (cond, e1, e2, ann) ->
 			EIfe (eliminate_dead_let cond, eliminate_dead_let e1, eliminate_dead_let e2, ann)
 	| ECase (scrutinee, branches, ann) ->

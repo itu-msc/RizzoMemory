@@ -32,7 +32,7 @@ type typ =
   | TParam of string
   | TVar of int
   | TFun of typ list1 * typ
-  | TTuple of typ * typ
+  | TTuple of typ * typ * typ list
   | TSignal of typ
   | TLater of typ
   | TDelay of typ
@@ -55,7 +55,7 @@ type _ pattern =
   | PWildcard : 's ann -> 's pattern
   | PVar : string * 's ann -> 's pattern
   | PConst : const * 's ann -> 's pattern
-  | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
+  | PTuple : 's pattern * 's pattern * 's pattern list * 's ann -> 's pattern
   | PSigCons : 's pattern * 's name * 's ann -> 's pattern
   | PStringCons : 's pattern * 's name * 's ann -> 's pattern
   | PCtor : 's name * 's pattern list * 's ann -> 's pattern
@@ -69,7 +69,7 @@ and _ expr =
   | EApp : 's expr * 's expr list * 's ann -> 's expr
   | EUnary : unary_op * 's expr * 's ann -> 's expr
   | EBinary : binary_op * 's expr * 's expr * 's ann -> 's expr
-  | ETuple : 's expr * 's expr * 's ann -> 's expr
+  | ETuple : 's expr * 's expr * 's expr list * 's ann -> 's expr
   | ECase : 's expr * 's case_branch list * 's ann -> 's expr
   | EIfe : 's expr * 's expr * 's expr * 's ann -> 's expr
   | EAnno : 's expr * typ * 's ann -> 's expr
@@ -108,14 +108,15 @@ let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   match e with
   | EConst (_, ann) | EVar (_, ann) | ECtor (_, _, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
   | EApp (_, _, ann) | EUnary (_, _, ann) | EBinary (_, _, _, ann)
-  | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann)
+  | ETuple (_, _, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann)
   | EAnno (_, _, ann) -> ann
 
 let rec pattern_bound_vars = function
   | PWildcard _ | PConst _ -> []
   | PVar (x, _) -> [x]
   | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
-  | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
+  | PTuple (p1, p2, ps, _) -> 
+    List.concat_map pattern_bound_vars (p1 :: p2 :: ps)
   | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars ps
 
 let string_of_binary_op = function

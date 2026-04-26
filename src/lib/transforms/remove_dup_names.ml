@@ -57,7 +57,7 @@ and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
     ) branches in
     ECase (e', branches', ann)
   | EUnary (op, e, ann) -> EUnary (op, subst replacement_of e, ann)
-  | ETuple (e1, e2, ann) -> ETuple (subst replacement_of e1, subst replacement_of e2, ann)
+  | ETuple (e1, e2, es, ann) -> ETuple (subst replacement_of e1, subst replacement_of e2, List.map (subst replacement_of) es, ann)
   | EAnno (e, t, ann) -> EAnno (subst replacement_of e, t, ann)
 and subst_pattern (replacement_of : string StringMap.t) (p : 's pattern) : 's pattern =
   match p with
@@ -71,10 +71,11 @@ and subst_pattern (replacement_of : string StringMap.t) (p : 's pattern) : 's pa
     PSigCons (subst_pattern replacement_of p1, (y, y_ann), ann)
   | PStringCons (p1, (y, y_ann), ann) ->
     PStringCons (subst_pattern replacement_of p1, (y, y_ann), ann)
-  | PTuple (p1, p2, ann) ->
+  | PTuple (p1, p2, ps, ann) ->
     let p1' = subst_pattern replacement_of p1 in
     let p2' = subst_pattern replacement_of p2 in
-    PTuple (p1', p2', ann)
+    let ps' = List.map (subst_pattern replacement_of) ps in
+    PTuple (p1', p2', ps', ann)
   | PCtor (name, ps, ann) ->
     let ps' = List.map (subst_pattern replacement_of) ps in
     PCtor (name, ps', ann)

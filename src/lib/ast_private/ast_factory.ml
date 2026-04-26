@@ -8,7 +8,8 @@ let typ_fun params ret = TFun (Cons1 (List.hd params, List.tl params), ret)
 let typ_fun1 p ret = TFun (Cons1 (p, []), ret)
 let typ_param n = TParam n
 
-let typ_tuple t1 t2 = TTuple (t1, t2)
+let typ_tuple t1 t2 = TTuple (t1, t2, [])
+let typ_tuple_many t1 t2 ts = TTuple (t1, t2, ts)
 
 let typ_signal t = TSignal t
 let typ_later t = TLater t

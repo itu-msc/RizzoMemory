@@ -20,16 +20,6 @@ let binary_ann left right =
   let right_loc = get_location (expr_get_ann right) in
   mkloc left_loc.start_pos right_loc.end_pos
 
-let rec tuple_expr_of_list start_pos end_pos = function
-  | [] | [_] -> failwith "Tuple must contain at least 2 elements"
-  | [a; b] -> ETuple (a, b, mkloc start_pos end_pos)
-  | a :: rest -> ETuple (a, tuple_expr_of_list start_pos end_pos rest, mkloc start_pos end_pos)
-
-let rec tuple_pattern_of_list start_pos end_pos = function
-  | [] | [_] -> failwith "Tuple pattern must contain at least 2 elements"
-  | [a; b] -> PTuple (a, b, mkloc start_pos end_pos)
-  | a :: rest -> PTuple (a, tuple_pattern_of_list start_pos end_pos rest, mkloc start_pos end_pos)
-
 let nil_expr start_pos end_pos =
   ECtor (("Nil", mkloc start_pos end_pos), [], mkloc start_pos end_pos)
 
@@ -256,7 +246,7 @@ atom:
   | NEVER { EConst (CNever, mkloc $startpos $endpos) }
   | LBRACKET RBRACKET { nil_expr $startpos $endpos }
   | LBRACKET es=separated_nonempty_list(COMMA, expr) RBRACKET { list_expr_of_list $startpos $endpos es }
-  | LPAREN es=tuple_expr_list RPAREN { tuple_expr_of_list $startpos $endpos es }
+  | LPAREN e1=expr COMMA es=separated_nonempty_list(COMMA, expr) RPAREN { ETuple(e1, List.hd es, List.tl es, mkloc $startpos $endpos) }
   | LPAREN e=expr COLON ann=type_expr RPAREN { EAnno (e, ann, mkloc $startpos $endpos) }
   | LPAREN e=expr RPAREN { e }
 
@@ -266,32 +256,13 @@ ctor_fields_opt:
   | %prec BELOW_CTOR_ARGS
     { [] }
 
-tuple_expr_list:
-  | e1=expr COMMA e2=expr rest=tuple_expr_list_tail
-      { e1 :: e2 :: rest }
-
-tuple_expr_list_tail:
-  | { [] }
-  | COMMA e=expr rest=tuple_expr_list_tail
-      { e :: rest }
-
 pattern:
-  | name=TYPE_ID ps=ctor_pattern_args_opt
-    { PCtor ((name, mkloc $startpos(name) $endpos(name)), ps, mkloc $startpos $endpos) }
+  | name=TYPE_ID ps=option(delimited(LPAREN, separated_list(COMMA, pattern), RPAREN))
+    { PCtor ((name, mkloc $startpos(name) $endpos(name)), Option.value ~default:[] ps, mkloc $startpos $endpos) }
   | p=pattern_atom CONS rest=ID
       { PSigCons (p, (rest, mkloc $startpos(rest) $endpos(rest)), mkloc $startpos $endpos) }
   | p=pattern_atom
       { p }
-
-ctor_pattern_args_opt:
-  | LPAREN ps=ctor_pattern_args RPAREN
-    { ps }
-  | { [] }
-
-ctor_pattern_args:
-  | p=pattern rest=comma_separated_patterns
-    { p :: rest }
-
 
 pattern_atom:
   | UNDERSCORE { PWildcard (mkloc $startpos $endpos) }
@@ -303,17 +274,9 @@ pattern_atom:
   | UNIT { PConst (CUnit, mkloc $startpos $endpos) }
   | LBRACKET RBRACKET { list_pattern_of_list $startpos $endpos [] }
   | LBRACKET ps=separated_nonempty_list(COMMA, pattern) RBRACKET { list_pattern_of_list $startpos $endpos ps }
-  | LPAREN ps=tuple_pattern_list RPAREN { tuple_pattern_of_list $startpos $endpos ps }
+  | LPAREN p=pattern COMMA ps=separated_nonempty_list(COMMA, pattern) RPAREN 
+    { PTuple (p, List.hd ps, List.tl ps, mkloc $startpos $endpos) }
   | LPAREN p=pattern RPAREN { p }
-
-tuple_pattern_list:
-  | p1=pattern COMMA p2=pattern rest=comma_separated_patterns
-      { p1 :: p2 :: rest }
-
-comma_separated_patterns:
-  | { [] }
-  | COMMA p=pattern rest=comma_separated_patterns
-      { p :: rest }
 
 type_annotation:
   | COLON te=type_expr { (te, mkloc $startpos(te) $endpos(te)) }
@@ -334,7 +297,7 @@ fun_type:
   // | pt=prod_type { pt }
 
 prod_type:
-  | at=app_type STAR pt=prod_type { TTuple (at, pt) }
+  | at=app_type STAR pts=separated_nonempty_list(STAR, app_type) { TTuple (at, List.hd pts, List.tl pts) }
   | at=app_type { at }
 
 app_type:
@@ -346,8 +309,6 @@ app_type:
       | _ -> TApp (head, ta :: args) }
   | head=type_apply_head ta=type_atom { TApp (head, [ta]) }
   | head=type_apply_head { head }
-  (* For now just keep it simple - we could certainly add a 'TApp of typ * typ' later  *)
-  // | at=app_type ta=type_atoma { failwith "type application ..." }
 
 type_apply_head:
   | TYPE_SIGNAL ta=type_atom { TSignal ta }

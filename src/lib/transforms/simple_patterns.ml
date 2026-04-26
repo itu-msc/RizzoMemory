@@ -53,7 +53,7 @@ let rec sink_until_first_use name proj ann e =
     EUnary (op, sink_until_first_use name proj ann e, ann')
   | ECtor (_, args, _) when List.exists used_in args -> ELet(name, proj, e, ann)
   | EAnno (e, t, ann') -> EAnno (sink_until_first_use name proj ann e, t, ann')
-  | ETuple (e1, e2, _) when used_in e1 || used_in e2 -> ELet(name, proj, e, ann)
+  | ETuple (e1, e2, es, _) when used_in e1 || used_in e2 || List.exists used_in es -> ELet(name, proj, e, ann)
   | EFun (_, body, _) when used_in body -> ELet(name, proj, e, ann)
   | EIfe (cond, e1, e2, ann') -> 
     if used_in cond then ELet(name, proj, e, ann)
@@ -89,16 +89,20 @@ and compile_simple_pattern scrutinee case_body = function
       | _ -> failwith "compile_simple_pattern NEVER HAPPENS!")
     in
     Some( List.fold_right (fun (name, proj) acc -> ELet (name, proj, acc, ann)) projs (case_body ()))
-  | PTuple (PVar (x, x_ann), PWildcard _, ann) -> 
-    Some (ELet ((x, x_ann), EApp (EVar ("fst", ann), [scrutinee], ann), case_body (), ann))
-  | PTuple (PWildcard _, PVar (x, x_ann), ann) -> 
-    Some (ELet ((x, x_ann), EApp (EVar ("snd", ann), [scrutinee], ann), case_body (), ann))
-  | PTuple (PVar (left, left_ann), PVar (right, right_ann), ann) -> 
-    let t0 = left, left_ann in
-    let t1 = right, right_ann in
-    Some (
-      ELet (t0, EApp (EVar ("fst", ann), [scrutinee], ann), 
-      ELet (t1, EApp (EVar ("snd", ann), [scrutinee], ann), case_body (), ann), ann))
+  | PTuple (p1, p2, ps_rest, ann) ->
+    let all_patterns = p1 :: p2 :: ps_rest in
+    if List.exists (Fun.compose not is_var_or_wildcard) all_patterns then None
+    else
+      let projs = 
+        all_patterns
+        |> List.mapi (fun i p -> i,p) 
+        |> List.filter_map (fun (i,p) -> 
+        match p with 
+        | PVar (name, name_ann ) -> Some ((name, name_ann), EUnary (UProj i, scrutinee, ann))
+        | PWildcard _ -> None
+        | _ -> failwith "compile_simple_pattern NEVER HAPPENS!")
+      in
+      Some( List.fold_right (fun (name, proj) acc -> ELet (name, proj, acc, ann)) projs (case_body ()))
   | PSigCons (PVar (head, head_ann), tail, ann) ->
     let hd_proj = EApp (EVar (head_elim, ann), [scrutinee], ann) in
     let tl_proj = EUnary (UTail, scrutinee, ann) in
@@ -195,7 +199,7 @@ and compile_match e =
   | ELet (name, e1, e2, ann) -> ELet (name, compile_match e1, compile_match e2, ann) 
   | EApp (e, args, ann) -> EApp (e, List.map compile_match args, ann)
   | EUnary (u, e, ann) -> EUnary (u, compile_match e, ann)
-  | ETuple (e1, e2, ann) -> ETuple (compile_match e1, compile_match e2, ann)
+  | ETuple (e1, e2, es, ann) -> ETuple (compile_match e1, compile_match e2, List.map compile_match es, ann)
   | EFun (args, body, ann) -> EFun (args, compile_match body, ann)
   | EBinary (op, e1, e2, ann) -> EBinary (op, compile_match e1, compile_match e2, ann)
   | EIfe (cond, e1, e2, ann) -> EIfe (compile_match cond, compile_match e1, compile_match e2, ann)

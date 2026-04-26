@@ -39,8 +39,10 @@ and normalize (m: _ expr) k = match m with
 | EBinary (op, e1, e2, loc) ->
   normalize_name e1 (fun e1' -> normalize_name e2 (fun e2' -> k (EBinary (op, e1', e2', loc))))
 | EUnary (op, e, loc) -> normalize_name e (fun e' -> k (EUnary (op, e', loc)))
-| ETuple (e1, e2, loc) -> 
-  normalize_name e1 (fun e1' -> normalize_name e2 (fun e2' -> k (ETuple (e1', e2', loc))))
+| ETuple (e1, e2, es, loc) -> 
+  normalize_name e1 (fun e1' -> 
+    normalize_name e2 (fun e2' -> 
+      normalize_name_mult es (fun es' -> k (ETuple (e1', e2', es', loc)))))
 and normalize_name m k = (* TODO: can case cause problems here? *)
   normalize m (fun n -> 
     if is_name n then k n

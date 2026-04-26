@@ -166,7 +166,7 @@ let rec occurs_in (tyvar_id: int) (t: typ) : bool =
   | TError -> false
   | TUnit | TInt | TBool | TString | TName _ | TParam _-> false
   | TSignal t | TLater t | TDelay t  | TChan t-> occurs_in tyvar_id t
-  | TTuple (t1, t2) -> occurs_in tyvar_id t1 || occurs_in tyvar_id t2
+  | TTuple (t1, t2, ts) -> occurs_in tyvar_id t1 || occurs_in tyvar_id t2 || List.exists (occurs_in tyvar_id) ts
   | TApp (t, ts) -> occurs_in tyvar_id t || List.exists (occurs_in tyvar_id) ts
   | TFun (Cons1(front, rest), t2) ->
     occurs_in tyvar_id front || List.exists (occurs_in tyvar_id) rest || occurs_in tyvar_id t2
@@ -190,9 +190,12 @@ let rec unify ann (t1: typ) (t2: typ) : unit t =
   | TSignal t1, TSignal t2 | TLater t1, TLater t2 | TDelay t1, TDelay t2 
   | TChan t1, TChan t2 -> 
     unify ann t1 t2
-  | TTuple (t1a, t1b), TTuple (t2a, t2b) ->
+  | TTuple (t1a, t1b, ts1), TTuple (t2a, t2b, ts2) ->
     let* () = unify ann t1a t2a in
-    unify ann t1b t2b
+    let* () = unify ann t1b t2b in
+    if List.length ts1 <> List.length ts2 
+    then report_error ann (Format.asprintf "Type mismatch: cannot unify '%a' with '%a' because they have different sizes" Ast.pp_typ t1 Ast.pp_typ t2)
+    else List.fold_left2 (fun acc t1 t2 -> let* _ = acc in unify ann t1 t2) (return ()) ts1 ts2
   | TApp (t1, ts1), TApp (t2, ts2) ->
     if List.length ts1 <> List.length ts2
     then report_error ann (Format.asprintf "Type mismatch: cannot unify '%a' with '%a' because they have different number of type arguments" Ast.pp_typ t1 Ast.pp_typ t2)
@@ -269,10 +272,11 @@ let rec apply_subst ?(subst_map = None) (t: typ) : typ t =
   | TDelay t -> 
     let* t = apply_subst t in
     return (TDelay t)
-  | TTuple (t1, t2) -> 
+  | TTuple (t1, t2, ts) -> 
     let* t1 = apply_subst t1 in
     let* t2 = apply_subst t2 in
-    return (TTuple (t1,t2))
+    let* ts = collect (List.map apply_subst ts) in
+    return (TTuple (t1,t2, ts))
   | TChan t -> 
     let* t = apply_subst t in
     return (TChan t)
@@ -330,8 +334,10 @@ let generalize_type_vars ?(id_to_name = ref IntMap.empty) typ : typ t =
     | TLater t  -> let* t = go t in return (TLater t)
     | TDelay t  -> let* t = go t in return (TDelay t)
     | TChan t   -> let* t = go t in return (TChan t)
-    | TTuple (t1, t2) ->
-      let* t1 = go t1 in let* t2 = go t2 in return (TTuple (t1, t2))
+    | TTuple (t1, t2, ts) ->
+      let* t1 = go t1 in let* t2 = go t2 in
+      let* ts = collect (List.map go ts) in
+      return (TTuple (t1, t2, ts))
     | TFun (Cons1(front, rest), ret) ->
       let* params = collect (List.map go (front :: rest)) in
       let* ret = go ret in

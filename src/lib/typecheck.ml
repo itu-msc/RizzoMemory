@@ -65,10 +65,11 @@ let rec generalize : typ -> scheme Type_env.t = fun t ->
     | TLater t -> let* t = replace_generalized_tvars t in return (TLater t)
     | TDelay t -> let* t = replace_generalized_tvars t in return (TDelay t)
     | TChan t -> let* t = replace_generalized_tvars t in return (TChan t)
-    | TTuple (t1, t2) ->
+    | TTuple (t1, t2, ts) ->
       let* t1 = replace_generalized_tvars t1 in
       let* t2 = replace_generalized_tvars t2 in
-      return (TTuple (t1, t2))
+      let* ts = Type_env.collect (List.map replace_generalized_tvars ts) in
+      return (TTuple (t1, t2, ts))
     | TFun (Cons1 (front, rest), ret) ->
       let* params = Type_env.collect (List.map replace_generalized_tvars (front :: rest)) in
       let* ret = replace_generalized_tvars ret in
@@ -88,10 +89,16 @@ and free_tvar_ids_typ : typ -> IntSet.t Type_env.t = fun t ->
   match t with
   | TError -> return IntSet.empty
   | TVar id -> return (IntSet.singleton id)
-  | TTuple (t1, t2) ->
+  | TTuple (t1, t2, ts) ->
     let* t1_free = free_tvar_ids_typ t1 in
     let* t2_free = free_tvar_ids_typ t2 in
-    return (IntSet.union t1_free t2_free)
+    let* ts_free = List.fold_left (fun acc t -> 
+      let* acc = acc in 
+      let* t_free = free_tvar_ids_typ t in
+      return (IntSet.union t_free acc)) 
+      (return (IntSet.union t1_free t2_free)) ts 
+    in
+    return ts_free
   | TSignal t | TDelay t | TLater t | TChan t -> free_tvar_ids_typ t
   | TUnit | TInt | TBool | TString | TName _ | TParam _ -> return IntSet.empty
   | TApp (t, ts) ->
@@ -129,10 +136,16 @@ and free_tvar_ids_env : unit -> IntSet.t Type_env.t = fun () ->
 and free_type_vars_typ : typ -> StringSet.t Type_env.t = function
   | TError -> return StringSet.empty
   | TVar _ -> return StringSet.empty
-  | TTuple (t1, t2) -> 
+  | TTuple (t1, t2, ts) -> 
     let* t1_free = free_type_vars_typ t1 in
     let* t2_free = free_type_vars_typ t2 in
-    return (StringSet.union t1_free t2_free)
+    let* ts_free = List.fold_left (fun acc t -> 
+      let* acc = acc in 
+      let* t_free = free_type_vars_typ t in
+      return (StringSet.union t_free acc)) 
+      (return (StringSet.union t1_free t2_free)) ts 
+    in
+    return ts_free
   | TApp (t, ts) ->
     let* t_free = free_type_vars_typ t in
     let* ts_free = Type_env.collect (List.map free_type_vars_typ ts) in
@@ -184,7 +197,11 @@ let rec is_valid_type ann = function
     | Some _ -> return ()) 
   | TBool | TInt | TUnit | TVar _ | TError | TString | TParam _ -> return ()
   | TChan t | TDelay t | TSignal t | TLater t -> is_valid_type ann t
-  | TTuple (t1,t2) -> let* _ = is_valid_type ann t1 in is_valid_type ann t2
+  | TTuple (t1,t2,ts) -> 
+    let* _ = is_valid_type ann t1 in 
+    let* _ = is_valid_type ann t2 in
+    let* _ = Type_env.collect (List.map (is_valid_type ann) ts) in
+    return ()
   | TFun (Cons1(t, ts), rt) -> 
     List.fold_left (fun acc t -> let* _ = acc in is_valid_type ann t) (is_valid_type ann rt) (t :: ts)
   | TApp (t, _) -> 
@@ -362,12 +379,14 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
           return TError)
     in
     return (EVar (name, Ann_typed (get_location ann, var_type)))
-  | ETuple (e1, e2, ann) -> 
+  | ETuple (e1, e2, es, ann) -> 
     let* te1 = infer e1 in
     let* te2 = infer e2 in
-    let*t1 = get_typ te1 in
+    let* tes = Type_env.collect (List.map infer es) in
+    let* t1 = get_typ te1 in
     let* t2 = get_typ te2 in
-    return (ETuple (te1, te2, Ann_typed (get_location ann, TTuple (t1, t2))))
+    let* ttes = Type_env.collect (List.map get_typ tes) in
+    return (ETuple (te1, te2, tes, Ann_typed (get_location ann, TTuple (t1, t2, ttes))))
   | EBinary (op, e1, e2, ann) -> infer_binary op e1 e2 ann
   | EUnary (op, e, ann) -> infer_unary op e ann
   | EApp (f, args, ann) -> 
@@ -584,16 +603,24 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
     let* _ = Type_env.expected_equal ann const_type expected_type in
     let* pattern_type = Type_env.apply_subst const_type in
     return (PConst (c, Ann_typed (get_location ann, pattern_type)), [])
-  | PTuple (p1, p2, ann) ->
+  | PTuple (p1, p2, ps, ann) ->
     let* t1 = Type_env.fresh_type_var () in
     let* t2 = Type_env.fresh_type_var () in
-    let* _ = Type_env.expected_equal ann expected_type (TTuple (t1, t2)) in
+    let* ts = Type_env.collect (List.map (fun _ -> Type_env.fresh_type_var ()) ps) in
+    let* _ = Type_env.expected_equal ann expected_type (TTuple (t1, t2, ts)) in
     let* typed_p1, bindings_1 = check_pattern p1 t1 in
     let* typed_p2, bindings_2 = check_pattern p2 t2 in
+    let* typed_ps, bindings_ps = 
+      let* l = Type_env.collect (List.map2 check_pattern ps ts) in
+      let typed_ps, bindings_ps = List.split l in
+      return (typed_ps, List.concat bindings_ps)
+    in
     let* t1 = Type_env.apply_subst t1 in
     let* t2 = Type_env.apply_subst t2 in
-    let pattern_type = TTuple (t1, t2) in
-    return (PTuple (typed_p1, typed_p2, Ann_typed (get_location ann, pattern_type)), bindings_1 @ bindings_2)
+    let* ts = Type_env.collect (List.map Type_env.apply_subst ts) in
+    let pattern_type = TTuple (t1, t2, ts) in
+    let ann_typed = Ann_typed (get_location ann, pattern_type) in
+    return (PTuple (typed_p1, typed_p2, typed_ps, ann_typed), bindings_1 @ bindings_2 @ bindings_ps)
   | PSigCons (hd_pattern, (tail_name, tail_ann), ann) ->
     let* expected_type = Type_env.apply_subst expected_type in
     (match expected_type with
@@ -776,13 +803,18 @@ and infer_unary : type s. Ast.unary_op -> s expr -> s ann -> typed expr Type_env
       | _ -> 
         let* _ = error ann "Signal only has 2 projections: 0 for head and 1 for tail" in
         return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
-    | TTuple (t1, t2) -> 
+    | TTuple (t1, t2, ts) -> 
       (match i with
       | 0 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t1))) 
       | 1 -> return (EUnary (UProj i, te, Ann_typed (get_location ann, t2))) 
       | _ -> 
-        let* _ = error ann "Tuple only has 2 projections: 0 for first and 1 for second" in
-        return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
+        let idx = i - 2 in
+        if 0 <= idx && idx < List.length ts then
+          let* t = Type_env.apply_subst (List.nth ts idx) in
+          return (EUnary (UProj i, te, Ann_typed (get_location ann, t)))
+        else
+          let* _ = error ann (Printf.sprintf "Projection %d is not valid for tuple of size %d" i (2 + List.length ts)) in
+          return (EUnary (UProj i, te, Ann_typed (get_location ann, TError))))
 and normalize_typed_ann : type stage. (string IntMap.t ref) -> stage ann -> stage ann Type_env.t =
   fun id_to_name -> function
   | Ann_typed (loc, typ) ->
@@ -805,11 +837,12 @@ and normalize_typed_pattern id_to_name : typed pattern -> typed pattern Type_env
   | PConst (c, ann) ->
     let* ann = normalize_typed_ann id_to_name ann in
     return (PConst (c, ann))
-  | PTuple (p1, p2, ann) ->
+  | PTuple (p1, p2, ps, ann) ->
     let* p1 = normalize_typed_pattern id_to_name p1 in
     let* p2 = normalize_typed_pattern id_to_name p2 in
+    let* ps = Type_env.collect (List.map (normalize_typed_pattern id_to_name) ps) in
     let* ann = normalize_typed_ann id_to_name ann in
-    return (PTuple (p1, p2, ann))
+    return (PTuple (p1, p2, ps, ann))
   | PSigCons (p1, name, ann) ->
     let* p1 = normalize_typed_pattern id_to_name p1 in
     let* name = normalize_typed_name id_to_name name in
@@ -863,11 +896,12 @@ and normalize_typed_expr id_to_name : typed expr -> typed expr Type_env.t = func
     let* e2 = normalize_typed_expr id_to_name e2 in
     let* ann = normalize_typed_ann id_to_name ann in
     return (EBinary (op, e1, e2, ann))
-  | ETuple (e1, e2, ann) ->
+  | ETuple (e1, e2, es, ann) ->
     let* e1 = normalize_typed_expr id_to_name e1 in
     let* e2 = normalize_typed_expr id_to_name e2 in
+    let* es = Type_env.collect (List.map (normalize_typed_expr id_to_name) es) in
     let* ann = normalize_typed_ann id_to_name ann in
-    return (ETuple (e1, e2, ann))
+    return (ETuple (e1, e2, es, ann))
   | ECase (scrutinee, branches, ann) ->
     let* scrutinee = normalize_typed_expr id_to_name scrutinee in
     let* branches =

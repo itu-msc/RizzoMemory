@@ -12,8 +12,11 @@ let rec count_let_bindings target = function
   | EApp (fn, args, _) ->
       count_let_bindings target fn
       + List.fold_left (fun acc e -> acc + count_let_bindings target e) 0 args
-  | EBinary (_, e1, e2, _) | ETuple (e1, e2, _) ->
-      count_let_bindings target e1 + count_let_bindings target e2
+  | EBinary (_, e1, e2, _) ->
+    count_let_bindings target e1 + count_let_bindings target e2
+  | ETuple (e1, e2, es, _) ->
+    let first_two = count_let_bindings target e1 + count_let_bindings target e2 in
+    List.fold_left (fun acc e -> acc + count_let_bindings target e) first_two es
   | EUnary (_, e, _) -> count_let_bindings target e
   | EIfe (c, t, e, _) ->
       count_let_bindings target c

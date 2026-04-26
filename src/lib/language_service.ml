@@ -478,9 +478,10 @@ let top_level_constructor_declarations : type s.
       | Ast.EBinary (_, e1, e2, _) ->
         iter_expr f e1;
         iter_expr f e2
-      | Ast.ETuple (e1, e2, _) ->
+      | Ast.ETuple (e1, e2, es, _) ->
         iter_expr f e1;
-        iter_expr f e2
+        iter_expr f e2;
+        List.iter (iter_expr f) es
       | Ast.ECase (scrutinee, branches, _) ->
         iter_expr f scrutinee;
         List.iter (fun (_, branch, _) -> iter_expr f branch) branches
@@ -583,8 +584,9 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
     | Ast.PVar (name, ann) -> [ (name, range_of_ann ann) ]
   | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
         pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
-    | Ast.PTuple (p1, p2, _) ->
+    | Ast.PTuple (p1, p2, ps, _) ->
         pattern_bound_decls p1 @ pattern_bound_decls p2
+        @ List.concat_map pattern_bound_decls ps
     | Ast.PCtor (_, args, _) ->
         List.flatten (List.map pattern_bound_decls args)
 
@@ -594,8 +596,9 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
     | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ -> []
     | Ast.PSigCons (p1, _, _) | Ast.PStringCons (p1, _, _) ->
       pattern_constructor_occurrences p1
-    | Ast.PTuple (p1, p2, _) ->
+    | Ast.PTuple (p1, p2, ps,  _) ->
       pattern_constructor_occurrences p1 @ pattern_constructor_occurrences p2
+      @ List.concat_map pattern_constructor_occurrences ps
     | Ast.PCtor (ctor_name, args, _) ->
       (name_text ctor_name, range_of_name ctor_name)
       :: List.flatten (List.map pattern_constructor_occurrences args)
@@ -625,8 +628,9 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
                 source = CompletionLocal;
               } );
           ]
-    | Ast.PTuple (p1, p2, _) ->
+    | Ast.PTuple (p1, p2, ps, _) ->
         pattern_bound_symbols p1 @ pattern_bound_symbols p2
+        @ List.concat_map pattern_bound_symbols ps
     | Ast.PCtor (_, args, _) ->
         List.flatten (List.map pattern_bound_symbols args)
 
@@ -637,8 +641,9 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
     | Ast.PVar (name, ann) -> [ (name, ann) ]
     | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
       pattern_bound_names p1 @ [ p2 ]
-    | Ast.PTuple (p1, p2, _) ->
+    | Ast.PTuple (p1, p2, ps, _) ->
       pattern_bound_names p1 @ pattern_bound_names p2
+      @ List.concat_map pattern_bound_names ps
     | Ast.PCtor (_, args, _) ->
       List.flatten (List.map pattern_bound_names args)
 
@@ -648,8 +653,9 @@ let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
     | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ -> []
   | Ast.PSigCons (p1, _, _) | Ast.PStringCons (p1, _, _) ->
         pattern_constructor_ranges p1
-    | Ast.PTuple (p1, p2, _) ->
+    | Ast.PTuple (p1, p2, ps, _) ->
         pattern_constructor_ranges p1 @ pattern_constructor_ranges p2
+        @ List.concat_map pattern_constructor_ranges ps
     | Ast.PCtor (ctor_name, args, _) ->
         range_of_name ctor_name :: List.flatten (List.map pattern_constructor_ranges args)
 
@@ -669,10 +675,8 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
         else
           None
     | Ast.PConst (_, _) -> None
-    | Ast.PTuple (p1, p2, _) ->
-        (match pattern_hover_at_position ~position p1 with
-         | Some _ as hover -> hover
-         | None -> pattern_hover_at_position ~position p2)
+    | Ast.PTuple (p1, p2, ps, _) ->
+      List.find_map (pattern_hover_at_position ~position) (p1 :: p2 :: ps)
     | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
         (match pattern_hover_at_position ~position p1 with
          | Some _ as hover -> hover
@@ -847,10 +851,8 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
             (match find_in_expr env e1 with
              | Some _ as found -> found
              | None -> find_in_expr env e2)
-        | Ast.ETuple (e1, e2, _) ->
-            (match find_in_expr env e1 with
-             | Some _ as found -> found
-             | None -> find_in_expr env e2)
+        | Ast.ETuple (e1, e2, es, _) ->
+          List.find_map (find_in_expr env) (e1 :: e2 :: es)
         | Ast.ECase (scrutinee, branches, _) ->
             (match find_in_expr env scrutinee with
              | Some _ as found -> found
@@ -1063,10 +1065,8 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
             (match resolve_in_expr env e1 with
              | Some _ as found -> found
              | None -> resolve_in_expr env e2)
-        | Ast.ETuple (e1, e2, _) ->
-            (match resolve_in_expr env e1 with
-             | Some _ as found -> found
-             | None -> resolve_in_expr env e2)
+        | Ast.ETuple (e1, e2, es, _) ->
+          List.find_map (resolve_in_expr env) (e1 :: e2 :: es)
         | Ast.ECase (scrutinee, branches, _) ->
             (match resolve_in_expr env scrutinee with
              | Some _ as found -> found
@@ -1216,9 +1216,13 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
                 let acc = collect_expr_ranges env acc fn in
                 List.fold_left (collect_expr_ranges env) acc args
             | Ast.EUnary (_, e, _) -> collect_expr_ranges env acc e
-            | Ast.EBinary (_, e1, e2, _) | Ast.ETuple (e1, e2, _) ->
-                let acc = collect_expr_ranges env acc e1 in
-                collect_expr_ranges env acc e2
+            | Ast.EBinary (_, e1, e2, _) ->
+              let acc = collect_expr_ranges env acc e1 in
+              collect_expr_ranges env acc e2
+            | Ast.ETuple (e1, e2, es, _) ->
+              let collect = collect_expr_ranges env in
+              let acc = collect (collect acc e1) e2 in
+              List.fold_left collect acc es
             | Ast.ECase (scrutinee, branches, _) ->
                 let acc = collect_expr_ranges env acc scrutinee in
                 List.fold_left
@@ -1373,10 +1377,8 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                   (match find_symbol_hover_in_expr e1 with
                    | Some _ as hover -> hover
                    | None -> find_symbol_hover_in_expr e2)
-              | Ast.ETuple (e1, e2, _) ->
-                  (match find_symbol_hover_in_expr e1 with
-                   | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr e2)
+              | Ast.ETuple (e1, e2, es, _) ->
+                List.find_map find_symbol_hover_in_expr (e1 :: e2 :: es)
               | Ast.ECase (scrutinee, branches, _) ->
                   (match find_symbol_hover_in_expr scrutinee with
                    | Some _ as hover -> hover
@@ -1692,13 +1694,17 @@ let completions_at_position
               (match env_in_expr env e with
                | Some _ as found -> found
                | None -> Some env)
-          | Ast.EBinary (_, e1, e2, _) | Ast.ETuple (e1, e2, _) ->
-              (match env_in_expr env e1 with
-               | Some _ as found -> found
-               | None ->
-                   (match env_in_expr env e2 with
-                    | Some _ as found -> found
-                    | None -> Some env))
+          | Ast.EBinary (_, e1, e2, _) ->
+            (match env_in_expr env e1 with
+            | Some _ as found -> found
+            | None ->
+                (match env_in_expr env e2 with
+                  | Some _ as found -> found
+                  | None -> Some env))
+          | Ast.ETuple (e1, e2, es, _) ->
+            (match List.find_map (env_in_expr env) (e1 :: e2 :: es) with
+              | None -> Some env
+              | found -> found)
           | Ast.ECase (scrutinee, branches, _) ->
               (match env_in_expr env scrutinee with
                | Some _ as found -> found
@@ -1864,9 +1870,10 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
          | Ast.EBinary (_, e1, e2, _) ->
              walk_expr env e1;
              walk_expr env e2
-         | Ast.ETuple (e1, e2, _) ->
+         | Ast.ETuple (e1, e2, es, _) ->
              walk_expr env e1;
-             walk_expr env e2
+             walk_expr env e2;
+              List.iter (walk_expr env) es
          | Ast.ECase (scrutinee, branches, _) ->
              walk_expr env scrutinee;
              List.iter

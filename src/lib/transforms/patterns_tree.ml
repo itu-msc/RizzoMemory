@@ -42,7 +42,7 @@ let rec sink_until_first_use name proj ann expr =
 	| EUnary (op, e, ann') -> EUnary (op, sink_until_first_use name proj ann e, ann')
 	| ECtor (_, args, _ann') when List.exists used_in args -> ELet (name, proj, expr, ann)
 	| EAnno (e, t, ann') -> EAnno (sink_until_first_use name proj ann e, t, ann')
-	| ETuple (e1, e2, _ann') when used_in e1 || used_in e2 -> ELet (name, proj, expr, ann)
+	| ETuple (e1, e2, es, _ann') when used_in e1 || used_in e2 || List.exists used_in es -> ELet (name, proj, expr, ann)
 	| EFun (_, body, _ann') when used_in body -> ELet (name, proj, expr, ann)
 	| EIfe (cond, e1, e2, ann') ->
 		if used_in cond then ELet (name, proj, expr, ann)
@@ -115,7 +115,8 @@ let same_test_pattern left right =
 
 let test_fresh_vars = function
 	| PConst _ -> []
-	| PTuple _ -> [Utilities.new_name "tuple_left"; Utilities.new_name "tuple_right"]
+	| PTuple (p1, p2, ps_rest, _) -> 
+		List.map (fun _ -> Utilities.new_name "tuple_nth") (p1 :: p2 :: ps_rest)
 	| PCtor (_, args, _) -> List.init (List.length args) (fun _ -> Utilities.new_name "ctor_field")
 	| PSigCons _ -> [Utilities.new_name "sig_head"; Utilities.new_name "sig_tail"]
 	| _ -> []
@@ -165,9 +166,14 @@ let add_test_subpatterns branch_var fresh_vars test_pat clause =
 	let pats = StringMap.remove branch_var clause.pats in
 	match test_pat, fresh_vars with
 	| PConst _, [] -> { clause with pats }
-	| PTuple (p1, p2, _), [left; right] ->
-		{ clause with
-			pats = pats |> StringMap.add left p1 |> StringMap.add right p2 }
+	| PTuple (p1, p2, ps_rest, _), (left :: right :: rest_fresh) when List.length ps_rest = List.length rest_fresh->
+		let pats = 
+			pats 
+			|> StringMap.add left p1 
+			|> StringMap.add right p2  
+			|> fun pats -> List.fold_left2 (fun acc fresh pat -> StringMap.add fresh pat acc) pats rest_fresh ps_rest
+		in
+		{ clause with pats }
 	| PCtor (_, args, _), fresh_vars when List.length args = List.length fresh_vars ->
 		let pats = List.fold_left2 (fun acc fresh pat -> StringMap.add fresh pat acc) pats fresh_vars args in
 		{ clause with pats }
@@ -238,17 +244,15 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 	| PConst (c, patt_ann) ->
 		EIfe (app (("eq", ann)) [scrutinee; EConst (c, patt_ann)], yes, no, ann)
 	| PTuple _ ->
-		(match fresh_vars with
-		| [left; right] ->
-			ECase (
-				scrutinee,
-				[
-					(PTuple (PWildcard ann, PWildcard ann, ann),
-					 	ELet ((left, ann), proj 0 ann scrutinee, ELet ((right, ann), proj 1 ann scrutinee, yes, ann), ann), ann);
-					(PWildcard ann, no, ann)
-				],
-				ann)
-		| _ -> failwith "Tuple tests expect two field variables")
+		let rest_ps = List.map (fun _ -> PWildcard ann) fresh_vars in
+		let idxs = List.init (List.length fresh_vars) Fun.id in
+		let yes_branch = 
+			let folder var_name idx acc = ELet ((var_name, ann), proj idx ann scrutinee, acc, ann) in
+			List.fold_right2 folder fresh_vars idxs yes
+		in
+		let test_pattern = PTuple (PWildcard ann, PWildcard ann, (List.drop 2 rest_ps), ann) in
+		ECase (scrutinee, [ (test_pattern, yes_branch, ann); (PWildcard ann, no, ann) ], ann)
+
 	| PCtor ((ctor_name, ctor_ann), _, _) ->
 		let field_pats = List.map (fun _ -> PWildcard ann) fresh_vars in
 		let yes_branch =
@@ -342,7 +346,7 @@ and compile_match e =
 	| ELet (name, e1, e2, ann) -> ELet (name, compile_match e1, compile_match e2, ann)
 	| EApp (e, args, ann) -> EApp (compile_match e, List.map compile_match args, ann)
 	| EUnary (u, e, ann) -> EUnary (u, compile_match e, ann)
-	| ETuple (e1, e2, ann) -> ETuple (compile_match e1, compile_match e2, ann)
+	| ETuple (e1, e2, es, ann) -> ETuple (compile_match e1, compile_match e2, List.map compile_match es, ann)
 	| EFun (args, body, ann) -> EFun (args, compile_match body, ann)
 	| EBinary (op, e1, e2, ann) -> EBinary (op, compile_match e1, compile_match e2, ann)
 	| EIfe (cond, e1, e2, ann) -> EIfe (compile_match cond, compile_match e1, compile_match e2, ann)

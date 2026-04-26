@@ -27,8 +27,9 @@ let rec eliminate_consecutive_lambdas_expr (e : _ expr) : _ expr =
       EUnary (op, eliminate_consecutive_lambdas_expr e1, loc)
   | EBinary (op, e1, e2, loc) ->
       EBinary (op, eliminate_consecutive_lambdas_expr e1, eliminate_consecutive_lambdas_expr e2, loc)
-  | ETuple (e1, e2, loc) ->
-      ETuple (eliminate_consecutive_lambdas_expr e1, eliminate_consecutive_lambdas_expr e2, loc)
+  | ETuple (e1, e2, es, loc) ->
+    let es = List.map eliminate_consecutive_lambdas_expr es in
+    ETuple (eliminate_consecutive_lambdas_expr e1, eliminate_consecutive_lambdas_expr e2, es, loc)
   | ECase (scrutinee, branches, loc) ->
       ECase (
         eliminate_consecutive_lambdas_expr scrutinee,

@@ -37,7 +37,7 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
             aux env' e2
           | _ -> ELet (x, e1', aux env e2, ann)
         )
-    | ETuple (e1, e2, ann) -> ETuple (aux env e1, aux env e2, ann)
+    | ETuple (e1, e2, es, ann) -> ETuple (aux env e1, aux env e2, List.map (aux env) es, ann)
     | EIfe (cond, e1, e2, ann) -> 
         EIfe (aux env cond, aux env e1, aux env e2, ann)
     | ECase (scrutinee, branches, ann) ->

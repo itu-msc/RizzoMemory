@@ -83,7 +83,7 @@ let rec typ_has_tvar = function
   | Ast.TError | Ast.TUnit | Ast.TInt | Ast.TString | Ast.TBool | Ast.TName _ | Ast.TParam _ -> false
   | Ast.TSignal t | Ast.TLater t | Ast.TDelay t | Ast.TChan t -> typ_has_tvar t
   | Ast.TApp (t, ts) -> typ_has_tvar t || List.exists typ_has_tvar ts
-  | Ast.TTuple (t1, t2) -> typ_has_tvar t1 || typ_has_tvar t2
+  | Ast.TTuple (t1, t2, ts) -> typ_has_tvar t1 || typ_has_tvar t2 || List.exists typ_has_tvar ts
   | Ast.TFun (Ast.Cons1 (front, rest), ret) -> typ_has_tvar front || List.exists typ_has_tvar rest || typ_has_tvar ret
 
 let ann_has_tvar : type s. s Ast.ann -> bool = function
@@ -92,7 +92,11 @@ let ann_has_tvar : type s. s Ast.ann -> bool = function
 
 let rec pattern_has_tvar : type s. s Ast.pattern -> bool = function
   | Ast.PWildcard ann | Ast.PConst (_, ann) | Ast.PVar (_, ann) -> ann_has_tvar ann
-  | Ast.PTuple (p1, p2, ann) -> ann_has_tvar ann || pattern_has_tvar p1 || pattern_has_tvar p2
+  | Ast.PTuple (p1, p2, ps, ann) -> 
+    ann_has_tvar ann 
+    || pattern_has_tvar p1 
+    || pattern_has_tvar p2
+    || List.exists pattern_has_tvar ps
   | Ast.PSigCons (p1, (_, ann2), ann) | Ast.PStringCons (p1, (_, ann2), ann) ->
       ann_has_tvar ann || ann_has_tvar ann2 || pattern_has_tvar p1
   | Ast.PCtor ((_, ctor_ann), args, ann) ->
@@ -113,8 +117,8 @@ let rec expr_has_tvar : type s. s Ast.expr -> bool = function
       ann_has_tvar ann || expr_has_tvar expr
   | Ast.EBinary (_, e1, e2, ann) ->
       ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2
-  | Ast.ETuple (e1, e2, ann) ->
-      ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2
+  | Ast.ETuple (e1, e2, es, ann) ->
+      ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2 || List.exists expr_has_tvar es
   | Ast.ECase (scrutinee, branches, ann) ->
       ann_has_tvar ann
       || expr_has_tvar scrutinee

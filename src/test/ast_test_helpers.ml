@@ -41,7 +41,8 @@ let fun_ (params : string list) (body : parsed expr) : parsed expr =
 let app (fn : parsed expr) (args : parsed expr list) : parsed expr = EApp (fn, args, ann)
 let unary (op : unary_op) (e : parsed expr) : parsed expr = EUnary (op, e, ann)
 let binary (op : binary_op) (e1 : parsed expr) (e2 : parsed expr) : parsed expr = EBinary (op, e1, e2, ann)
-let tuple (e1 : parsed expr) (e2 : parsed expr) : parsed expr = ETuple (e1, e2, ann)
+let tuple (e1 : parsed expr) (e2 : parsed expr) : parsed expr = ETuple (e1, e2, [], ann)
+let tuple_arbitrary (e1 : parsed expr) (e2 : parsed expr) (es : parsed expr list) : parsed expr = ETuple (e1, e2, es, ann)
 let list_ (exprs : parsed expr list) : parsed expr =
   List.fold_right (fun head tail -> ctor "Cons" [head; tail]) exprs (ctor "Nil" [])
 let ife (c : parsed expr) (t : parsed expr) (e : parsed expr) : parsed expr = EIfe (c, t, e, ann)

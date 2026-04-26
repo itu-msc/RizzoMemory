@@ -50,7 +50,7 @@ let test_arbitrary_length_tuple () =
   let parsed = Rizzoc.Parser.parse_string input in
   let expected : parsed program =
     [
-      toplet "t" (tuple (int 1) (tuple (int 2) (tuple (int 3) (int 4))));
+      toplet "t" (tuple_arbitrary (int 1) (int 2) [int 3; int 4]);
     ]
   in
   Alcotest.check program_testable "arbitrary length tuple parses" expected parsed
@@ -141,9 +141,9 @@ let test_type_annotation_with_applied_tuple_type () =
   match parsed with
   | [ TopLet (_, EAnno (_, annotated_type, _), _) ] ->
     let expected_type =
-      TTuple
-        (TApp (TName "List", [TInt]),
-         TApp (TName "Option", [TApp (TName "List", [TString])]))
+      Rizzoc.Ast.Factory.typ_tuple
+        (TApp (TName "List", [TInt]))
+        (TApp (TName "Option", [TApp (TName "List", [TString])]))
     in
     Alcotest.(check bool) "annotation parses as expected" true (eq_typ annotated_type expected_type)
   | _ -> Alcotest.fail "expected a single annotated top-level let"

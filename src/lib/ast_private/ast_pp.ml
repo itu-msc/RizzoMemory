@@ -11,7 +11,10 @@ let rec pp_pattern out = function
   | PWildcard _ -> Format.fprintf out "@{<lightcyan>_@}"
   | PVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | PConst (c, _) -> pp_const out c
-  | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
+  | PTuple (p1, p2, [], _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
+  | PTuple (p1, p2, ps, _) -> 
+    let rest_format = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_pattern in
+    Format.fprintf out "(%a, %a, %a)" pp_pattern p1 pp_pattern p2 rest_format ps
   | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
   | PStringCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
   | PCtor (name, args, _) ->
@@ -47,7 +50,10 @@ and pp_expr out =
   | EBinary (op, e1, e2, _) ->
     let op_str = string_of_binary_op op in
     fprintf out "@[<hov 2>(%a@ @{<yellow>%s@}@ %a)@]" pp_expr e1 op_str pp_expr e2
-  | ETuple (e1, e2, _) -> fprintf out "@[<hov>(%a,@ %a)@]" pp_expr e1 pp_expr e2
+  | ETuple (e1, e2, [], _) -> fprintf out "@[<hov>(%a,@ %a)@]" pp_expr e1 pp_expr e2
+  | ETuple (e1, e2, es, _) -> 
+    let format_rest = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ", ") pp_expr in
+    fprintf out "@[<hov>(%a,@ %a, %a)@]" pp_expr e1 pp_expr e2 format_rest es
   | EIfe (e1, e2, e3, _) ->
     fprintf out "@[<v 2>(@{<magenta>if@} %a@ @{<magenta>then@}@ %a@ @{<magenta>else@}@ %a)@]" pp_expr e1 pp_expr e2 pp_expr e3
   | ECase (e, cases, _) ->
@@ -72,7 +78,10 @@ and pp_typ fmt =
   | TName n -> fprintf fmt "@{<green>%s@}" n
   | TParam n -> fprintf fmt "@{<green>%s@}" n
   | TSignal t -> fprintf fmt "(@{<green>Signal@} %a)" pp_typ t
-  | TTuple (t1, t2) -> fprintf fmt "(%a * %a)" pp_typ t1 pp_typ t2
+  | TTuple (t1, t2, []) -> fprintf fmt "(%a * %a)" pp_typ t1 pp_typ t2
+  | TTuple (t1, t2, ts) -> 
+    let format_rest = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out " * ") pp_typ in
+    fprintf fmt "(%a * %a * %a)" pp_typ t1 pp_typ t2 format_rest ts
   | TChan t -> fprintf fmt "(@{<green>Chan@} %a)" pp_typ t
   | TVar i -> fprintf fmt "@{<green>`weak%d@}" i
   | TApp (t, ts) -> fprintf fmt "@{<green>%a@} (@[<hov>%a@])" pp_typ t (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt ", ") pp_typ) ts
@@ -134,7 +143,10 @@ and pp_typed_expr out : typed expr -> unit =
   | EBinary (op, e1, e2, _) ->
     let op_str = string_of_binary_op op in
     Format.fprintf out "@[<hov 2>(%a@ @{<yellow>%s@}@ %a)@]" pp_typed_expr e1 op_str pp_typed_expr e2
-  | ETuple (e1, e2, _) -> Format.fprintf out "@[<hov>(%a,@ %a)@]" pp_typed_expr e1 pp_typed_expr e2
+  | ETuple (e1, e2, [], _) -> Format.fprintf out "@[<hov>(%a,@ %a)@]" pp_typed_expr e1 pp_typed_expr e2
+  | ETuple (e1, e2, es, _) -> 
+    let format_rest = Format.pp_print_list ~pp_sep:(fun out () -> Format.fprintf out "@, ") pp_typed_expr in
+    Format.fprintf out "@[<hov>(%a,@ %a,@ %a)@]" pp_typed_expr e1 pp_typed_expr e2 format_rest es
   | EIfe (e1, e2, e3, _) ->
     Format.fprintf out "@[<v 0>@{<magenta>if@} %a@,@{<magenta>then@} %a@,@{<magenta>else@} %a@]" pp_typed_expr e1 pp_typed_expr e2 pp_typed_expr e3
   | ECase (e, cases, _) ->

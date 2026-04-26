@@ -50,8 +50,8 @@ and lower_expr (e : typed expr) : parsed expr =
       EBinary (SigCons, lowered_e1, lowered_e2, parsed_ann ann))
   | EBinary (op, e1, e2, ann) ->
       EBinary (op, lower_expr e1, lower_expr e2, parsed_ann ann)
-  | ETuple (e1, e2, ann) ->
-      ETuple (lower_expr e1, lower_expr e2, parsed_ann ann)
+  | ETuple (e1, e2, es, ann) ->
+      ETuple (lower_expr e1, lower_expr e2, List.map lower_expr es, parsed_ann ann)
   | ECase (scrutinee, branches, ann) ->
       ECase (lower_expr scrutinee, List.map lower_case_branch branches, parsed_ann ann)
   | EIfe (cond, if_true, if_false, ann) ->
@@ -66,7 +66,9 @@ and lower_pattern : type s. s pattern -> parsed pattern = function
   | PWildcard ann -> PWildcard (parsed_ann ann)
   | PVar (name, ann) -> PVar (name, parsed_ann ann)
   | PConst (c, ann) -> PConst (c, parsed_ann ann)
-  | PTuple (p1, p2, ann) -> PTuple (lower_pattern p1, lower_pattern p2, parsed_ann ann)
+  | PTuple (p1, p2, ps, ann) -> 
+    let ps' = List.map lower_pattern ps in
+    PTuple (lower_pattern p1, lower_pattern p2, ps', parsed_ann ann)
   | PSigCons (p1, p2, ann) -> PSigCons (lower_pattern p1, parsed_name p2, parsed_ann ann)
   | PStringCons (p1, p2, ann) -> PStringCons (lower_pattern p1, parsed_name p2, parsed_ann ann)
   | PCtor (name, args, ann) -> PCtor (parsed_name name, List.map lower_pattern args, parsed_ann ann)

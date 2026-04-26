@@ -42,10 +42,11 @@ let rec rewrite_expr function_names bound_names ~as_callee = function
           rewrite_expr function_names bound_names ~as_callee:false left,
           rewrite_expr function_names bound_names ~as_callee:false right,
           ann )
-  | ETuple (left, right, ann) ->
+  | ETuple (left, right, es, ann) ->
       ETuple
         ( rewrite_expr function_names bound_names ~as_callee:false left,
           rewrite_expr function_names bound_names ~as_callee:false right,
+          List.map (rewrite_expr function_names bound_names ~as_callee:false) es,
           ann )
   | ECase (scrutinee, branches, ann) ->
       let scrutinee' = rewrite_expr function_names bound_names ~as_callee:false scrutinee in

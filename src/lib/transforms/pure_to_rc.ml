@@ -62,7 +62,9 @@ let rec expr_to_rexpr ctor_tag_map globals locals (e : _ expr) : Rc.rexpr =
        | Some None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: trying to apply a non-function global '%s'" f
        | None -> failwith @@ Printf.sprintf "expr_to_rexpr failed: unable to find '%s' in globals" f)
   | EBinary (SigCons, n1, n2, _) -> RCtor (Signal { head = get_name n1; tail = get_name n2 })
-  | ETuple (n1, n2, _) -> RCtor (Ctor { tag = tagof "tuple"; fields = [get_name n1; get_name n2] })
+  | ETuple (n1, n2, ns, _) -> 
+    let fields = List.map get_name (n1 :: n2 :: ns) in
+    RCtor (Ctor { tag = tagof "tuple"; fields })
   | EBinary (BSync, n1, n2, _) -> RCtor (Ctor { tag = tagof "sync"; fields = [get_name n1; get_name n2] })
   | EBinary (BLaterApp, n1, n2, _) -> RCtor (Ctor { tag = tagof "later_app"; fields = [get_name n1; get_name n2] })
   | EBinary (BOStar, n1, n2, _) -> RCtor (Ctor { tag = tagof "ostar"; fields = [get_name n1; get_name n2] })
@@ -148,7 +150,7 @@ and expr_to_fn_body ctor_tag_map globals locals (e : _ expr) : Rc.fn_body =
     | PConst (CUnit, _) -> case_arm ~tag:(tagof "unit") ~num_fields:0 body
     | PConst (CString _, _) -> failwith "String patterns should be eliminated before RC lowering"
     | PConst (CInt _, _) -> failwith "Integer patterns are not supported in RC lowering"
-    | PTuple _ -> case_arm ~tag:(tagof "tuple") ~num_fields:2 body
+    | PTuple (_, _, ps, _) -> case_arm ~tag:(tagof "tuple") ~num_fields:(2 + List.length ps) body
     | PSigCons _ -> case_arm ~tag:0 ~num_fields:5 body
     | PStringCons _ -> failwith "String patterns should be eliminated before RC lowering"
     | PCtor ((ctor_name, _), args, _) -> case_arm ~tag:(tagof ctor_name) ~num_fields:(List.length args) body

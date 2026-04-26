@@ -34,7 +34,7 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
       let lifted_e1 = lift_expr e1 in
       let lifted_e2 = lift_expr e2 in
       ELet (x, lifted_e1, lifted_e2, loc)
-  | ETuple (e1, e2, loc) -> ETuple (lift_expr e1, lift_expr e2, loc)
+  | ETuple (e1, e2, es, loc) -> ETuple (lift_expr e1, lift_expr e2, List.map lift_expr es, loc)
   | EIfe (cond, e1, e2, loc) -> 
     EIfe (lift_expr cond, lift_expr e1, lift_expr e2, loc)
   | ECase (scrutinee, branches, loc) -> 

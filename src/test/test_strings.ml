@@ -20,7 +20,7 @@ let rec expr_contains_case : _ expr -> bool = function
   | EApp (fn, args, _) -> expr_contains_case fn || List.exists expr_contains_case args
   | EUnary (_, e, _) -> expr_contains_case e
   | EBinary (_, e1, e2, _) -> expr_contains_case e1 || expr_contains_case e2
-  | ETuple (e1, e2, _) -> expr_contains_case e1 || expr_contains_case e2
+  | ETuple (e1, e2, es, _) -> expr_contains_case e1 || expr_contains_case e2 || List.exists expr_contains_case es
   | EIfe (c, t, e, _) -> expr_contains_case c || expr_contains_case t || expr_contains_case e
   | EAnno (e, _, _) -> expr_contains_case e
 
@@ -33,7 +33,7 @@ let rec expr_contains_call target : _ expr -> bool = function
   | EApp (fn, args, _) -> expr_contains_call target fn || List.exists (expr_contains_call target) args
   | EUnary (_, e, _) -> expr_contains_call target e
   | EBinary (_, e1, e2, _) -> expr_contains_call target e1 || expr_contains_call target e2
-  | ETuple (e1, e2, _) -> expr_contains_call target e1 || expr_contains_call target e2
+  | ETuple (e1, e2, es, _) -> expr_contains_call target e1 || expr_contains_call target e2 || List.exists (expr_contains_call target) es
   | ECase (scrutinee, branches, _) ->
       expr_contains_call target scrutinee
       || List.exists (fun (_, body, _) -> expr_contains_call target body) branches
@@ -49,7 +49,10 @@ let rec expr_contains_call target : _ expr -> bool = function
     | EApp (fn, args, _) -> expr_contains_let_binding target fn || List.exists (expr_contains_let_binding target) args
     | EUnary (_, e, _) -> expr_contains_let_binding target e
     | EBinary (_, e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
-    | ETuple (e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
+    | ETuple (e1, e2, es, _) -> 
+      expr_contains_let_binding target e1 
+      || expr_contains_let_binding target e2 
+      || List.exists (expr_contains_let_binding target) es
     | ECase (scrutinee, branches, _) ->
       expr_contains_let_binding target scrutinee
       || List.exists (fun (_, body, _) -> expr_contains_let_binding target body) branches

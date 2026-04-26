@@ -23,8 +23,10 @@ and free_vars_expr top_decl_names e : StringSet.t =
     List.fold_left StringSet.union StringSet.empty (List.map free_vars_expr args)
   | EApp (f, args, _) -> 
     StringSet.union (free_vars_expr f) (List.fold_left StringSet.union StringSet.empty (List.map free_vars_expr args))
-  | EBinary (_, e1, e2, _) | ETuple (e1, e2, _) -> 
-    StringSet.union (free_vars_expr e1) (free_vars_expr e2)
+  | EBinary (_, e1, e2, _) -> StringSet.union (free_vars_expr e1) (free_vars_expr e2) 
+  | ETuple (e1, e2, es, _) -> 
+    let acc = StringSet.union (free_vars_expr e1) (free_vars_expr e2) in
+    List.fold_left (fun acc e -> StringSet.union (free_vars_expr e) acc) acc es
   | EUnary (_, e, _) -> free_vars_expr e
   | ELet ((x,_), e1, e2, _) ->
     StringSet.union (free_vars_expr e1) (StringSet.remove x (free_vars_expr e2))

@@ -38,36 +38,41 @@ and compile_pattern p scrutinee good bad =
 		let matched = (Utilities.new_name "match", ann) in
 		let equality = EApp (EVar ("eq", ann), [scrutinee; EConst (c, ann)], ann) in
 		ELet (matched, equality, EIfe (EVar matched, good scrutinee, bad (), ann), ann)
-	| PTuple (PWildcard _, PWildcard _, _) ->
+	| PTuple (PWildcard _, PWildcard _, ps, _) 
+		when List.for_all (function | PWildcard _ -> true | _ -> false) ps ->
 		good scrutinee
-	| PTuple (p1, PWildcard _, ann) ->
+	| PTuple (p1, PWildcard _, [], ann) ->
 		let left = (Utilities.new_name "tuple_left", ann) in
 		ELet (
 			left,
 			EApp (EVar ("fst", ann), [scrutinee], ann),
 			compile_pattern p1 (EVar left) good bad,
 			ann)
-	| PTuple (PWildcard _, p2, ann) ->
+	| PTuple (PWildcard _, p2, [], ann) ->
 		let right = (Utilities.new_name "tuple_right", ann) in
 		ELet (
 			right,
 			EApp (EVar ("snd", ann), [scrutinee], ann),
 			compile_pattern p2 (EVar right) good bad,
 			ann)
-	| PTuple (p1, p2, ann) as pat ->
-		let left = (Utilities.new_name "tuple_left", ann) in
-		let right = (Utilities.new_name "tuple_right", ann) in
-    let body = 
-      compile_pattern p1 (EVar left)
-      (fun _ -> compile_pattern p2 (EVar right) good bad)
-      bad
-    in
-		ECase (
-			scrutinee,
-			[ (pat, ELet (left,  EUnary (UProj 0, scrutinee, ann), 
-              ELet (right, EUnary (UProj 1, scrutinee, ann), body, ann), ann), ann);
-				(PWildcard ann, bad (), ann) ],
-			ann)
+	| PTuple (p1, p2, ps, ann) as pat ->
+		let rec compile_rest idx rest = 
+			match rest with
+			| [] -> good scrutinee
+			| PWildcard _ :: ps -> compile_rest (idx + 1) ps
+			| p :: ps ->
+				let field_name = (Utilities.new_name "tuple_nth", ann) in
+				ELet (
+					field_name,
+					EUnary (UProj idx, scrutinee, ann),
+					compile_pattern p (EVar field_name)
+						(fun _ -> compile_rest (idx + 1) ps)
+						bad,
+					ann)
+		in
+		let matched_branch = compile_rest 0 (p1 :: p2 :: ps) in
+		ECase (scrutinee, [ (pat, matched_branch, ann); (PWildcard ann, bad (), ann) ], ann)
+		
 	| PSigCons (head_pat, (_, tail_ann as tail), ann) ->
 		let head_name = (Utilities.new_name "sig_head", ann) in
 		let head_proj = EApp (EVar (head_elim, ann), [scrutinee], ann) in
@@ -136,7 +141,7 @@ and compile_match e =
 	| ELet (name, e1, e2, ann) -> ELet (name, compile_match e1, compile_match e2, ann)
 	| EApp (e, args, ann) -> EApp (compile_match e, List.map compile_match args, ann)
 	| EUnary (u, e, ann) -> EUnary (u, compile_match e, ann)
-	| ETuple (e1, e2, ann) -> ETuple (compile_match e1, compile_match e2, ann)
+	| ETuple (e1, e2, es, ann) -> ETuple (compile_match e1, compile_match e2, List.map compile_match es, ann)
 	| EFun (args, body, ann) -> EFun (args, compile_match body, ann)
 	| EBinary (op, e1, e2, ann) -> EBinary (op, compile_match e1, compile_match e2, ann)
 	| EIfe (cond, e1, e2, ann) -> EIfe (compile_match cond, compile_match e1, compile_match e2, ann)
