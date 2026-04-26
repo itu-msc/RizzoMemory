@@ -9,6 +9,6 @@ const escaped = JSON.stringify(version).slice(1, -1);
 
 writeFileSync(
   path,
-  source.replaceAll("##Build_version##", escaped),
+  source.replace("##Build_version##", escaped),
   "utf8",
 );
