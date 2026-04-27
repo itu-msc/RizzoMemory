@@ -90,78 +90,11 @@ Rizzo's type system includes primitive types, compound types, and the \texttt{La
 
 % For our implementation, we have chosen to keep the type system simple by not including user-defined algebraic data types. This means that programmers cannot define their own sum types or record types, and must rely on tuples and signals for data structures. This limitation simplifies the implementation of reference counting, as we do not need to handle arbitrary recursive types, but it does restrict expressiveness. Extending the type system with user-defined types is a potential area for future work.
 
-\subsubsection{Primitive Types and compound types}
-
-The language includes a small set of primitive types: \texttt{Int}, \texttt{Bool}, \texttt{String}, and the unit type \texttt{Unit}. These are simple by themselves, but can be combined using tuples and function types to create more powerful abstractions.
-
-\begin{verbatim}
-t ::= Int | Bool | String | Unit   (* primitive types *)
-    | t1 * t2                      (* tuple types *)
-    | t1 -> t2                     (* function types *)
-    | Later t                      (* later type *)
-    | Delayed t                    (* delay type *)
-    | Signal t                     (* signal type *)
-    | Sync t1 t2                   (* sync type *)
-\end{verbatim}
-
-\subsubsection{Modal Types: Later and Delayed}
-
-% reference back to \ref{section:frp:rizzo}
-
-The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.
-\citeauthor*{rizzo_modal_2025} introduced a set of constructors for these modal types, for which the constructors for \texttt{Later} values are:
-
-\begin{itemize}
-    \item \texttt{never : Later a}   (* a computation that never produces a value *)
-    \item \texttt{wait c : Later a}   (* waits for input on channel \texttt{c : Chan a} *)
-    \item \texttt{watch s~:~Later a} (* watches a partial signal $\texttt{Signal }(\texttt{Option }a)$ *)
-    \item \texttt{tail s : Later (Signal a)}   (* gets the tail of signal *)
-    \item \texttt{sync l1 l2 : Later (Sync a b)}   (* synchronizes two later's, producing a value when either or both tick *)
-    \item \texttt{laterapp f x}  (* applies \texttt{f~:~Delayed ($a \to b$)} to \texttt{x~:~Later $a$} whenever \texttt{x} becomes available *)
-\end{itemize}
-
-and the constructor for \texttt{Delayed} values is:
-\begin{itemize}
-    \item \texttt{delay e : Delayed a}   (* creates a delayed computation from expression \texttt{e} *)
-    \item \texttt{ostar f x}  (* applies \texttt{f~:~Delayed ($a \to b$)} to a delayed value \texttt{x~:~Delayed a} \todo{when it is advanced in a future time step} *)
-\end{itemize}
-
-% \paragraph{The Delayed Type.} A value of type \texttt{Delayed a} represents a computation that will be available at \emph{all} future time steps. This universally quantified nature makes \texttt{Delayed} values safe to use across time boundaries. The main constructor is \texttt{delay e : Delayed a}, which creates a delayed computation from an expression \texttt{e}. The expression \texttt{e} is not evaluated immediately, but is instead, suspended until the delayed value is applied to a later value.
-
-\subsubsection{The Sync Type}
-
-In \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025} the \texttt{sum} type is needed to represent the result of synchronizing two \texttt{Later} computations with the \texttt{sync} signal combinator. To simplify the implementation, we have chosen to use a custom \texttt{Sync} type instead, which is a three-way sum indicating which computations produced values when synchronizing two \texttt{Later} computations with \texttt{sync}:
-
-\begin{verbatim}
-type Sync a b = Left a | Right b | Both (a * b)
-\end{verbatim}
-
-In practice, the \texttt{sync} combinator is used to combine two \texttt{Later} computations, and the resulting \texttt{Sync} value indicates whether the first, second, or both signals have ticked in the current time step. This allows combinators that use \texttt{sync} to react differently depending on which inputs updated. For example, the \texttt{zip} combinator uses \texttt{sync} to combine two signals:
-
-\begin{verbatim}
-fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
-    let cont = fun mysync ->
-        match mysync with
-        | Left (xs_)      -> zip xs_ ys
-        | Right (ys_)     -> zip xs ys_
-        | Both (xs_, ys_) -> zip xs_ ys_
-    in
-    (head xs, head ys) :: (cont |> sync (tail xs) (tail ys))
-\end{verbatim}
-
-% \subsubsection{Limitations: No User-Defined Types}
-
-% A significant limitation of our current implementation is the absence of user-defined algebraic data types. Programmers cannot define custom sum types (variants) or record types. This means:
-
-% \begin{itemize}
-%     \item No custom data structures beyond tuples
-%     \item No recursive data types like lists or trees (except signals)
-% \end{itemize}
-
-% This limitation simplifies the compiler implementation, particularly the reference counting pass, but restricts the expressiveness of the language. Extending Rizzo with user-defined types is left for future work.
+\subsubsection{Primitive Types and compound types}\label{section:rizzolang:types}
+\input{sections/body/RizzoLang/rizzo_types.tex}
 
 \subsection{Semantics}\label{section:rizzolang:semantics}
 \input{sections/body/RizzoLang/semantics.tex}
 
-% \section{The Rizzo Heap}\label{section:rizzolang:heap}
-% \input{sections/body/RizzoLang/rizzoheap.tex}
+\section{The Rizzo Heap}\label{section:rizzolang:heap}
+\input{sections/body/RizzoLang/rizzoheap.tex}

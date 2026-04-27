@@ -1,14 +1,7 @@
-% In order for signals to be reachable during update, they are all stored in a signal-only heap. The heap is structured as a list because the ordering is important for making sure signals are updated in the correct order.
+% \todo{This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
+% We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).}
 
-% The reactive semantics describe how signals are updated when time is progressed. Described at a high level, the procedure will mark all signals as old, by moving them to the \texttt{Earlier Heap}. We then iterate through all signals in the heap. 
-% For each signal it checks if the signal was dependent, either directly or indirectly, on the channel that produced a value and if so the signal is updated otherwise it is skipped. 
-% A signal is then updated by evaluating the delayed computation in the tail, resulting in a new signal which is copied back into the old signal. When done, we move the original signal back to the \texttt{Now Heap} and continue with the next signal.
-
-
-\todo{This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
-We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).}
-
-For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become \todo{RizzoLang}, rather than a comprehensive explanation of these. Therefore, we will focus on the adjustments we have made and the unavoidable parts such as the signal heap.
+For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become \todo{RizzoLang}, rather than a comprehensive explanation of each. Therefore, we focus on the necessary adjustments and the unavoidable parts such as the signal heap.
 
 % Our implementation depends on adhering to the reactive semantics of Rizzo as defined in \citetitle{rizzo_modal_2025}~\cite{rizzo_modal_2025}, while also implementing the reference counting semantics from \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. In this section we describe how we have structured our implementation to meet these requirements, and how the design of the heap and AST supports these semantics.
 
