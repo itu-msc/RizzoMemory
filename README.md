@@ -29,14 +29,15 @@ To install a specific version, pass the `--version` flag:
 curl -fsSL https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.sh | bash -s -- --version v0.1.2
 ```
 
-> **Security Note**: For added security, you can download and inspect the script before running it:
-> ```sh
-> curl -fsSL https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.sh -o install.sh
-> # Review the script
-> cat install.sh
-> # Run it
-> bash install.sh
-> ```
+**Security Note**: You can download and inspect the script before running it:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.sh -o install.sh
+# Review the script
+cat install.sh
+# Run it
+bash install.sh
+```
 
 By default the installer:
 
@@ -48,7 +49,28 @@ You can override the managed install root with `RIZZO_HOME` and the symlink dire
 
 ### Windows
 
-Windows does not have a raw installer yet; use the release archives directly for now.
+Run the install script to download and install the latest version:
+
+```powershell
+irm https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.ps1 | iex
+```
+
+To install a specific version, use the scriptblock form so PowerShell can bind `-Version`:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/itu-msc/RizzoMemory/main/install.ps1))) -Version 0.2.1
+```
+
+By default the installer:
+
+- installs versioned toolchains under `$env:LOCALAPPDATA\Rizzo\toolchains`
+- updates `$env:LOCALAPPDATA\Rizzo\current`
+- creates `rizzoc.cmd` and `rizzolsp.cmd` under `$env:LOCALAPPDATA\Programs\Rizzo\bin`
+- adds that bin directory to the user `Path`
+
+You can override the managed install root with `RIZZO_HOME`, the launcher directory with `RIZZO_BIN_DIR`, and skip the `Path` update with `-NoPathUpdate`.
+
+If you want to inspect the installer first, download `install.ps1` and run it locally instead of piping it to `iex`.
 
 ## Development
 
@@ -86,6 +108,7 @@ Multiple input files are compiled left-to-right after that implicit stdlib and a
 Open any `.rizz` file and click the **▶ Run** button in the editor title bar, or run the command **Rizzo: Run Current File** from the Command Palette.
 
 The extension will:
+
 1. Save the file
 2. Compile it with `rizzoc` (auto-detected from local build or `opam exec -- dune exec rizzoc --`)
 3. Compile the generated `output.c` with `gcc` (or the C compiler set in `rizzoLsp.compiler.cc`)
@@ -94,13 +117,13 @@ The extension will:
 **Configuration** (`settings.json`):
 
 | Setting | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `rizzoLsp.compiler.command` | *(auto)* | Path to `rizzoc` binary. Leave empty to auto-detect. |
 | `rizzoLsp.compiler.cc` | `gcc` | C compiler command (`gcc` or `clang`). |
 
 ## LSP and VS Code extension
 
-The Extension can be installed from the GitHub releases page, or built locally from the `vscode-rizzo-lsp` folder. 
+The Extension can be installed from the GitHub releases page, or built locally from the `vscode-rizzo-lsp` folder.
 > The LSP (`rizzolsp`) is installed alongside the compiler, so make sure to have the compiler in your PATH or configure the extension to find it.
 
 The extension will automatically start the LSP server when you open a `.rizz` file, but you can also run it manually for development or debugging purposes.
@@ -139,7 +162,7 @@ For development you might want to run the extension in a debug session, which al
 The extension provides several commands accessible via the Command Palette (`Ctrl+Shift+P`):
 
 | Command | Description |
-|---------|-------------|
+| --- | --- |
 | `Rizzo: Run Current File` | Compile and run the active `.rizz` file |
 | `Rizzo: Check LSP Health` | Show LSP server status and configuration |
 | `Rizzo: Restart LSP Server` | Restart the language server |
