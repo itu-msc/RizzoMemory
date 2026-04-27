@@ -1,0 +1,108 @@
+The reactive semantics of Rizzo require that all signals be reachable during the update phase. To support this, signals are stored in a dedicated heap structure. In this section we describe the design of this heap and how it interacts with reference counting to enable efficient memory management.
+
+\subsection{Object Representation}
+
+All heap-allocated objects in Rizzo share a common header structure:
+
+\begin{verbatim}
+struct rz_header {
+    uint16_t num_fields;    /* number of fields in the object */
+    uint8_t  tag;           /* constructor tag for pattern matching */
+    uint8_t  obj_type;      /* object kind: regular, string, signal, etc. */
+    int32_t  refcount;      /* reference count */
+};
+\end{verbatim}
+
+The \texttt{num\_fields} and \texttt{tag} fields support pattern matching and recursive deallocation. The \texttt{obj\_type} field distinguishes between regular objects, strings, signals, and partial applications---each requiring different handling during deallocation. The \texttt{refcount} field tracks how many references point to this object.
+
+Following the header, objects store their fields as an array of boxed values. A boxed value (\texttt{rz\_box\_t}) can hold either an immediate integer, a string literal pointer, or a pointer to a heap object. This uniform representation simplifies the generated code at the cost of some memory overhead.
+
+\subsection{Signal Structure}
+
+Signals have additional fields beyond the standard header:
+
+\begin{verbatim}
+struct rz_signal {
+    rz_header_t header;
+    rz_box_t head;      /* current value */
+    rz_box_t tail;      /* Later computation for future values */
+    rz_box_t updated;   /* flag: was this signal updated this tick? */
+    rz_box_t prev;      /* previous signal in heap (doubly-linked list) */
+    rz_box_t next;      /* next signal in heap */
+};
+\end{verbatim}
+
+The \texttt{head} and \texttt{tail} fields correspond to the signal definition from Section~\ref{section:frp:rizzo}. The \texttt{updated} flag is set during the heap update procedure and is used by combinators that need to know whether a signal changed (e.g., \texttt{watch}).
+
+The \texttt{prev} and \texttt{next} pointers form a doubly-linked list, which is the heap structure itself.
+
+\subsection{The Heap as a Linked List}
+
+The signal heap is implemented as a doubly-linked list rather than a contiguous array. This design choice is motivated by several requirements:
+
+\begin{enumerate}
+    \item \textbf{Ordered iteration}: Signals must be updated in the order they were created to respect dependencies. For example, if signal $s_2$ depends on $s_1$, then $s_1$ must be updated before $s_2$. A linked list naturally preserves insertion order, while an array would require additional bookkeeping to maintain order during insertions and deletions.
+    % Signals must be updated in creation order to respect dependencies. A linked list naturally preserves insertion order.
+
+    \item \textbf{Efficient insertion}: New signals created during an update must be inserted at the current position in the iteration \todo{in the now heap?}. With a linked list, this is O(1).
+
+    \item \textbf{Efficient removal}: When a signal's reference count drops to zero, it must be removed from the heap. Doubly-linked lists support O(1) removal.
+
+    \item \textbf{Stable references}: Unlike arrays, linked lists do not move elements when inserting or removing, so pointers to signals remain valid.
+\end{enumerate}
+
+The runtime maintains two pointers into the heap:
+\begin{itemize}
+    \item \texttt{heap\_base}: Points to the first signal in the heap
+    \item \texttt{heap\_cursor}: Points to the signal currently being processed during update
+\end{itemize}
+
+\subsection{Signal Lifecycle}
+
+A signal goes through the following lifecycle:
+
+\paragraph{Creation.} When a signal is constructed (via \texttt{::}), it is allocated and inserted into the heap just before the current cursor position. This ensures that newly created signals are not considered for update in the current time step. The signal starts with a reference count of 1.
+
+\paragraph{Update.} During the heap update phase, if a signal's tail has ticked, the runtime:
+\begin{enumerate}
+    \item Advances the tail to produce a new (intermediate) signal
+    \item Copies the head and tail from the intermediate signal to the original
+    \item Decrements the reference count of the old head and tail
+    \item Increments the reference count of the new head and tail
+    \item Decrements the reference count of the intermediate signal
+\end{enumerate}
+
+If the intermediate signal's reference count reaches zero (which is typical), it is immediately deallocated and removed from the heap.
+
+\paragraph{Deallocation.} When a signal's reference count reaches zero:
+\begin{enumerate}
+    \item The reference counts of its head and tail are decremented (potentially triggering further deallocations)
+    \item The signal is removed from the linked list by updating its neighbors' pointers
+    \item The signal's memory is freed
+\end{enumerate}
+
+\subsection{Why Reference Counting Matters for the Heap}
+
+The heap update procedure creates intermediate signals that are typically used only to copy values back to the original signal. Without proper memory management, these intermediate signals would accumulate in the heap, causing two problems:
+
+\begin{enumerate}
+    \item \textbf{Memory leaks}: Intermediate signals consume memory indefinitely.
+
+    \item \textbf{Redundant work}: During the next update, the runtime would iterate over and potentially update these orphaned signals, wasting CPU cycles and potentially causing incorrect behavior.
+\end{enumerate}
+
+Reference counting solves both problems by ensuring that intermediate signals are deallocated immediately when they are no longer needed. The key insight is that an intermediate signal typically has a reference count of 1 (held by the local variable in the update procedure). When that reference is released, the signal is freed and removed from the heap before the next iteration.
+
+This is why the \citetitle{ullrich_counting_2021} approach is particularly well-suited to Rizzo: the combination of precise reference counting with the \texttt{reset}/\texttt{reuse} optimization allows the runtime to efficiently recycle signal memory, minimizing both allocation overhead and heap size.
+
+\subsection{Memory Layout Summary}
+
+To summarize, the Rizzo runtime manages memory at two levels:
+
+\begin{enumerate}
+    \item \textbf{Object level}: All heap objects (including signals) use reference counting for lifetime management. The compiler inserts \texttt{inc}/\texttt{dec} operations, and the runtime performs deallocation when counts reach zero.
+
+    \item \textbf{Heap level}: Signals are additionally linked into the signal heap for iteration during updates. The heap structure is maintained automatically as signals are created and destroyed.
+\end{enumerate}
+
+This two-level design separates concerns: reference counting handles object lifetimes, while the heap structure supports the reactive semantics. The detailed implementation of reference count insertion is covered in Section~\ref{section:refcount}.
