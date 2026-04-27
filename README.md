@@ -110,23 +110,37 @@ Open any `.rizz` file and click the **▶ Run** button in the editor title bar, 
 The extension will:
 
 1. Save the file
-2. Compile it with `rizzoc` (auto-detected from local build or `opam exec -- dune exec rizzoc --`)
-3. Compile the generated `output.c` with `gcc` (or the C compiler set in `rizzoLsp.compiler.cc`)
-4. Run the resulting binary – all in an integrated terminal
+2. Compile it with `rizzoc`
+3. Run the resulting binary in an integrated terminal
+
+For `Rizzo: Run Current File`, the extension resolves `rizzoc` in this order:
+
+1. `rizzoLsp.compiler.command`, if set
+2. A local workspace build at `_build/default/src/bin/main(.exe)`
+3. `rizzoc` on `PATH`
 
 **Configuration** (`settings.json`):
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | `rizzoLsp.compiler.command` | *(auto)* | Path to `rizzoc` binary. Leave empty to auto-detect. |
-| `rizzoLsp.compiler.cc` | `gcc` | C compiler command (`gcc` or `clang`). |
+| `rizzoLsp.server.command` | *(auto)* | Path to `rizzolsp`. Leave empty to auto-detect. |
+| `rizzoLsp.server.args` | `[]` | Extra arguments passed when `rizzoLsp.server.command` is set explicitly. |
+| `rizzoLsp.server.workspaceFolder` | `[]` | Optional workspace roots to use when resolving local builds during development. |
 
 ## LSP and VS Code extension
 
 The Extension can be installed from the GitHub releases page, or built locally from the `vscode-rizzo-lsp` folder.
-> The LSP (`rizzolsp`) is installed alongside the compiler, so make sure to have the compiler in your PATH or configure the extension to find it.
 
-The extension will automatically start the LSP server when you open a `.rizz` file, but you can also run it manually for development or debugging purposes.
+The extension starts `rizzolsp` automatically when you open a `.rizz` file. It resolves the server in this order:
+
+1. `rizzoLsp.server.command`, if set
+2. A local workspace build at `_build/default/src/bin/rizzolsp(.exe)`
+3. `rizzolsp` on `PATH`
+
+If you are developing inside this repository and want the extension to use the repo build, run `opam exec -- dune build` from the repository root first.
+
+You can also run the server manually for development or debugging purposes.
 
 To run the LSP server, use the command:
 
@@ -140,6 +154,7 @@ It can easily be installed with
 ```bash
 npm run ext:install:deps
 npm run ext:install
+npm run ext:install -- insiders
 ```
 
 This installs the dependencies, builds the project and then installs the extension locally.
@@ -155,7 +170,7 @@ For development you might want to run the extension in a debug session, which al
 
 - The extension contributes language configuration through `package.json`, so `*.rizz` files are automatically recognized.
 - For true "just open folder and it works" without running a debug session, run the task `rizzo: install local extension` once (requires `code` CLI in PATH), then reopen VS Code.
-- The C runtime headers (`src/runtime/*.h`) are bundled into the VSIX automatically by the `vscode:prepublish` step via `npm run copy:runtime`.
+- `Rizzo: Check LSP Health` shows which server command and working directory the extension is currently using.
 
 ### LSP Commands
 

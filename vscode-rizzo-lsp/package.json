@@ -89,27 +89,21 @@
                 },
                 "rizzoLsp.server.command": {
                     "type": "string",
-                    "default": "opam",
-                    "description": "Command used to launch the Rizzo language server"
+                    "default": "",
+                    "description": "Path to the Rizzo language server binary. Leave empty to auto-detect from a local workspace build or PATH."
                 },
                 "rizzoLsp.server.args": {
                     "type": "array",
-                    "default": [
-                        "exec",
-                        "--",
-                        "dune",
-                        "exec",
-                        "rizzolsp"
-                    ],
+                    "default": [],
                     "items": {
                         "type": "string"
                     },
-                    "description": "Arguments used to launch the Rizzo language server"
+                    "description": "Arguments used to launch the Rizzo language server when rizzoLsp.server.command is set explicitly."
                 },
                 "rizzoLsp.compiler.command": {
                     "type": "string",
                     "default": "",
-                    "description": "Path to the rizzoc compiler binary. Leave empty to auto-detect from local build or opam."
+                    "description": "Path to the rizzoc compiler binary. Leave empty to auto-detect from a local workspace build or PATH."
                 }
             }
         }
@@ -124,11 +118,11 @@
         "install:local": "npm run package:vsix && node ./scripts/install-local.mjs"
     },
     "devDependencies": {
-        "@vscode/vsce": "^3.9.0",
+        "@vscode/vsce": "^3.9.1",
         "@types/node": "^22.19.11",
         "@types/vscode": "^1.116.0",
         "esbuild": "^0.28.0",
-        "typescript": "^6.0.2"
+        "typescript": "^6.0.3"
     },
     "dependencies": {
         "vscode-languageclient": "^9.0.1"
