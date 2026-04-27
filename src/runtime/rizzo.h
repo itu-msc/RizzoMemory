@@ -64,6 +64,12 @@ static rz_box_t rz_start_event_loop()
     char buffer[__RZ_INPUT_BUFFER_SIZE];
     rz_channel_t timer_channel;
     rz_box_t timer_value;
+
+#ifdef __RZ_DEBUG_INFO
+    printf("After initialization, Sig index %" PRIu64 ", ", rz_debug_signal_next_index);
+    rz_debug_print_heap();
+#endif
+
     while (!rz_should_quit)
     {
         double now = rz_timer_now_seconds();

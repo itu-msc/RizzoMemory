@@ -77,6 +77,57 @@ function findExecutableOnPath(command: string): string | undefined {
     return undefined;
 }
 
+function getManagedInstallSearchRoots(): string[] {
+    if (process.platform === "win32") {
+        const localAppData = process.env.LOCALAPPDATA;
+        const configuredBinDir = process.env.RIZZO_BIN_DIR;
+        const configuredHome = process.env.RIZZO_HOME;
+
+        return [
+            configuredHome ? path.join(configuredHome, "current", "bin") : undefined,
+            localAppData ? path.join(localAppData, "Rizzo", "current", "bin") : undefined,
+            configuredBinDir,
+            localAppData ? path.join(localAppData, "Programs", "Rizzo", "bin") : undefined
+        ].filter((candidate): candidate is string => !!candidate && candidate.trim().length > 0);
+    }
+
+    const home = process.env.HOME;
+    const xdgDataHome = process.env.XDG_DATA_HOME;
+    const configuredBinDir = process.env.RIZZO_BIN_DIR;
+    const configuredHome = process.env.RIZZO_HOME;
+    const defaultHome = configuredHome
+        ?? (xdgDataHome ? path.join(xdgDataHome, "rizzo") : home ? path.join(home, ".local", "share", "rizzo") : undefined);
+
+    return [
+        configuredBinDir,
+        home ? path.join(home, ".local", "bin") : undefined,
+        defaultHome ? path.join(defaultHome, "current", "bin") : undefined
+    ].filter((candidate): candidate is string => !!candidate && candidate.trim().length > 0);
+}
+
+function findExecutableInManagedInstall(commandNames: string[]): string | undefined {
+    for (const root of getManagedInstallSearchRoots()) {
+        for (const commandName of commandNames) {
+            const candidate = path.join(root, commandName);
+            if (isExecutableFile(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function findAutoDetectedExecutable(baseName: string): string | undefined {
+    if (process.platform === "win32") {
+        return findExecutableOnPath(`${baseName}.exe`)
+            ?? findExecutableInManagedInstall([`${baseName}.exe`]);
+    }
+
+    return findExecutableOnPath(baseName)
+        ?? findExecutableInManagedInstall([baseName]);
+}
+
 async function getValidWorkspaceFolder(config: vscode.WorkspaceConfiguration) {
     let workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const customWorkspaceFolders = config.get<string[]>("server.workspaceFolder", []).map(folder => folder.trim());
@@ -199,9 +250,9 @@ function getRizzocCommand(
         }
     }
 
-    const pathCommand = findExecutableOnPath(`rizzoc${executableSuffix()}`) ?? findExecutableOnPath("rizzoc");
-    if (pathCommand) {
-        return { command: pathCommand, args: ["-o", "output"] };
+    const autoDetectedCommand = findAutoDetectedExecutable("rizzoc");
+    if (autoDetectedCommand) {
+        return { command: autoDetectedCommand, args: ["-o", "output"] };
     }
 
     return undefined;
@@ -244,17 +295,17 @@ function getServerCommand(
         };
     }
 
-    const pathCommand = findExecutableOnPath(`rizzolsp${executableSuffix()}`) ?? findExecutableOnPath("rizzolsp");
-    if (pathCommand) {
+    const autoDetectedCommand = findAutoDetectedExecutable("rizzolsp");
+    if (autoDetectedCommand) {
         return {
             executable: {
-                command: pathCommand,
+                command: autoDetectedCommand,
                 args: [],
                 options: {
                     cwd: workspaceFolder ?? fallbackCwd
                 }
             },
-            launchCommand: pathCommand,
+            launchCommand: autoDetectedCommand,
             launchArgs: []
         };
     }
@@ -291,7 +342,7 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     const rizzoc = getRizzocCommand(workspaceFolder);
     if (!rizzoc) {
         await vscode.window.showErrorMessage(
-            "Rizzo: Could not find rizzoc. Set rizzoLsp.compiler.command, build the workspace, or put rizzoc on PATH."
+            "Rizzo: Could not find rizzoc. Set rizzoLsp.compiler.command, build the workspace, put rizzoc on PATH, or install the managed Rizzo toolchain."
         );
         return;
     }
@@ -325,7 +376,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const serverCommand = getServerCommand(workspaceFolder, fallbackCwd, config);
     if (!serverCommand) {
         await vscode.window.showErrorMessage(
-            "Rizzo LSP: Could not find rizzolsp. Set rizzoLsp.server.command, build the workspace, or put rizzolsp on PATH."
+            "Rizzo LSP: Could not find rizzolsp. Set rizzoLsp.server.command, build the workspace, put rizzolsp on PATH, or install the managed Rizzo toolchain."
         );
         currentState = State.Stopped;
         updateStatusBar();
