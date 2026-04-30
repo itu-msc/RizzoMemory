@@ -64,3 +64,25 @@ fun map_no_match(f, s) =
   let var287 = Signal(var282, var286) in
   ret var287
 ```
+
+and here is the `map_no_match` when disabling **reset**/**reuse** insertion:
+
+```ml
+f: Owned, s: Owned
+fun map_match(f, s) =
+  match s with
+  | #0 let sig_head152 = proj_0 s in
+       inc sig_head152;
+       let sig_tail151 = Ctor2(s) in
+       inc f;
+       let var277 = f sig_head152 in
+       let var278 = pap thunk_3_ALL_OWNED455(f) in
+       let var279 = Ctor0(var278) in
+       let var280 = Ctor6(var279, sig_tail151) in
+       let var288 = Signal(var277, var280) in
+       ret var288
+  | default dec s;
+            dec f;
+            let var289 = match_fail("Non-exhaustive pattern match") in
+            ret var289
+```
