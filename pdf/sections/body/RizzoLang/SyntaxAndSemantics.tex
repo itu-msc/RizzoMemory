@@ -1,25 +1,33 @@
 \section{RizzoLang Syntax and Semantics}
 
-For our implementation of Rizzo, we have designed an ML-like syntax with let bindings, function definitions, and pattern matching. The syntax is shaped by the semantics of Rizzo and the AST structure required for implementing the \citetitle{ullrich_counting_2021} reference counting semantics.
+% For our implementation of Rizzo, we have designed an ML-like syntax with let bindings, function definitions, and pattern matching. The syntax is shaped by the semantics of Rizzo and the AST structure required for implementing the \citetitle{ullrich_counting_2021} reference counting semantics.
 
-\citeauthor*{rizzo_modal_2025} did not include a concrete syntax for Rizzo in their paper, but \citetitle{ullrich_counting_2021} included syntax for both the $\lambda_{\text{pure}}$ and $\lambda_{\text{RC}}$ intermediate representations. We have leaned on the structure of the $\lambda_{\text{pure}}$ IR for our syntax design, as it was based on the A-normal form from \citetitle{flanagan_essence_1993}, which is a well-known intermediate representation for functional languages. We chose an ML-like syntax because it is familiar to functional programmers and aligns naturally with the constructs from \citetitle{ullrich_counting_2021}.
+% \citeauthor*{rizzo_modal_2025} did not include a concrete syntax for Rizzo in their paper, but \citetitle{ullrich_counting_2021} included syntax for both the $\lambda_{\text{pure}}$ and $\lambda_{\text{RC}}$ intermediate representations. We have leaned on the structure of the $\lambda_{\text{pure}}$ IR for our syntax design, as it was based on the A-normal form from \citetitle{flanagan_essence_1993}, which is a well-known intermediate representation for functional languages. We chose an ML-like syntax because it is familiar to functional programmers and aligns naturally with the constructs from \citetitle{ullrich_counting_2021}.
 
-In this section we first present the concrete syntax of Rizzo, then describe the type system with a focus on the modal types \texttt{Later} and \texttt{Delayed}. We then describe the operational semantics; particularly the eager evaluation strategy and the \texttt{advance}/\texttt{update} mechanism for reactive signals. Finally, we describe the Rizzo heap structure and how it supports efficient reference counting for immutable data.
+For our implementation of Rizzo, we have designed an ML-like surface syntax on top of the syntax presented by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025}, extending the syntax with let-bindings, function definitions, and pattern matching.
+
+We chose an ML-inspired syntax because it is familiar to functional programmers and it is syntactically close to the representation used by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, allowing us to easily translate between the two.
+
+In this section we first present the concrete syntax of Rizzo.
+We then describe the type system with a focus on the modal types \texttt{Later} and \texttt{Delayed}. 
+After that, we describe the operational semantics of Rizzo, the constraints these semantics place on the choice of heap representation, and finally how we merge these semantics with the reference-counting semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}
 
 \subsection{Syntax}
 
-We have extended the base ML-like syntax with constructs specific to Rizzo, such as the signal constructor (\texttt{::}) and the later/delay constructors. The syntax supports top-level definitions, local let bindings, lambda expressions, pattern matching, and type annotations.
+We have extended the base ML-like syntax with constructs specific to Rizzo, such as the signal constructor (\texttt{::}) and the \texttt{Later}/\texttt{Delayed} constructors. The syntax supports top-level definitions, local let bindings, lambda expressions, pattern matching, and type annotations.
 
 \subsubsection{Top-level Declarations}
 
-Programs in Rizzo consist of a sequence of top-level declarations. There are two forms: value bindings and function definitions.
+Programs in Rizzo consist of a sequence of top-level declarations. There are three forms: value bindings, function definitions, and type definitions.
 
 \begin{verbatim}
-let x = e                  (* value binding *)
-fun f x1 x2 ... xn = e     (* function definition *)
+let x = e                            (* value binding *)
+fun f x1 x2 ... xn = e               (* function definition *)
+type TypeName x1 ... xn = 
+| C (t1, ..., tn) ...                (* type definition *)
 \end{verbatim}
 
-The function definition \texttt{fun f x1 ... xn = e} is syntactic sugar for \texttt{let f = fun x1 xn -> e}. Functions marked with the \texttt{@effectful} annotation are allowed to perform side effects such as registering output signals.
+The function definition \texttt{fun f x1 ... xn = e} is syntactic sugar for \texttt{let f = fun x1 xn -> e}. Functions marked with the \texttt{@effectful} annotation are allowed perform side effects such as registering output signals. Applications of such functions are never removed by the compiler transformations of Section~\ref{section:refcount:transforms}.
 
 \subsubsection{Expressions}
 
@@ -27,7 +35,7 @@ The core expression forms are:
 
 \begin{verbatim}
 e ::= x                           (* variable *)
-    | c                           (* constant: (), true, false, 42, "hello" *)
+    | c                           (* constants *)
     | fun x -> e                  (* lambda abstraction *)
     | e1 e2                       (* application *)
     | C (e1, ..., en)             (* constructor application *)
@@ -38,15 +46,18 @@ e ::= x                           (* variable *)
     | match e with | p1 -> e1 ... (* pattern matching *)
     | if e1 then e2 else e3       (* conditional *)
     | (e : t)                     (* type annotation *)
+    | delay e | ostar e1 e2       (* Delayed constructors *)
+    | wait e | watch e | tail e 
+    | sync e1 e2 | laterapp e1 e2 (* Later constructors *) 
 \end{verbatim}
 
-The pipe operator \texttt{|>} is left-associative and desugars to application, for which \texttt{a |> f} becomes \texttt{f a}. This is particularly useful for chaining signal transformations and for applying delayed functions to later values.
-
-The signal constructor \texttt{::} is right-associative and constructs a signal from a head value and a tail computation. For example, \texttt{5 :: never} creates a constant signal with value 5.
+Constants can be booleans, either $\mathsf{false}$ or $\mathsf{true}$, integers, strings, and the $\mathsf{never}$ constructor of the \texttt{Later} type.
+The pipe operator \texttt{|>} is left-associative and de-sugars to instance of the later application as such \verb|laterapp (delay e1) e2|.
+The signal constructor \texttt{::} is right-associative and constructs a signal from a head value and a tail computation. For example, $5 :: \mathsf{never}$ creates a constant signal with value 5.
 
 \subsubsection{Patterns}
 
-For patterns we have chosen to keep it simple, by not allowing recursive patterns, but we have included the necessary forms to support destructuring of tuples, signals, and constructors:
+For patterns we have included the necessary forms to support matching against tuples, signals, and constructors:
 
 \begin{verbatim}
 p ::= _                           (* wildcard *)
@@ -58,7 +69,8 @@ p ::= _                           (* wildcard *)
     | C (p1, ..., pn)             (* constructor pattern *)
 \end{verbatim}
 
-Like other head and tail structured datatypes, we have chosen to use \texttt{x :: xs} for Signals, to bind the head of the signal to \texttt{x} and the tail (a \texttt{Later} computation) to \texttt{xs}. We also added it for strings, to allow the head character to be bound separately from the tail string. This is useful for combinators that need to process strings character by character.
+Like other head and tail structured datatypes, we have chosen to use $x :: xs$ pattern for signals, to bind the head of the signal to $x$ and the tail (a \texttt{Later} computation) to $xs$.
+We also added it for strings, to allow the head character to be bound separately from the tail string. This is useful for functions that need to process strings such as when parsing user input.
 
 % \subsubsection{Example: Signal Combinators}
 
@@ -86,7 +98,8 @@ Like other head and tail structured datatypes, we have chosen to use \texttt{x :
 
 \subsection{Types}\label{section:rizzolang:types}
 
-Rizzo's type system includes primitive types, compound types, and the \texttt{Later} and \texttt{Delayed} modal types that are central to functional reactive programming. In this section we describe the types available in our implementation and acknowledge the current limitations.
+Rizzo's type system includes primitive types, compound types, and the \texttt{Later} and \texttt{Delayed} modal types that are central to functional reactive programming. In this section we describe the types available in our implementation.
+% and acknowledge the current limitations.
 
 % For our implementation, we have chosen to keep the type system simple by not including user-defined algebraic data types. This means that programmers cannot define their own sum types or record types, and must rely on tuples and signals for data structures. This limitation simplifies the implementation of reference counting, as we do not need to handle arbitrary recursive types, but it does restrict expressiveness. Extending the type system with user-defined types is a potential area for future work.
 

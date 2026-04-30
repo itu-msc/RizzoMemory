@@ -2,6 +2,7 @@ The language includes a small set of primitive types: \texttt{Int}, \texttt{Bool
 
 \begin{verbatim}
 t ::= Int | Bool | String | Unit   (* primitive types  *)
+    | TypeName                     (* named types *)
     | t1 * t2                      (* tuple types      *)
     | t1 -> t2                     (* function types   *)
     | Later t                      (* later type       *)
@@ -15,7 +16,7 @@ t ::= Int | Bool | String | Unit   (* primitive types  *)
 % reference back to \ref{section:frp:rizzo}
 
 The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo from ordinary functional languages. As introduced in Section~\ref{section:frp:rizzo}, these types encode temporal properties of values.
-\citeauthor*{rizzo_modal_2025} introduced a set of constructors for these modal types, for which the constructors for \texttt{Later} values are:
+\citeauthor*{rizzo_modal_2025} introduces a set of constructors for these modal types, for which the constructors for \texttt{Later} values are:
 
 \begin{itemize}
     \item $\mathsf{never} : \texttt{Later}\,A$ is the delayed computation that never produces any value.
@@ -26,9 +27,9 @@ The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo f
     % \texttt{watch s~:~Later a} (* watches a partial signal $\texttt{Signal }(\texttt{Option }a)$ *)
     \item $\mathsf{tail}\;s : \texttt{Later}\,(\texttt{Signal}\,A)$ builds a delayed computation to access the future value of a signal $s : \texttt{Signal}\,A$.
     % \texttt{tail s : Later (Signal a)}   (* gets the tail of signal *)
-    \item $\mathsf{laterapp} \; f \; x : \texttt{Later}\,B$ is the applicative action on \texttt{Later} values. Builds a delayed computation to apply $f : \texttt{Delayed}\,(A \to B)$ to $x : \texttt{Later}\,A$ in the future time step where $x$ produces its value.
+    \item $\mathsf{laterapp} \; f \; x : \texttt{Later}\,B$ is the applicative action on \texttt{Later} values. Builds a delayed computation to apply $f : \texttt{Delayed}\,(A \to B)$ to $x : \texttt{Later}\,A$ in the future time step when $x$ produces its value.
     % \texttt{laterapp f x}  (* applies \texttt{f~:~Delayed ($a \to b$)} to \texttt{x~:~Later $a$} whenever \texttt{x} becomes available *)
-    \item $\mathsf{sync}\; x \; y : \texttt{Later}\,(\texttt{Sync}\,(A,B))$ is the primitive for handling the asynchronous nature of Rizzo. This constructor builds a delayed computation that will produce a value when either $x : \texttt{Later}\,A$ or $y : \texttt{Later}\,B$, or both produce a value. This either-or behaviour is captured by the \texttt{Sync} with its constructors $\mathsf{Left}(x')$, $\mathsf{Right}(y')$, and $\mathsf{Both}(x',y')$.
+    \item $\mathsf{sync}\; x \; y : \texttt{Later}\,(\texttt{Sync}\,(A,B))$ is the primitive for handling the asynchronous nature of Rizzo. This constructor builds a delayed computation that will produce a value when either $x : \texttt{Later}\,A$ or $y : \texttt{Later}\,B$, or both produce a value. This either-or behaviour is captured by the $\texttt{Sync}\,(A,B)$ type with its constructors $\mathsf{Left}(x')$, $\mathsf{Right}(y')$, and $\mathsf{Both}(x',y')$.
     % \texttt{sync l1 l2 : Later (Sync a b)}   (* synchronizes two later's, producing a value when either or both tick *)
 \end{itemize}
 
@@ -36,7 +37,7 @@ and the constructors for the \texttt{Delayed} type are:
 \begin{itemize}
     \item $\mathsf{delay}\;e : \texttt{Delayed}\,A$ delays the expression $e$ to a future time step.
     % \texttt{delay e : Delayed a}   (* creates a delayed computation from expression \texttt{e} *)
-    \item $\mathsf{ostar} \; f \; x : \texttt{Delayed}\,B$ builds a delayed computation that applies $f: \texttt{Delayed}\,(A \to B)$ to $x : \texttt{Delayed}\,A$ in future time step. 
+    \item $\mathsf{ostar} \; f \; x : \texttt{Delayed}\,B$ builds a delayed computation that applies $f: \texttt{Delayed}\,(A \to B)$ to $x : \texttt{Delayed}\,A$ in any future time step. 
     % \texttt{ostar f x}  (* applies \texttt{f~:~Delayed ($a \to b$)} to a delayed value \texttt{x~:~Delayed a} \todo{when it is advanced in a future time step} *)
 \end{itemize}
 
