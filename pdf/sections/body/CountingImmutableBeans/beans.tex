@@ -1,5 +1,7 @@
 \section{Reference Counting}
 
+\todo{Rewrite: we alredy say why we want reference counting. This section introduction should prepare the reader on us telling them what reference counting is, how it works based on the and that we list out the requirements of the counting imutable beans paper}
+
 In Rizzo signal combinators create new signals as an intermediate step in the computation. These intermediate signals are often only used for a short period of time, to copy over the new computed value to the head of the original signal. Given the intermediate nature of these signals, it is important to reclaim the memory used by them as soon as they are no longer needed, otherwise they will also be triggered alongside the original signal. The retrigger of the signals will lead to performance issues, memory leaks and unexpected side effects \todo{We will get back to why this is important in section XXX where we describe the structure of the heap}. To address the issue, we need a way to efficiently manage the memory used by these intermediate signals and ensure that it is reclaimed as soon as it is no longer needed.
 
 One way to achieve this is through reference counting, which is a technique for managing memory in programming languages. In this section, we will discuss the reference counting technique proposed by \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} and how we can adapt it to Rizzo to efficiently manage the memory used by intermediate signals.

@@ -28,18 +28,16 @@ fun language_signal regular_inputs language =
     map_l (echo_message language) regular_inputs
 
 fun language_switch regular_inputs language =
-    fun current_output ->
+    fun _void ->
         switch_message language :: map_l (echo_message language) regular_inputs
 
 // Console input is the only driver, but `switch_r` still swaps the active output signal.
 fun entry unused =
     let console_sig = mk_sig_of_channel console in
-    // let quit_sig = filter_l (fun command -> command == "quit") console_sig in
     let regular_inputs = filter_l is_regular_input console_sig in
     let language_sig = filter_map_l parse_language console_sig in
     let default = "Type en for English (Default).\nSkriv da for Dansk." :: language_signal regular_inputs EN in
     let mode_funcs = map_l (language_switch regular_inputs) language_sig in
     let switched = switch_r default mode_funcs in
     let _out = console_out_signal switched in
-    // let _quit = quit_at quit_sig in
     start_event_loop ()
