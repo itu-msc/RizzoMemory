@@ -9,7 +9,7 @@ The main abstraction of FRP is the \textit{signal}, which models time-varying va
 %Problems of FRP
 However, representing signals as infinite streams makes it easy to write declarative programs that cannot be run effectively. Such programs may violate one of the three main properties \textit{causality} (computations are not dependent on the results of future computations), \textit{productivity} (computations eventually produce an output), and the \textit{absence of space leaks}. 
 
-To overcome these issues, there exists a family of FRP languages~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} which use \textit{modal types} to guarantee these properties. In the literature~\cite{bahr_asynchronous_2023,rizzo_modal_2025}, these modal types are the `later' (written $\bigcirc a$) and the `box' (written $\square a$) type constructors. The type $\bigcirc a$ expresses a promise that a value of type $a$ will become available at some later time step, whereas the $\square a$ describes a value of type $a$ that is \textit{time-independent} and as result safe to keep across time steps.
+To overcome these issues, there exists a family of FRP languages~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} which use \textit{modal types} to guarantee these properties. In the literature~\cite{bahr_asynchronous_2023,rizzo_modal_2025}, these modal types are the `later' (written $\bigcirc a$) and the `box' (written $\square a$) type constructors. The type $\bigcirc a$ expresses a promise that a value of type $a$ will become available at some later time step, whereas the $\square a$ describes a value of type $a$ that is \textit{time-independent} and therefore safe to keep across time steps.
 
 Given these types it is possible to define a signal as a tuple of a current value (head) and a delayed computation (tail) for computing future values: $\text{type} \; \texttt{Signal }a = a \times \texttt{Later }(\texttt{Signal }a)$.
 
@@ -39,10 +39,10 @@ However, probably the most useful of all is the applicative action on $\texttt{L
 Intuitively, $\mathsf{laterapp}$ delays the application of a function until the argument $x$ is available. This operator allows us to apply delayed functions to later values. However, when writing Rizzo programs it is often more convenient to use the functorial action or pipe operator:
 \begin{align*}
 \_ \; &\triangleright \; \_ \; : (a \rightarrow b) \rightarrow \texttt{Later} \; a \rightarrow \texttt{Later} \; b \\
-f &\triangleright x = (\mathsf{delay} \; f) \triangleright x   
+f &\triangleright x = \mathsf{laterapp} \; (\mathsf{delay} \; f) \; x
 \end{align*}
 
-With these constructors we already have the necessary tools to define some signal combinators! We first define the $\mathsf{mk\_sig}$ that lets us create a signal from any delayed computation:
+With these constructors we already have the necessary tools to define some signal combinators! We first define the $mk\_sig$ that lets us create a signal from any delayed computation:
 \begin{align*}
     &mk\_sig : \texttt{Later }a \rightarrow \texttt{Later }(\texttt{Signal }a) \\
     &mk\_sig \; d = (\lambda x. x :: mk\_sig \; d) \triangleright d
@@ -53,10 +53,10 @@ Assuming there exists a channel $console : \texttt{Chan}\;\texttt{String}$ that 
 Let us take it one step further and define the familiar $map$ function.
 \begin{align*}
     &map : (a \rightarrow b) \rightarrow \texttt{Signal }a \rightarrow \texttt{Signal }b \\
-    &map \; f \; (x :: xs) = f \; x :: (map \; f) \fpipe xs
+    &map \; f \; (x :: xs) = f \; x :: (map \; f) \triangleright xs
 \end{align*}
 
-In our definition of $map$ we make use of pattern matching on signals. We could alternatively used explicit $\mathsf{head}$ and $\mathsf{tail}$ operations to extract $x$ and $xs$ respectively.
+In our definition of $map$ we make use of pattern matching on signals. We could alternatively have used explicit $\mathsf{head}$ and $\mathsf{tail}$ operations to extract $x$ and $xs$ respectively.
 
 Let us return to what makes Rizzo different, its semantics of signals. 
 Because signals are updated in place as mutable references rather than stored as immutable sequences, it becomes possible to define combinators such as $sample$:
@@ -76,7 +76,7 @@ If signals were immutable, the combinator would instead reuse the first value of
 In Rizzo, time steps forward when a value is produced by any channel. This could happen because of a network message, a sensor reading, or user input from the console. 
 Time steps are discrete and sequential, meaning they happen one-after-the-other and never at the same time. 
 
-When time steps forward, the data stored in every signal becomes stale since it now belonging to the past. The runtime must therefore bring all signals into the new step. It does so by iterating over the heap, evaluating each signal's tail to obtain a potentially fresh intermediate signal, and writing the resulting data back into the original signal.
+When time steps forward, the data stored in every signal becomes stale since it now belongs to the past. The runtime must therefore bring all signals into the new time step. It does so by iterating over the heap, evaluating each signal's tail to obtain a potentially fresh intermediate signal, and writing the resulting data back into the original signal.
 Without the proper clean-up, this process leaves both the intermediate signal and the original signal alive, both of which must then be brought into future time steps, leading to duplicate work.
 
 Reference counting provides the precise clean-up needed to avoid this problem. It allows the runtime to detect when an intermediate signal is no longer referenced and can be immediately discarded, thus avoiding unnecessary work during future heap updates.

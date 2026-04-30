@@ -11,7 +11,7 @@ However, without proper restrictions this style of programming can easily lead t
 
 The FRP language Rizzo~\cite{rizzo_modal_2025} solves these issues using modal types and operational semantics for updating signals in place.
 Rizzo maintains a global heap of signals from which all signals are updated when an input is received from the environment.
-This process may create intermediate signals which serve no purpose post update and should therefore be erased early to avoid superfluous work, making memory management particularly important for Rizzo. 
+This process may create intermediate signals which serve no purpose post update and should therefore be erased early to avoid superfluous work. This makes memory management particularly important for Rizzo. 
 %A sentence or two to bridge the gap - why we need RC
 Reference counting is a strategy for managing dynamic memory that allows immediate erasure of unused heap objects, this property is ideal for Rizzo.
 
