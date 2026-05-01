@@ -56,11 +56,13 @@ The program starts in English mode, and the first two lines written are the init
 
 % \todo{The console input is not directly a signal yet, but a Later. This means if some thing depends on that later, it can cause each dependence on the signal to create a new signal from that Later.}
 
-We then send two inputs, `\textit{input 1}' and `\textit{input 2}', causing the signal heap to grow as the filters depend on Later signals of the console input. Before the first input, The console input is not directly a signal yet, but a Later. This means if the filters depends on that later, it can cause each dependence on the signal to create a new signal from that Later. The new signals $[4]$ and $[6]$ represent these signals created from the Later of
-the console input.
-The signal $[8]$ is a language mode dependent signal that maps the input to the output string depending on the language mode.
-We then switch to Danish mode by inputting `\textit{da}', which causes the signal returned by \texttt{switch\_r} to change, and thus the heap grows as the delayed computations of the switch is evaluated. 
-The heap shrinks by one signal and grows by two signal, which is the result the previous switch being replaced by the new switch, and the evaluation of a Later map function inside the tail of the switch.
+We then send two inputs, `\textit{input 1}' and `\textit{input 2}', causing the signal heap to grow as the filters depend on Later signals of the console input. Before the first input, The console input is not directly a signal yet, but a Later. This means if the filters depends on that later, it can cause each dependence on the signal to create a new signal from that Later. The new signals $[4]$ and $[6]$ represent these signals created from the Later of the console input.
+The signal $[8]$ is a signal depending on the language mode that maps the input to the string we output. The double Later evaluation issue is described more in section \ref{sec:limitations}.
+
+We then switch to Danish mode by inputting `\textit{da}', which causes the signal returned by \texttt{switch\_r} to change. The change causes the old signal $8$ to be replaced by $[22]$, and an additional signal formed by the evaluation of a Later map function in the delayed computations of the \texttt{switch\_r}. 
+
+Inputting `\textit{input 4}' and `\textit{input 5}' now only makes the heap grow by one signal, 
+
 \todo{Describe the rest of the execution, and how the heap grows and shrinks depending on the path taken.}
 
 The first output is the initial print that occurs when registering a signal as a console output. The second line is from the stepping which is triggered by a second passing and on the third line we see the first print of the heap. After initialisation (and the first time step) the heap consists of six signals.
