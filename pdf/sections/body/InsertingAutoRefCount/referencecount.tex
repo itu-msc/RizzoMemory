@@ -196,8 +196,8 @@ Primitives are either variables, which are handled according to the ownership ru
 Global variables are treated as borrowed for the purpose of \textbf{inc}/\textbf{dec} insertion, since they are assumed to be kept alive for the duration of the program. This choice keeps the implementation simple and safe but may introduce unnecessary \textbf{inc} instructions.
 
 %GOAL: Circle back to the map example - TRY to explain why we can never reuse and why that is CORRECT with regards to the semantics of Rizzo.
-Returning to the map example from earlier Listing~\ref{listing:refcount:incdec_map} shows final compiled version of the map combinator.
-The listing additionally shows the result of borrow signature inference where both $f$ and $x$ are annotated as owned. We show the  reference counts of the variables $x$, $s$, and $f$ assuming they are all unique when map is called. 
+Returning to the map example from earlier. Listing~\ref{listing:refcount:incdec_map} shows the final compiled version of the map combinator.
+It also shows the result of borrow signature inference where both $f$ and $x$ are annotated as owned. We show the  reference counts of the variables $x$, $s$, and $f$ assuming they are all unique when map is called. 
 Notice, that because $xs$ is a $tail s$ constructor it needs $s$ to live for its duration and as such we must increment $s$ before it can be used again later in the $\textbf{reset} \; s$. 
 This increment sets the reference count of $s$ to two, meaning $s$ can never be unique at the time of $\textbf{reset} \; s$.
 
