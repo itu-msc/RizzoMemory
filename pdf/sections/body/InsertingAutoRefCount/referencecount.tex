@@ -332,4 +332,5 @@ The heap now looks like:
 Again, the data of $L_4$ is written into $L_2$ and $L_4$ is decremented, discarding it.
 
 The point is that if the first application of $map$ had successfully reused $c$, then the data stored at $L_1$ would have been overwritten by the data $s$. This would destroy the only reference to the console-signal and it would not be possible to advance the tail of $L_2$.
-The inability to reuse memory in (most) signal combinators is therefore not a limitation of the algorithm. That said, the $\textbf{inc} \; s$ instruction is unnecessary and is only inserted because the $\textbf{ctor}_2(s)$ instruction ($\mathsf{tail} \; s$) is followed by $\textbf{reset} \; s$ instruction. This is a limitation that we will discuss further in Section~\ref{sec:limitations}.
+The inability to reuse memory in (most) signal combinators is therefore not a limitation of the algorithm. 
+That said, the $\textbf{inc} \; s$ instruction is unnecessary and is only inserted because the $\textbf{ctor}_2(s)$ instruction ($\mathsf{tail} \; s$) is followed by a $\textbf{reset} \; s$ instruction. This is a limitation that we will discuss further in Section~\ref{sec:limitations}.
