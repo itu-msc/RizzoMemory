@@ -109,7 +109,7 @@ In the first branch $s$ is a $\texttt{Left}(x)$ value with a single field $x$, m
 In the third branch $s$ is a $\texttt{Both}(x,y)$ with two fields. The algorithm will try to reuse $s$ in a constructor taking exactly two arguments but there is no such expression, so $s$ isn't reused.
 
 \begin{lstlisting}[caption={A fold on sync values. The program is shown using the IR but with a type annotation for readability.}, label={listing:refcount:reuse_example}]
-sync_fold f s : (Option 'a -> Option 'b -> 'c) -> Sync 'a 'b -> 'c = 
+sync_fold f s : (Option 'a -> Option 'b -> 'c) -> Sync ('a,'b) -> 'c = 
     case s of
     (let x = proj_0 s in let s' = reset s in
      let x_just = reuse s' in Ctor1(x) in 
@@ -198,8 +198,8 @@ Global variables are treated as borrowed for the purpose of \textbf{inc}/\textbf
 %GOAL: Circle back to the map example - TRY to explain why we can never reuse and why that is CORRECT with regards to the semantics of Rizzo.
 Returning to the map example from earlier. Listing~\ref{listing:refcount:incdec_map} shows the final compiled version of the map combinator.
 It also shows the result of borrow signature inference where both $f$ and $x$ are annotated as owned. We show the  reference counts of the variables $x$, $s$, and $f$ assuming they are all unique when map is called. 
-Notice, that because $xs$ is a $tail s$ constructor it needs $s$ to live for its duration and as such we must increment $s$ before it can be used again later in the $\textbf{reset} \; s$. 
-This increment sets the reference count of $s$ to two, meaning $s$ can never be unique at the time of $\textbf{reset} \; s$.
+Notice, that because $xs$ is a $\mathsf{tail} \; s$ value it needs $s$ to live for its duration, meaning $s$ must be incremented before the implicit decrement performed by $\textbf{reset} \; s$. 
+This increment sets the reference count of $s$ to two, making it so $s$ can never be unique at the time of $\textbf{reset} \; s$.
 
 \begin{lstlisting}[
   caption={The map combinator with \textbf{inc}/\textbf{dec} instructions. The inferred ownership annotations for the arguments of map are shown on the first line.},
@@ -222,6 +222,114 @@ fun map f s : ('a -> 'b) -> Signal 'a -> Signal 'b =
    ret res)
 \end{lstlisting}
 
-While it may seem unfortunate that map can never reuse any memory, it would not be safe to reuse the input signal since it is needed again in the future when advancing the tail of the map-signal.
 
-\todo{\dots Likely candidate where a visualisation of a heap may heap!}
+It may seem unfortunate that map can never reuse any memory but this is in fact necessary since the input signal is needed later when advancing the map-signal.
+To make this concrete, consider the program in Listing~\ref{listing:refcount:map_prog}. The program uses the $map$-combinator to append exclamation marks to user input before echoing it to the console.
+
+\begin{lstlisting}[
+  caption={A program that uses maps to append exclamation marks to input read from the console.},
+  label={listing:refcount:map_prog}
+]
+let c = "init" :: mk_sig (wait console) in
+let f = fun x -> x + "!" in
+let s = map f c in 
+let x = console_out_signal s in start_event_loop ()
+\end{lstlisting}
+
+After running the program through initialisation, the signal heap contains two locations: $L_1$ for the console signal $c$ and $L_2$ for the mapped signal $s$:
+\begin{center}
+\begin{tabular}{ |c|c|c|c| } 
+ \hline
+  & RC & Head & Tail \\ 
+ \hline
+ $L_1$ & 1 & \texttt{"init"} &
+  $
+  \begin{aligned}
+      &\mathsf{laterapp} \\
+      &\qquad (\mathsf{delay} \; (\texttt{fun} \; x \; \texttt{->} \; x :: mk\_sig \; (\mathsf{wait} \; console))) \\
+      &\qquad (\mathsf{wait} \; console) \\
+  \end{aligned}
+  $ \\
+  \hline
+  $L_2$ & 1 & \texttt{"init!"} &
+  $\mathsf{laterapp}
+    \; (\mathsf{delay} \; (map \; f))
+    \; (\mathsf{tail} \; L_1)
+  $ \\
+ \hline
+\end{tabular}
+\end{center}
+
+At some point the $console$ channel produces a value $v$.
+This triggers a full heap update and so the heap cursor is set to point at $L_1$ and its tail is advanced.
+The $\mathsf{laterapp}$ is advanced by first advancing the $\mathsf{wait} \; console$ and getting the value $v$, then applying the delayed function on $v$. The result is a new signal $\texttt{"Hello"} :: mk\_sig (\mathsf{wait} \; console)$ inserted just before the heap cursor ($L_1$) at the fresh location $L_3$.
+The heap now looks like: 
+\begin{center}
+\begin{tabular}{ |c|c|c|c| } 
+ \hline
+  & RC & Head & Tail \\
+ \hline
+ $L_3$ & 1 & $v$ &
+  $
+  \begin{aligned}
+      &\mathsf{laterapp} \\
+      &\qquad (\mathsf{delay} \; (\texttt{fun} \; x \; \texttt{->} \; x :: mk\_sig \; (\mathsf{wait} \; console))) \\
+      &\qquad (\mathsf{wait} \; console) \\
+  \end{aligned}
+  $ \\
+ \hline
+ $L_1$ & 1 & \texttt{"init"} &
+  $
+  \begin{aligned}
+      &\mathsf{laterapp} \\
+      &\qquad (\mathsf{delay} \; (\texttt{fun} \; x \; \texttt{->} \; x :: mk\_sig \; (\mathsf{wait} \; console))) \\
+      &\qquad (\mathsf{wait} \; console) \\
+  \end{aligned}
+  $ \\
+  \hline
+  $L_2$ & 1 & \texttt{"init!"} &
+  $\mathsf{laterapp}
+    \; (\mathsf{delay} \; (map \; f))
+    \; (\mathsf{tail} \; L_1)
+  $ \\
+ \hline
+\end{tabular}
+\end{center}
+
+The data of $L_3$ is written back into $L_1$ and the reference count of $L_3$ is decremented by one, discarding it. 
+Since the update of $L_1$ is finished, the heap cursor is moved forward so it points at $L_2$.
+The same process is applied to $L_2$ but this time the right operand of the $\mathsf{laterapp}$ is a $\mathsf{tail}$ value which, when advanced, returns the location $L_1$. This location is passed to partial application of map, creating a new signal $f \; v :: map \; f \, \texttt{|>} \, \mathsf{tail} \; L_1$ at some fresh location $L_4$. 
+The heap now looks like:
+\begin{center}
+\begin{tabular}{ |c|c|c|c| } 
+ \hline
+  & RC & Head & Tail \\ 
+  \hline
+    $L_1$ & 2 & v &
+    $
+    \begin{aligned}
+        &\mathsf{laterapp} \\
+        &\qquad (\mathsf{delay} \; (\texttt{fun} \; x \; \texttt{->} \; x :: mk\_sig \; (\mathsf{wait} \; console))) \\
+        &\qquad (\mathsf{wait} \; console) \\
+    \end{aligned}
+    $ \\
+  \hline
+    $L_4$ & 1 & v + \texttt{"!"} &
+    $\mathsf{laterapp}
+      \; (\mathsf{delay} \; (map \; f))
+      \; (\mathsf{tail} \; L_1)
+    $ \\
+  \hline
+    $L_2$ & 1 & \texttt{"init!"} &
+    $\mathsf{laterapp}
+      \; (\mathsf{delay} \; (map \; f))
+      \; (\mathsf{tail} \; L_1)
+    $ \\
+ \hline
+\end{tabular}
+\end{center}
+
+Again, the data of $L_4$ is written into $L_2$ and $L_4$ is decremented, discarding it.
+
+The point is that if the first application of $map$ had successfully reused $c$, then the data stored at $L_1$ would have been overwritten by the data $s$. This would destroy the only reference to the console-signal and it would not be possible to advance the tail of $L_2$.
+The inability to reuse memory in (most) signal combinators is therefore not a limitation of the algorithm. That said, the $\textbf{inc} \; s$ instruction is unnecessary and is only inserted because the $\textbf{ctor}_2(s)$ instruction ($\mathsf{tail} \; s$) is followed by $\textbf{reset} \; s$ instruction. This is a limitation that we will discuss further in Section~\ref{sec:limitations}.

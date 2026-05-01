@@ -27,7 +27,7 @@ type TypeName x1 ... xn =
 | C (t1, ..., tn) ...                (* type definition *)
 \end{verbatim}
 
-The function definition \texttt{fun f x1 ... xn = e} is syntactic sugar for \texttt{let f = fun x1 xn -> e}. Functions marked with the \texttt{@effectful} annotation are allowed perform side effects such as registering output signals. Applications of such functions are never removed by the compiler transformations of Section~\ref{section:refcount:transforms}.
+The function definition \texttt{fun f x1 ... xn = e} is syntactic sugar for \texttt{let f = fun x1 xn -> e}. Functions marked with the \texttt{@effectful} annotation are allowed to perform side effects such as registering output signals. This annotation also prevents the compiler transformations of Section~\ref{section:refcount:transforms} from removing calls to such functions.
 
 \subsubsection{Expressions}
 
