@@ -58,7 +58,7 @@ We then lower the transformed program to the reference-counting IR and apply the
 
 \subsection{Transformations}\label{section:refcount:transforms}
 %Goal of section: pretty little flow chart showing how we chain transformations together and an explanation of why/what in relation the assumptions}
-To achieve the correct AST shape, we apply the transformation pipeline shown in Figure~\ref{figure:refcount:transformations}. Most of these transformations are standard compiler steps but all of them are used to bring the AST closer to satisfying the invariants of the RC insertion algorithms.
+To achieve the correct AST shape, we apply the transformation pipeline shown in Figure~\ref{figure:refcount:transformations}. Most of these transformations are standard compiler steps but all of them are used to bring the AST closer to satisfying the invariants of the RC insertion algorithms. Each transformation performs a separate pass over the AST, allowing us to apply them in the correct order.
 
 \begin{figure}[h]
 	\centering
