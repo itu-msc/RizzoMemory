@@ -232,11 +232,11 @@ To make this concrete, consider the program in Listing~\ref{listing:refcount:map
 ]
 let c = "init" :: mk_sig (wait console) in
 let f = fun x -> x + "!" in
-let s = map f c in 
-let x = console_out_signal s in start_event_loop ()
+let m = map f c in 
+let x = console_out_signal m in start_event_loop ()
 \end{lstlisting}
 
-After running the program through initialisation, the signal heap contains two locations: $L_1$ for the console signal $c$ and $L_2$ for the mapped signal $s$:
+After running the program through initialisation, the signal heap contains two locations: $L_1$ for the console signal $c$ and $L_2$ for the mapped signal $m$:
 \begin{center}
 \begin{tabular}{ |c|c|c|c| } 
  \hline
@@ -262,8 +262,8 @@ After running the program through initialisation, the signal heap contains two l
 
 At some point the $console$ channel produces a value $v$.
 This triggers a full heap update and so the heap cursor is set to point at $L_1$ and its tail is advanced.
-The $\mathsf{laterapp}$ is advanced by first advancing the $\mathsf{wait} \; console$ and getting the value $v$, then applying the delayed function on $v$. The result is a new signal $\texttt{"Hello"} :: mk\_sig (\mathsf{wait} \; console)$ inserted just before the heap cursor ($L_1$) at the fresh location $L_3$.
-The heap now looks like: 
+The $\mathsf{laterapp}$ is advanced by first advancing the $\mathsf{wait} \; console$ and getting the value $v$, then applying the delayed function on $v$. The result is a new signal $\texttt{"Hello"} :: mk\_sig \; (\mathsf{wait} \; console)$ stored in memory at location $L_3$. This signal is then inserted into the signal heap just before $L_1$ which is currently the heap cursor.
+The heap looks like: 
 \begin{center}
 \begin{tabular}{ |c|c|c|c| } 
  \hline
@@ -298,7 +298,7 @@ The heap now looks like:
 
 The data of $L_3$ is written back into $L_1$ and the reference count of $L_3$ is decremented by one, discarding it. 
 Since the update of $L_1$ is finished, the heap cursor is moved forward so it points at $L_2$.
-The same process is applied to $L_2$ but this time the right operand of the $\mathsf{laterapp}$ is a $\mathsf{tail}$ value which, when advanced, returns the location $L_1$. This location is passed to partial application of map, creating a new signal $f \; v :: map \; f \, \texttt{|>} \, \mathsf{tail} \; L_1$ at some fresh location $L_4$. 
+The same process is applied to $L_2$ but this time the right operand of the $\mathsf{laterapp}$ is a $\mathsf{tail}$ value which, when advanced, returns the location $L_1$. This location is passed to partial application of map, creating a new signal $f \, v :: map \, f \, \texttt{|>} \; \mathsf{tail} \; L_1$ at some fresh location $L_4$. 
 The heap now looks like:
 \begin{center}
 \begin{tabular}{ |c|c|c|c| } 
@@ -331,6 +331,6 @@ The heap now looks like:
 
 Again, the data of $L_4$ is written into $L_2$ and $L_4$ is decremented, discarding it.
 
-The point is that if the first application of $map$ had successfully reused $c$, then the data stored at $L_1$ would have been overwritten by the data $s$. This would destroy the only reference to the console-signal and it would not be possible to advance the tail of $L_2$.
-The inability to reuse memory in (most) signal combinators is therefore not a limitation of the algorithm. 
-That said, the $\textbf{inc} \; s$ instruction is unnecessary and is only inserted because the $\textbf{ctor}_2(s)$ instruction ($\mathsf{tail} \; s$) is followed by a $\textbf{reset} \; s$ instruction. This is a limitation that we will discuss further in Section~\ref{sec:limitations}.
+The example shows that if the $map$ combinator were to reuse its input (in this case variable $c$ and by extension $L_1$), then the only reference to the console would be overwritten, and it would no longer be possible to advance $L_2$.
+Therefore, when the algorithm decides to deny reuse in signal combinators such as $map$, it is making a correct and safe choice.
+However, this decision is not optimal. Assuming $map$ takes an owned reference to its parameter $s$ it is sufficient to just pass the reference to $\textbf{ctor}_2(s)$ which saves the \textbf{inc} and \textbf{reset} instructions. We return to this limitation in Section~\ref{sec:limitations}.
