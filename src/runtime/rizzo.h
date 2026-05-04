@@ -40,18 +40,38 @@ static void rz_init_rizzo()
     rz_timer_reset();
 }
 
-#ifdef __RZ_DEBUG_INFO
+#if defined(__RZ_DEBUG_INFO) || defined(__RZ_HEAP_INFO)
 static uint64_t rz_debug_heap_step_count = 0;
 #endif
+
+#ifdef __RZ_HEAP_INFO
+static uint64_t rz_heap_info_average_time = 0;
+#endif
+
 /** Steps the Rizzo program one tick forward.
    Additionally, outputs the head of any registered outputs that was updated during heap update. */
 static inline void rz_step(rz_channel_t chan, rz_box_t v)
 {
+#ifdef __RZ_HEAP_INFO
+    double start_seconds = rz_timer_now_seconds();
+#endif
+
     rz_heap_update(chan, v);
     rz_refcount_dec_box(v);
     rz_print_registered_outputs();
+
+#ifdef __RZ_HEAP_INFO
+    double end_seconds = rz_timer_now_seconds();
+    uint64_t delta_us = (uint64_t)((end_seconds - start_seconds) * 1000000.0);
+    rz_heap_info_average_time = (rz_debug_heap_step_count * rz_heap_info_average_time + delta_us) / (rz_debug_heap_step_count + 1);
+#endif
+
+#if defined(__RZ_DEBUG_INFO) || defined(__RZ_HEAP_INFO)
+    rz_debug_heap_step_count++;
+#endif
+
 #ifdef __RZ_DEBUG_INFO
-    printf("step %.4" PRIu64 ", channel %" PRIu64 ", Sig index %" PRIu64 ", ", ++rz_debug_heap_step_count, chan, rz_debug_signal_next_index);
+    printf("step %.4" PRIu64 ", channel %" PRIu64 ", Sig index %" PRIu64 ", ", rz_debug_heap_step_count, chan, rz_debug_signal_next_index);
     rz_debug_print_heap();
 #endif
 }
@@ -106,6 +126,10 @@ static rz_box_t rz_start_event_loop()
         {
         }
     }
+
+#ifdef __RZ_HEAP_INFO
+    printf("Steps taken: %" PRIu64 ", Average step time: %" PRIu64 " us, Signals left in heap: %" PRIu64 "\n", rz_debug_heap_step_count, rz_heap_info_average_time, rz_heap_size);
+#endif
     return rz_make_int(0);
 }
 

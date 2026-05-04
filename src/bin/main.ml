@@ -65,6 +65,7 @@ let () =
 	in
 	let debug_malloc = ref false in
 	let debug_info = ref false in
+	let heap_info = ref false in
 	let out_name = ref "output" in
 
 	Arg.parse
@@ -74,6 +75,7 @@ let () =
 		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
 		; ("--debug-malloc", Arg.Set debug_malloc, "Print debug info about memory allocations and deallocations at runtime")
 		; ("--debug-info"	 , Arg.Set debug_info	 , "Print debug info about the signal heap, when new time steps occur, and which channels produced the input")
+		; ("--info-heap"	 , Arg.Set heap_info	 , "On exit, print the number of signals left in the signal heap, how many steps was taken and average step time in microseconds")
 		; ("-o", Arg.Set_string out_name, "Set the output executable name - defaults to output.exe")
 		]
 		add_input_file
@@ -99,7 +101,11 @@ let () =
 	in
 	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files output_c;
 	let runtime_include = "src/runtime" in
-	let shellCommand = Rizzoc.to_shell_command (Rizzoc.generated_c_compiler_invocation ~runtime_include ~input_file:output_c ~output_file ~debug_malloc:!debug_malloc ~debug_info:!debug_info ()) in
+	let shellCommand = Rizzoc.to_shell_command (
+			Rizzoc.generated_c_compiler_invocation
+				~runtime_include ~input_file:output_c ~output_file 
+				~debug_malloc:!debug_malloc ~debug_info:!debug_info ~heap_info:!heap_info ()
+	) in
 	let returnCode = Sys.command shellCommand in
 	if returnCode <> 0 then (
 		Fmt.epr "@{<red>Error@}: C compilation failed with exit code %d.@." returnCode;
