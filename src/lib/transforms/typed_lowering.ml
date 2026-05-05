@@ -27,7 +27,7 @@ and lower_expr (e : typed expr) : parsed expr =
   | ELet (name, rhs, body, ann) ->
       ELet (parsed_name name, lower_expr rhs, lower_expr body, parsed_ann ann)
   | EFun (params, body, ann) ->
-      EFun (List.map parsed_name params, lower_expr body, parsed_ann ann)
+      EFun (List.map lower_pattern params, lower_expr body, parsed_ann ann)
   | EApp (fn, args, ann) ->
       EApp (lower_expr fn, List.map lower_expr args, parsed_ann ann)
   | EUnary (op, e1, ann) ->

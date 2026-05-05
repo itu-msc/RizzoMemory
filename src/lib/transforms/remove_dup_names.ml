@@ -35,11 +35,11 @@ and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
     let e2' = subst replacement_of e2 in
     let e3' = subst replacement_of e3 in
     EIfe (e1', e2', e3', ann)
-  | EFun (args, e, ann) -> 
-    let arg_names = List.map fst args in
-    let replacement_of = List.fold_left (fun acc arg -> StringMap.add arg arg acc) replacement_of arg_names in
+  | EFun (params, e, ann) -> 
+    let param_names = List.concat_map (Core.pattern_bound_vars) params in
+    let replacement_of = List.fold_left (fun acc arg -> StringMap.add arg arg acc) replacement_of param_names in
     let e' = subst replacement_of e in
-    EFun (args, e', ann)
+    EFun (params, e', ann)
   | ECtor (name, es, ann) -> 
     let es' = List.map (subst replacement_of) es in
     ECtor (name, es', ann)

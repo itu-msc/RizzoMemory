@@ -106,7 +106,7 @@ let rec expr_has_tvar : type s. s Ast.expr -> bool = function
   | Ast.ELet ((_, name_ann), e1, e2, ann) ->
       ann_has_tvar name_ann || ann_has_tvar ann || expr_has_tvar e1 || expr_has_tvar e2
   | Ast.EFun (params, body, ann) ->
-      ann_has_tvar ann || List.exists (fun (_, param_ann) -> ann_has_tvar param_ann) params || expr_has_tvar body
+      ann_has_tvar ann || List.exists pattern_has_tvar params || expr_has_tvar body
   | Ast.EApp (fn, args, ann) ->
       ann_has_tvar ann || expr_has_tvar fn || List.exists expr_has_tvar args
   | Ast.EUnary (_, expr, ann) ->

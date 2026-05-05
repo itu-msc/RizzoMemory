@@ -36,7 +36,7 @@ let let_ (n : string) (e1 : parsed expr) (e2 : parsed expr) : parsed expr =
   ELet (name n, e1, e2, ann)
 
 let fun_ (params : string list) (body : parsed expr) : parsed expr =
-  EFun (List.map name params, body, ann)
+  EFun (List.map pvar params, body, ann)
 
 let app (fn : parsed expr) (args : parsed expr list) : parsed expr = EApp (fn, args, ann)
 let unary (op : unary_op) (e : parsed expr) : parsed expr = EUnary (op, e, ann)

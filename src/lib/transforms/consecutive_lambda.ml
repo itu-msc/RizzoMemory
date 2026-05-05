@@ -1,9 +1,9 @@
 open Ast
 
 let has_overlap xs ys =
-  List.exists (fun x -> List.mem x ys) xs
+  List.exists (fun x -> List.exists (Ast.eq_pattern x) ys) xs
 
-let rec collect_consecutive_params (params : _ name list) (body : _ expr) : _ name list * _ expr =
+let rec collect_consecutive_params params body =
   match body with
   | EFun (next_params, next_body, _) when not (has_overlap params next_params) ->
       collect_consecutive_params (params @ next_params) next_body

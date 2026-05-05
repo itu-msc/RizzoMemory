@@ -6,8 +6,13 @@ open Collections
 let rec free_vars_fun top_decl_names params body =
   (* free variables are those not bound in EFun subtracted by the paramers of the EFun AND builtins AND top-level functions *)
   let builtins = List.map (fun ({name; _} : Rizzo_builtins.builtin_info) -> name) Rizzo_builtins.builtins in
-  let params = List.map fst params in
-  let to_diff = StringSet.union top_decl_names @@ StringSet.of_list  (params @ builtins) in
+  let bound = 
+    List.fold_left 
+      (fun acc pat -> StringSet.union acc (StringSet.of_list (Core.pattern_bound_vars pat))) 
+      (StringSet.of_list builtins) 
+      params
+  in
+  let to_diff = StringSet.union top_decl_names bound in
   StringSet.diff (free_vars_expr top_decl_names body) to_diff
 
 (** Find free variables of an expression in a context with no globals (and no builtins)*)
