@@ -78,6 +78,16 @@ let test_warning () =
   Location.report_warning loc "This is a test warning";
   Alcotest.(check pass) "warning reported" () ()
 
+let contains_substring ~text ~substring =
+  let text_len = String.length text in
+  let substring_len = String.length substring in
+  let rec loop index =
+    if index + substring_len > text_len then false
+    else if String.sub text index substring_len = substring then true
+    else loop (index + 1)
+  in
+  substring_len = 0 || loop 0
+
 let rec typ_has_tvar = function
   | Ast.TVar _ -> true
   | Ast.TError | Ast.TUnit | Ast.TInt | Ast.TString | Ast.TBool | Ast.TName _ | Ast.TParam _ -> false
@@ -175,6 +185,42 @@ let test_annotated_list_map_typechecks () =
   in
   Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
 
+let test_duplicate_function_parameter_names_report_error () =
+  let parsed = Parser.parse_string "fun dup x x = x\n" in
+  let { type_errors; _ } : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+  Alcotest.(check int) "single duplicate-parameter error" 1 (List.length type_errors);
+  match type_errors with
+  | [(_, msg)] ->
+      Alcotest.(check bool)
+        "error mentions duplicate parameter"
+        true
+        (contains_substring ~text:msg ~substring:"Duplicate parameter name 'x'")
+  | _ -> Alcotest.fail "unexpected duplicate-parameter diagnostics"
+
+let test_duplicate_names_inside_parameter_pattern_report_error () =
+  let parsed = Parser.parse_string "fun dup (x, x) = x\n" in
+  let { type_errors; _ } : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+  Alcotest.(check int) "single duplicate-pattern error" 1 (List.length type_errors);
+  match type_errors with
+  | [(_, msg)] ->
+      Alcotest.(check bool)
+        "error mentions duplicate parameter in nested pattern"
+        true
+        (contains_substring ~text:msg ~substring:"Duplicate parameter name 'x'")
+  | _ -> Alcotest.fail "unexpected duplicate nested-pattern diagnostics"
+
+let test_duplicate_names_inside_match_pattern_report_error () =
+  let parsed = Parser.parse_string "fun dup pair = match pair with | (x, x) -> x\n" in
+  let { type_errors; _ } : TypeCheck.typing_result = TypeCheck.typecheck parsed in
+  Alcotest.(check int) "single duplicate-match-pattern error" 1 (List.length type_errors);
+  match type_errors with
+  | [(_, msg)] ->
+      Alcotest.(check bool)
+        "error mentions duplicate match pattern"
+        true
+        (contains_substring ~text:msg ~substring:"Duplicate pattern name 'x'")
+  | _ -> Alcotest.fail "unexpected duplicate match-pattern diagnostics"
+
 let location_tests = [
   "location creation", `Quick, test_location_creation;
   "lexer error has location", `Quick, test_lexer_error_has_location;
@@ -184,6 +230,8 @@ let location_tests = [
   "typecheck normalizes inner annotations", `Quick, test_typecheck_normalizes_inner_annotations;
   "projection partial application survives refcount", `Quick, test_projection_partial_app_survives_refcount;
   "annotated list_map typechecks", `Quick, test_annotated_list_map_typechecks;
+  "duplicate parameter names report error", `Quick, test_duplicate_function_parameter_names_report_error;
+  "duplicate names in parameter pattern report error", `Quick, test_duplicate_names_inside_parameter_pattern_report_error;
+  "duplicate names in match pattern report error", `Quick, test_duplicate_names_inside_match_pattern_report_error;
 ]
-
 

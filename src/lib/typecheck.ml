@@ -10,6 +10,26 @@ let dummy ann = EConst (CUnit, Ann_typed (get_location ann, TError))
 
 let get_typ e = Type_env.get_type e
 
+let check_unique_binders kind patterns =
+  let seen = Hashtbl.create 16 in
+  let duplicate_errors =
+    patterns
+    |> List.concat_map Core.pattern_bound_vars_with_anns
+    |> List.filter_map (fun (name, ann) ->
+      match Hashtbl.find_opt seen name with
+      | None ->
+        Hashtbl.add seen name (get_location ann);
+        None
+      | Some first_loc ->
+        Some (ann, Format.asprintf "Duplicate %s name '%s' (previously bound at %s)" kind name (Location.to_string first_loc)))
+  in
+  let* _ = Type_env.collect (List.map (fun (ann, msg) -> error ann msg) duplicate_errors) in
+  return ()
+
+let check_unique_param_binders params = check_unique_binders "parameter" params
+
+let check_unique_pattern_binders pattern = check_unique_binders "pattern" [pattern]
+
 type scheme = Type_env.scheme
 
 let forall vars t = Type_env.Forall (vars, t)
@@ -406,7 +426,9 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
         return t_scrutinee
     in
     let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t = 
-      fun (pattern, branch, _) -> check_pattern_and_infer_branch pattern branch t_scrutinee in
+      fun (pattern, branch, _) ->
+        let* () = check_unique_pattern_binders pattern in
+        check_pattern_and_infer_branch pattern branch t_scrutinee in
     let* tbranches = Type_env.collect (List.map branch_mapper branches) in
     let* branch_types = Type_env.collect (List.map (fun (_, branch) -> get_typ branch) tbranches) in
     (* check that all branches have the same type *)
@@ -427,6 +449,7 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
       in
       return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, t))))
   | EFun (params, body, ann) -> 
+    let* () = check_unique_param_binders params in
     let* param_types = Type_env.collect @@ List.map (fun param_pat -> 
       let* pt = Type_env.fresh_type_var () in
       let* param_pat, bound_vars = check_pattern param_pat pt in
@@ -491,6 +514,7 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
         let* _ = error ann (Format.asprintf "Type check expected non-function '%a'" Ast.pp_expr e) in
         return (Cons1(TError, List.init (List.length params - 1) (fun _ -> TError)), TError)
     in
+    let* () = check_unique_param_binders params in
     let* params_annotated, param_bindings = 
       List.map2 (fun param pt -> check_pattern param pt) params (p1_type :: param_types_rest)
       |> Type_env.collect
@@ -531,6 +555,7 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
     in
     let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t =
       fun (pattern, branch, _) ->
+        let* () = check_unique_pattern_binders pattern in
         let* typed_pattern, bindings = check_pattern pattern t_scrutinee in
         let* typed_branch = Type_env.with_locals bindings (check branch expected) in
         return (typed_pattern, typed_branch)

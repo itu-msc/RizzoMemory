@@ -111,12 +111,15 @@ let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann)
   | EAnno (_, _, ann) -> ann
 
-let rec pattern_bound_vars = function
+let rec pattern_bound_vars_with_anns : type stage. stage pattern -> (string * stage ann) list = function
   | PWildcard _ | PConst _ -> []
-  | PVar (x, _) -> [x]
-  | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
-  | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
-  | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars ps
+  | PVar (x, ann) -> [x, ann]
+  | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars_with_anns p1 @ [p2]
+  | PTuple (p1, p2, _) -> pattern_bound_vars_with_anns p1 @ pattern_bound_vars_with_anns p2
+  | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars_with_anns ps
+
+let pattern_bound_vars pattern =
+  List.map fst (pattern_bound_vars_with_anns pattern)
 
 let pattern_get_ann = function
   | PWildcard ann | PConst (_, ann)
