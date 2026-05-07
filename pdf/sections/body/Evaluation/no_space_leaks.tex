@@ -1,14 +1,29 @@
 % \todo{Results of running some different Rizzo programs (with valgrind) for extended period/number of iterations. Goal is to convince no space is leaks happen when the program is run.}
 
-For this part of the evaluation our focus will be on space leaks. For this purpose, we will be using Valgrind \todo{a footnote?}, which is a framework for building dynamic analysis tools.
-Valgrind comes with a tool, \textit{memcheck}, for detecting memory errors such as reading uninitialised values, use-after-free, and most importantly memory leak detection. Note, that as a dynamic tool \textit{memcheck} is only able to find errors in the execution paths that we provide \todo{branches that we trigger instead?}.
+For this part of the evaluation our focus will be on space leaks. For this purpose, we will be using Valgrind \cite{valgrind}, which is a framework for building dynamic analysis tools.
+Valgrind comes with a tool, \textit{memcheck}, for detecting memory errors such as reading uninitialised values, use-after-free, and most importantly memory leak detection. Valgrind cant prove we have no space leaks, but it can give us confidence that we don't have any obvious memory that we are losing track of.
 
 To also get information on how many inputs the program has processed, we instrument the runtime to save the number of steps taken and the average time taken per step in microseconds, which is printed when the program exits. We do so by using the \texttt{--info-heap} compilation flag, which enables the logging of this information in the runtime.
 
-The program we will run is an interactive console application ported from \citeauthor*{gebser_asynchronous_2023}~\cite{gebser_asynchronous_2023}. Our code can be found in Appendix \todo{add appendix reference} and the full output can be found in Appendix \todo{add appendix reference}.
+The program we will run is an interactive console application ported from \citeauthor*{gebser_asynchronous_2023}~\cite{gebser_asynchronous_2023}. Our code can be found in Appendix \ref{appendix:valgrind_program} and the full output can be found in Appendix \ref{appendix:valgrind_output}.
 The program maintains a counter that is incremented every time a clock ticks and can be printed to the screen when a user writes `\textit{show}'. The counter can be manipulated by writing either `\textit{negate}', to negate the current value, or a number $n$ to increase the current value by $n$.
 
 To mimic the program running for an extended period, we adjust the timer so the counter is incremented every 1 millisecond. We then have the program run for 200 seconds with input occasionally being given to the console, which results in about 200,000 steps taken. We run the program with Valgrind's \texttt{--leak-check=full} tool to check for memory leaks and other memory errors. For reproducibility, we made it into a script under \texttt{scripts/valgrind\_evaluation.sh}.
+
+\begin{verbatim}
+Steps taken: 198480, Average step time: 154 us, Signals left in heap: 21
+==3108== 
+==3108== HEAP SUMMARY:
+==3108==     in use at exit: 5,811 bytes in 154 blocks
+==3108==   total heap usage: 4,169,475 allocs, 4,169,321 frees, 174,719,546 bytes allocated
+==3108== 
+==3108== LEAK SUMMARY:
+==3108==    definitely lost: 0 bytes in 0 blocks
+==3108==    indirectly lost: 0 bytes in 0 blocks
+==3108==      possibly lost: 0 bytes in 0 blocks
+==3108==    still reachable: 5,811 bytes in 154 blocks
+==3108==         suppressed: 0 bytes in 0 blocks
+\end{verbatim}
 
 From the output of Valgrind, we see no obvious memory leaks, with all memory lost reports being `0 bytes in 0 blocks'. We do however see that there is some still reachable memory, which is expected as the signal heap, registered outputs and top-level values are not being freed at the end of the program.
 
