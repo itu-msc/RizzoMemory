@@ -1,39 +1,44 @@
 % \todo{This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
 % We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).}
 
-For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become \todo{RizzoLang}, rather than a comprehensive explanation of each. Therefore, we focus on the necessary adjustments and the unavoidable parts such as the signal heap.
+For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become \todo{RizzoLang}, rather than a comprehensive explanation of each. 
+To do so, we first provide an abstract description of the semantics, then give a more concrete account of how this is implemented in the runtime of the language, and finally how reference counting is fitted in.
+
+% Therefore, we focus on the necessary adjustments and the unavoidable parts such as the signal heap.
 
 % Our implementation depends on adhering to the reactive semantics of Rizzo as defined in \citetitle{rizzo_modal_2025}~\cite{rizzo_modal_2025}, while also implementing the reference counting semantics from \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. In this section we describe how we have structured our implementation to meet these requirements, and how the design of the heap and AST supports these semantics.
 
 \subsubsection{Semantics: Rizzo}
 
-In Rizzo~\cite{rizzo_modal_2025} the operational semantics are split in two: The evaluation semantics for expressions, and the reactive semantics that describe how Rizzo programs react when time is stepped forward.
+In Rizzo~\cite{rizzo_modal_2025} the operational semantics is split in two: The evaluation semantics for expressions, and the reactive semantics that describe how Rizzo programs react when time is stepped forward.
 
 The evaluation semantics follow a standard eager evaluation strategy. The only exception being $\text{delay} \; e$ for which the argument $e$ is lazily evaluated.
 % We have slightly different evaluation semantics because we allow general recursion.
-We change the semantics presented by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} \todo{only a little}. We exclude the $\textbf{fix}\text{(-point)}$ construct which is used to guarantee productivity by guarding recursion with the \texttt{Delayed} type. Meaning, our implementation makes no guarantees about productivity, a trade-off we are willing to make given the usefulness of general recursion in functional programming.
+We change the semantics presented by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} \todo{only a little}. We exclude the $\textbf{fix}\text{(-point)}$ construct which is used to guarantee productivity by guarding recursion with the \texttt{Delayed} type. That is, our implementation makes no guarantees about productivity, a trade-off we are willing to make given the usefulness of general recursion in functional programming.
 
 %Trying to say something like: Rizzo~\cite splits the reactive semantics in three: *which? What is their purpose*. We'll point our focus to the update semantics, since this is the most important for the problem at hand
 The reactive semantics define the reactive behaviour of Rizzo, i.e.\ what happens when any channel has produced a value and time is moved forward. 
 These semantics are split in three parts:
 The \textit{advance semantics} which describe how a $\texttt{Later}\, A$ value is advanced to produce a value of type $A$; 
 the \textit{update semantics} which, using the advance semantics, describe how a signal is updated and brought forward in time;
-and the \text{step semantics} which describe the process of applying the update semantics to every signal when time is \textit{stepped} forward.
+and the \textit{step semantics} which describe the process of applying the update semantics to every signal when time is \textit{stepped} forward.
 
 %Goal: Goal is to explain the update semantics. Explain the now vs. earlier heap.
 For the purpose of memory management, we will focus our attention on the update semantics but first we take a detour to understand the conceptual structure of the heap.
-In the typical way, the heap holds onto all dynamically allocated constructs such as tuples, signals, function closures, etc. 
+In the typical way, the heap holds onto all dynamically allocated data such as tuples, signals, function closures, etc.
+Among these, signals are special because they must be traversed as part of the reactive semantics. Rizzo therefore distinguishes between the \textit{heap}, storing all dynamically allocated data, and the \textit{signal heap}, a subset of the heap containing only signals. This signal heap is further divided in two parts: the \texttt{now heap} holding only signals that belong to the current time step; and the \texttt{earlier heap} which hold all the stale signals to be updated.
+
 However, in Rizzo the sub-heap storing only signals is especially important since it must be iterated as part of the reactive semantics. 
 We call this sub-heap the `signal heap' and it is further sub-divided in two parts: \texttt{now heap} holding only signals that belong to the current time step; and the \texttt{earlier heap} which hold all the stale signals to be updated.
 
 %Goal: explain update semantics
 At runtime when some channel $\mathbf{C}$ produces a value, the step semantics describe that all signals must be moved to the \texttt{earlier heap}, consequently marking their data stale.
-Then as described by the update semantics, each signal is moved one-by-one from the \texttt{earlier heap} to the \texttt{now heap}. To move a signal we first check if its tail was dependent on $\mathbf{C}$ and if it were, then the tail is \textit{advanced} to obtain a new signal whose data is copied into the original signal and the original signal is moved to the the \texttt{now heap}. Otherwise, the signal is moved to the \texttt{now heap} unchanged.
+Then as described by the update semantics, each signal is moved one-by-one from the \texttt{earlier heap} to the \texttt{now heap}. To move a signal we first check if its tail is dependent on $\mathbf{C}$ and if so, the tail is \textit{advanced} to obtain a new signal whose data is copied into the original signal and the original signal is moved to the the \texttt{now heap}. Otherwise, the signal is moved to the \texttt{now heap} unchanged.
 %We avoid talking about the updated flag - that is an implementation detail. Belongs to advance
 
 %Goal: Here comes a digest, what does all of the above mean? 
 However, since chains of signals built using combinators form data-dependencies the move-ordering is significant. 
-Boiled down the reactive semantics require that:
+Boiled down, the reactive semantics require that:
 \begin{itemize}
     \item Any new signal must only depend on other signals in the \texttt{now heap}.
     % \item When an input is produced on a channel, all signals with a tail that depends on the clock of that channel must to be updated.
@@ -51,9 +56,9 @@ Based on these requirements, we have chosen to structure our heap as a linked li
 %  as we can ensure that when a new signal is created it is added after the split between the \texttt{Now} and \texttt{Earlier} heaps. \dots
 
 \begin{itemize}
-    \item Representing the \texttt{Now} and \texttt{Earlier} heaps in one data structure, and expressing a split between them using a pointer (cursor).
-    \item Moving signals from the \texttt{Now} heap to the \texttt{Earlier} heap in O(1) time by resetting the cursor to the start of the heap. Likewise moving signals back to the \texttt{Now} heap by moving the cursor forward.
-    \item O(1) insertion that maintains the topological order of signals by adding them in the end of the \texttt{Now} heap, we ensure that any signal can only depend on signals that were created before it.
+    \item Representing the \texttt{now} and \texttt{earlier} heaps in one data structure, and expressing a split between them using a pointer (cursor).
+    \item Moving signals from the \texttt{now} heap to the \texttt{earlier} heap in O(1) time by resetting the cursor to the start of the heap. Likewise moving signals back to the \texttt{now} heap by moving the cursor forward.
+    \item O(1) insertion that maintains the topological order of signals by adding them in the end of the \texttt{now} heap, we ensure that any signal can only depend on signals that were created before it.
     \item O(1) removal of signals when their reference count drops to zero.
     \item Stable references to signals, as insertions and removals do not move other signals in memory, so pointers to signals remain valid throughout their lifetime.
 \end{itemize}
@@ -63,16 +68,17 @@ Based on these requirements, we have chosen to structure our heap as a linked li
 The evaluation semantics of Rizzo~\cite{rizzo_modal_2025} and the operational semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} are both built on the same core: an eagerly evaluated lambda calculus. This common structure allows us to reuse the semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} for most of Rizzo, including both the evaluation rules and the reference counting.
 
 %GOAL: We should mention that all constructors are heap allocated.
-In the semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, there are only two kinds of heap-allocated values: function closures, which represent partial applications, and constructor values of the shape $\textbf{ctor}_i$ which represent values created using $i\text{-th}$ constructor of a tagged union.
+In the semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, there are only two kinds of heap-allocated values: function closures, which represent partial applications, and constructor values of the shape $\textbf{ctor}_i$ which represent values created using the $i\text{-th}$ constructor of a tagged union.
 This is already enough to model most of Rizzo's data constructors. 
 %GOAL: How do we model Later, Delayed, Sync, etc.?
 In particular, values of the \texttt{Sync}, \texttt{Later}, and \texttt{Delayed} types can be represented as regular tagged unions, where each constructor is assigned its own tag.
 
 %GOAL: EXCEPT signals, for those we extend the semantics with a specialised signal constructor, because ...
-The exception is the \texttt{Signal} constructor. Although signals, like other constructors, are just containers of values, they must be treated differently because both their creation and erasure modify the signal heap.
-We therefore introduce a specialised \textbf{signal} value.
-When applying the \textbf{signal} constructor with a set of arguments, each argument is evaluated and stored into a fresh memory location, just as with other constructors, but the resulting \textbf{signal} value is also inserted into the signal heap.
-When a signal is later erased, its fields are decremented and the signal is removed from the heap.
+The exception is the \texttt{Signal} type. Although signals, like other constructors, are just containers of values, they must be treated differently because both their creation and erasure modify the signal heap.
+We therefore introduce a specialised \textbf{signal} value with five fields: the canonical \textit{head} and \textit{tail}, and three fields used by the runtime. These runtime fields consist of a flag $U$ required by the advance semantics and two pointers $prev$ and $next$ that link the signal into the signal heap.
+The \textbf{signal} constructor is evaluated like any other $\textbf{ctor}_i$ with an additional step that inserts the resulting \textbf{signal} value into the linked-list structure of the signal heap.
+% When applying the \textbf{signal} constructor with a set of arguments, each argument is evaluated and stored into a fresh memory location, just as with other constructors, but the resulting \textbf{signal} value is also inserted into the signal heap.
+When a signal is later erased, its fields are decremented and the signal is removed from the signal heap.
 
 %GOAL: the delay constructor should have call-by-name semantics.
 There is one additional adjustment required for \texttt{Delayed} values. In particular, the constructor $\mathsf{delay} \; e$ should behave as call-by-name, but this is not enforced by operational semantics since such values are treated as $\textbf{ctor}_i$ values. Instead the AST is rewritten so that expressions of the form $\mathsf{delay} \; e$ become $\mathsf{delay} \; (\lambda x.e$).\ \todo{This instead costs runtime memory, since we must effectively allocate a closure AND a constructor value for $\mathsf{delay}$}.
