@@ -1,7 +1,5 @@
 \section{Automatic reference counting of Rizzo}\label{section:refcount}
 
-% \todo{Quick refresh of assumptions from \textit{Reference Counting section}}
-
 The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} are defined over the calculi $\lambda_{pure}$ and $\lambda_{RC}$, where the $\lambda_{RC}$ extends $\lambda_{pure}$ with reference counting instructions Figure~\ref{figure:refcount_IR} shows the IR used in our compiler, where Rizzo-specific extensions are highlighted in green.  
 
 In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global constant $c$, $\texttt{ctor}_i \; \bar p$ constructs a value of some erased type with tag $i$, and $\texttt{proj}_i \; x$ projects the $i\text{-th}$ field from constructor value $x$. Fully applied calls and partial applications may only be performed by global constants and variable application is defined separately for only a single argument.
@@ -48,10 +46,9 @@ We additionally add a specialised $\texttt{signal}$ constructor that can be used
 This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). 
 Finally, we add top level values as mappings from constants to $FnBody$ where the $FnBody$ is run at program start up to initialise the value. This way, we can reuse the automatic reference counting of Section~\ref{section:refcount:beans}.
 
-% \todo{Should this section include: How we capture the remaining Rizzo constructors: \texttt{Delay}, \texttt{Later} or does it belong later in Section~\ref{section:refcount:beans}, or maybe semantics section?}
 To perform automatic reference counting on a Rizzo program, 
 we first apply the transformations of Section~\ref{section:refcount:transforms} to get the program into a shape that satisfies the syntactic constraints of the IR and the invariants from Section~\ref{sec:background:beans:assumptions}. 
-We then lower the transformed program to the reference-counting IR and apply the three algorithms from Section~\ref{section:refcount:beans}:
+We then lower the transformed program to the reference-counting IR and apply the three algorithms from Section~\ref{section:refcount:beans} in the order:
   $R$, which inserts \textbf{reset}/\textbf{reuse} pairs; 
   $collect_{\mathbb{O}}$ which infers the borrow signatures of functions; 
   and $C$, which inserts \textbf{inc}/\textbf{dec} instructions~\cite{ullrich_counting_2021}.
@@ -68,16 +65,18 @@ To achieve the correct AST shape, we apply the transformation pipeline shown in 
 
 The compiler performs consecutive lambda elimination, lambda lifting, copy propagation, alpha-renaming, pattern lowering, dead let elimination, and A-normalization. Consecutive lambda elimination is not strictly required but reduces the number of lambdas to be lifted. 
 
-The lowering of patterns into let-bindings may not directly contribute to any invariant, however it is required since there is no pattern matching in the IR.\@ The result of translating a match such as \lstinline|match mysig with x :: xs -> e| is shown in Listing~\ref{listing:refcount:elim_pattern}. The match expression must be kept around as it is the only point where reset/reuse pairs can be inserted, we will discuss this further in Section~\ref{section:refcount:beans}.
+The lowering of patterns into let-bindings may not directly contribute to any invariant, however it is required since there is no pattern matching in the IR.\@ The result of translating a match such as \lstinline|match mysig with x :: xs -> e| is shown in Listing~\ref{listing:refcount:elim_pattern}. The match expression must be kept around as it is the only point where \textbf{reset}/\textbf{reuse} pairs can be inserted, we will discuss this further in Section~\ref{section:refcount:beans}.
 
-\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[caption={Output of lowering a pattern match on a signal value}, label={listing:refcount:elim_pattern}]
+\begin{figure*}
+\begin{lstlisting}[
+  caption={Output of lowering a pattern match on a signal value},
+  label={listing:refcount:elim_pattern}]
 match mysig with
-| x :: xs -> 
+| _ -> 
   let x = head mysig in 
   let xs = tail mysig in e
 \end{lstlisting}
-\end{minipage}
+\end{figure*}
 
 While some of the invariants are clearly fulfilled by the transformation pipeline, such as the requirement that all lambdas be lifted or that trivial bindings like \lstinline|let x = y| have been eliminated, some of them are not so obvious. 
 In particular, the ones about application shape. The RC IR assumes unary variable applications and that applications on global constants are never over-applied. 
@@ -86,17 +85,16 @@ Therefore, when \textit{converting to IR} variable applications are rewritten su
 Another non-obvious point is the \textit{eta-expansion} of constructors. This invariant is enforced by the type checker and so there is no need for a dedicated transformation.
 
 \subsection{Counting Rizzo Beans}\label{section:refcount:beans}
-% \todo{Walk through the 3 steps and explain: Purpose and how have we adapted it for Rizzo?}
 
 Once the Rizzo program has been transformed and converted into the IR form of Figure~\ref{figure:refcount_IR} it is time to insert RC instructions. 
 
-In this section, we will explain how RC instructions are inserted during compilation and our adaptations of the algorithms by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. Note, these algorithms only insert instructions and the counting of references and memory management is performed at runtime.
+In this section, we describe the insertion of RC instructions and our adaptations of the algorithms by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. Note, these algorithms only insert instructions and the counting of references and memory management is performed at runtime.
 
-\todo{Summarise again? But more importantly what does each algorithm achieve? And how do they fit together}
+% CONSIDER: it may be that we would want to see R runs before, collect, which runs before C ... but I put "in the order" into the summary further up, hopefully that suffices.
 
 \subsubsection{Reusing memory}\label{section:refcount:beans:reuse}
 
-The first step of this process is to insert \textbf{reset}/\textbf{reuse} pairs, \todo{why?}. The approach to inserting such pairs is based on the $R$ algorithm by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. 
+The first step of this process is to insert \textbf{reset}/\textbf{reuse} pairs. The approach to inserting such pairs is based on the $R$ algorithm by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. 
 The algorithm will try to insert \textbf{reset}/\textbf{reuse} pairs for the scrutinee of each \textbf{match} expression. 
 It does so by going into each branch/arm of the \textbf{match} looking for the first point where the scrutinee is dead, meaning not used in the rest of function body, and then trying to find a \textit{suitable} constructor expression such as $\textbf{ctor}_i \; \bar p$. 
 
@@ -169,7 +167,7 @@ However, the borrow signature of a function depends on the signatures of the fun
 To handle this, we build a call graph, that records for each function $f$, the set of functions that call $f$.
 We then iterate over the functions, collecting owned variables and updating signatures until we reach a fixed point where no signature changes any further.
 
-\todo{Do we mention that if a function has any borrowed parameters in its signature and is used in a partial application then we create a wrapper with all parameters owned?}
+% \todo{Do we mention that if a function has any borrowed parameters in its signature and is used in a partial application then we create a wrapper with all parameters owned?}
 
 \subsubsection{Learning to count}\label{section:refcount:beans:counting}
 
