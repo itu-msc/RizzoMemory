@@ -23,7 +23,7 @@ The modal types \texttt{Later} and \texttt{Delayed} are what distinguish Rizzo f
     % (* a computation that never produces a value *)
     \item $\mathsf{wait}\;c : \texttt{Later}\,A$ waits for an input on channel $c : \texttt{Chan}\,A$ to produce a value.
     % (* waits for input on channel \texttt{c : Chan a} *)
-    \item $\mathsf{watch}\;s : \texttt{Later}\,A$ watches a partial signal $s : \texttt{Signal}\,(\texttt{Option}\,a)$ and will produce a value when the head of $s$ is updated to a value of the form $\mathsf{Just}(x)$ for some $x: A$. 
+    \item $\mathsf{watch}\;s : \texttt{Later}\,A$ watches a partial signal $s : \texttt{Signal}\,(\texttt{Option}\,a)$ and will produce a value when the head of $s$ is updated to a value of the form $\mathsf{Some}(x)$ for some $x: A$. 
     % \texttt{watch s~:~Later a} (* watches a partial signal $\texttt{Signal }(\texttt{Option }a)$ *)
     \item $\mathsf{tail}\;s : \texttt{Later}\,(\texttt{Signal}\,A)$ builds a delayed computation to access the future value of a signal $s : \texttt{Signal}\,A$.
     % \texttt{tail s : Later (Signal a)}   (* gets the tail of signal *)

@@ -104,13 +104,13 @@ let test_effectful_decorator_marks_function () =
 
 let test_constructor_application_with_parenthesized_let () =
   let input =
-    "let x = Just (let y = y in y :: never)\n"
+    "let x = Some (let y = y in y :: never)\n"
   in
   let parsed = Rizzoc.Parser.parse_string input in
   let expected : parsed program =
     [
       toplet "x"
-        (ctor "Just"
+        (ctor "Some"
            [let_ "y" (var "y") (binary SigCons (var "y") (const CNever))]);
     ]
   in

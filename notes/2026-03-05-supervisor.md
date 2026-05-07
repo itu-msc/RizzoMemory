@@ -8,7 +8,7 @@ fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
   | x :: xs -> 
     if f x
     then x :: never
-    else x :: (jump (fun a -> Just (a :: xs)) |> xs)
+    else x :: (jump (fun a -> Some (a :: xs)) |> xs)
 ```
 
 Doesn't quite produce what we want. The reset instruction is insereted BEFORE the if expression. This means the tail is still constructed and `s` isn't reused in the `true` branch.
@@ -45,7 +45,7 @@ fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
     then match s with | x :: xs -> x :: never
     else 
       match s with
-      | x :: xs -> x :: (jump (fun a -> Just (a :: xs)) |> xs)
+      | x :: xs -> x :: (jump (fun a -> Some (a :: xs)) |> xs)
 ```
 
 Producing this reference counted IR:

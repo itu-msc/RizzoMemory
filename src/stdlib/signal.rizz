@@ -128,16 +128,16 @@ fun interleave_l_right f lxs ys =
 fun filter_map p s : ('a -> (Option 'b)) -> Signal 'a -> Later (Signal 'b) = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
 
-fun filter p s : ('a -> Bool) -> Signal 'a -> Later (Signal 'a) = filter_map (fun x -> if p x then Just (x) else Nothing) s
+fun filter p s : ('a -> Bool) -> Signal 'a -> Later (Signal 'a) = filter_map (fun x -> if p x then Some (x) else None) s
 
 fun filter_map_l p s =
-    mk_sig (watch (Nothing :: (map p |> s)))
+    mk_sig (watch (None :: (map p |> s)))
 
 fun filter_mapL p s =
     filter_map_l p s
 
 fun filter_l p s =
-    filter_map_l (fun x -> if p x then Just (x) else Nothing) s
+    filter_map_l (fun x -> if p x then Some (x) else None) s
 
 fun filterL p s =
     filter_l p s
@@ -147,8 +147,8 @@ fun jump f s : ('a -> Option (Signal 'a)) -> Signal 'a -> Signal 'a =
     | x :: xs ->
         let cont = fun s_ ->
             match f (head s_) with
-            | Just (y) -> y
-            | Nothing  -> jump f s_
+            | Some (y) -> y
+            | None  -> jump f s_
         in
         x :: (cont |> xs)
 
@@ -157,7 +157,7 @@ fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
   | x :: xs ->
     if f x
     then x :: never
-    else x :: (jump (fun a -> Just (a :: xs)) |> xs)
+    else x :: (jump (fun a -> Some (a :: xs)) |> xs)
 
 fun trigger f s1 s2 =
     map (fun p -> match p with | (a, b) -> f a b) (sample s1 s2)

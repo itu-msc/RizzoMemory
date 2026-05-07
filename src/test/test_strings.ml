@@ -125,7 +125,7 @@ let test_apply_typed_transforms_eliminates_string_match () =
 let test_nested_string_literal_pattern_typechecks () =
   let _typed =
     parse_and_typecheck
-      "fun is_a opt = match opt with | Just(\"a\") -> true | _ -> false\n"
+      "fun is_a opt = match opt with | Some(\"a\") -> true | _ -> false\n"
   in
   ()
 

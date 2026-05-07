@@ -117,7 +117,7 @@ fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
   | x :: xs ->
     if f x
     then x :: never
-    else x :: (jump (fun a -> Just (a :: xs)) |> xs)
+    else x :: (jump (fun a -> Some (a :: xs)) |> xs)
 \end{verbatim}
 
 In the `then' branch, the old signal $s$ is dead immediately after the match. This makes it possible to reset the old signal cell and reuse its storage for the new signal $x :: \mathsf{never}$.

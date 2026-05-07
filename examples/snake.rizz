@@ -68,10 +68,10 @@ fun token_to_point token : String -> (Int * Int) =
             let y_text = list_head rest in
             let parsed_x = parse_int x_text in
             match parsed_x with
-            | Just (x) ->
+            | Some (x) ->
                 let parsed_y = parse_int y_text in
                 match parsed_y with
-                | Just (y) -> (x, y)
+                | Some (y) -> (x, y)
                 | _ -> (0, 0)
             | _ -> (0, 0)
     | _ -> (0, 0)

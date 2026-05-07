@@ -1,17 +1,4 @@
 
-// fun entry x = 
-//     let console_sig = mk_sig (wait console) in
-//     let quit_sig = filterL (fun x -> x == "quit") console_sig in
-//     let _x = quit_at quit_sig in
-//     start_event_loop ()
-
-
-// fun entry x = 
-//     let console_sig = mk_sig (wait console) in
-//     let quit_sig = map_l (fun x -> "Hello world") console_sig in
-//     let _x = quit_at quit_sig in
-//     start_event_loop ()
-
 fun entry x =
     let console_sig = mk_sig (wait console) in
     let quit_sig = filterL (fun x -> x == "quit") console_sig in

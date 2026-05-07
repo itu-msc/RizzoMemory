@@ -2,19 +2,19 @@ fun str_concat a b = (a : String) + b
 
 // yoyo between `start` and `end` (both inclusive) - note that the first value produced is `start + 1`
 fun yoyo start end source =
-  let count_up   = fun start -> scan (fun x y -> x + 1) start source in
-  let count_down = fun start -> scan (fun x y -> x - 1) start source in
+  let count_up   = fun start -> scan (fun x _ -> x + 1) start source in
+  let count_down = fun start -> scan (fun x _ -> x - 1) start source in
 
   jump 
     (fun x -> 
       if x > end 
-      then Just (jump (fun x -> if x < start then Just (yoyo start end source) else Nothing) (count_down end))
-      else Nothing)
+      then Some (jump (fun x -> if x < start then Some (yoyo start end source) else None) (count_down end))
+      else None)
     (count_up start)
 
 fun fizzbuzz_signal_from source = 
-    let fizz_signal = filter_map (fun x -> if mod x 3 == 0 then Just ("fizz") else Nothing) source in
-    let buzz_signal = filter_map (fun x -> if mod x 5 == 0 then Just ("buzz") else Nothing) source in
+    let fizz_signal = filter_map (fun x -> if mod x 3 == 0 then Some ("fizz") else None) source in
+    let buzz_signal = filter_map (fun x -> if mod x 5 == 0 then Some ("buzz") else None) source in
 
     let fizzbuzz_signal = 
         interleave_l
@@ -31,10 +31,10 @@ fun fizzbuzz_signal_from source =
 fun entry x = 
     let timer = clock 1000 in
 
-    let counter : Unit -> Signal Int = fun unit -> scan (fun x y -> x + 1) 0 timer in
+    let counter : Unit -> Signal Int = fun unit -> scan (fun x _ -> x + 1) 0 timer in
 
     let time_out_sec = 5 in
-    let time_out = (fun x -> "__time_out") |> filter (fun x -> x > time_out_sec * 1000) (clock 1000) in
+    let time_out = (fun _ -> "__time_out") |> filter (fun x -> x > time_out_sec * 1000) (clock 1000) in
     let chosen_signal = 
         let picker = fun input_sync -> 
             let parse_input = fun input -> 

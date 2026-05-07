@@ -8,10 +8,10 @@ fun describeText s =
 
 fun nothingToJust x =
     match x with
-    | Just (y) -> Just(y + 1)
-    | Nothing -> Just(0)
+    | Some (y) -> Some(y + 1)
+    | None -> Some(0)
     | y -> y
-    | _ -> Nothing
+    | _ -> None
 
 fun appendSignalToNeverAndAdd1 s a = const (a |> s)
 

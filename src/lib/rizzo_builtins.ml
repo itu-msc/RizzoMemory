@@ -95,8 +95,8 @@ let is_builtin_projection name = match M.find_opt name builtins_map with
 
 let builtin_types = 
     [ ("Option", ["'a"], [
-        ("Nothing", []);
-        ("Just", [Ast.TParam "'a"]);
+        ("None", []);
+        ("Some", [Ast.TParam "'a"]);
       ])
     ; ("List", ["'a"], [
         ("Nil", []);
@@ -140,10 +140,6 @@ let ctor_mappings =
     ("true", 0);
     ("false", 1);
     ("sigcons", -1);
-    (* ("nothing", 0);
-    ("just", 1);
-    ("nil", 2);
-    ("cons", 3); *)
   ]
 
 let ctor_tag_of name = match M.find_opt (String.lowercase_ascii name) ctor_mappings with

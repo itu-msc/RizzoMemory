@@ -2,17 +2,17 @@ type Language = EN | DA
 
 fun parse_language command =
     match command with
-    | "en" -> Just (EN)
-    | "da" -> Just (DA)
-    | _ -> Nothing
+    | "en" -> Some (EN)
+    | "da" -> Some (DA)
+    | _ -> None
 
 fun is_regular_input command =
     if command == "quit"
     then false
     else
         match parse_language command with
-        | Just (_) -> false
-        | Nothing -> true
+        | Some (_) -> false
+        | None -> true
 
 fun switch_message language =
     match language with
@@ -34,10 +34,12 @@ fun language_switch regular_inputs language =
 // Console input is the only driver, but `switch_r` still swaps the active output signal.
 fun entry unused =
     let console_sig = mk_sig_of_channel console in
-    let regular_inputs = filter_l is_regular_input console_sig in
-    let language_sig = filter_map_l parse_language console_sig in
-    let default = "Type en for English (Default).\nSkriv da for Dansk." :: language_signal regular_inputs EN in
-    let mode_funcs = map_l (language_switch regular_inputs) language_sig in
-    let switched = switch_r default mode_funcs in
+    let regular_inputs = filter_l is_regular_input console_sig in // 0 internal watched 
+    let language_sig = filter_map_l parse_language console_sig in // 1 internal watched
+    let default = // 2
+        "Type en for English (Default).\nSkriv da for Dansk." 
+        :: language_signal regular_inputs EN in
+    let mode_funcs = map_l (language_switch regular_inputs) language_sig in // 23
+    let switched = switch_r default mode_funcs in // 3
     let _out = console_out_signal switched in
     start_event_loop ()

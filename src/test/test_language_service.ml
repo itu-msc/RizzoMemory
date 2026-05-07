@@ -332,7 +332,7 @@ let test_completions_include_builtins_and_constructors () =
   Alcotest.(check bool)
     "includes constructor"
     true
-    (completion_has_label ~labels ~name:"Just")
+    (completion_has_label ~labels ~name:"Some")
 
 let test_completions_filter_by_prefix () =
   let text = "fun main x = st\n" in
@@ -505,7 +505,7 @@ let test_semantic_tokens_include_function_parameters () =
        ~declaration:false)
 
 let test_semantic_tokens_include_function_parameter_patterns () =
-  let text = "fun unwrap (Just(x)) = x\n" in
+  let text = "fun unwrap (Some(x)) = x\n" in
   let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
   Alcotest.(check bool)
     "constructor token in function parameter pattern"
@@ -707,7 +707,7 @@ let test_hover_on_function_parameter_uses_name_range () =
         (contains_substring ~text:hover.Language_service.contents ~substring:"second")
 
 let test_hover_on_function_parameter_pattern_uses_name_range () =
-  let text = "fun unwrap (Just(x)) = x\n" in
+  let text = "fun unwrap (Some(x)) = x\n" in
   match Language_service.hover_at_position
           ~uri:"file:///test.rizz"
           ~filename:None
@@ -916,7 +916,7 @@ let test_rename_constructor_updates_declaration_expression_and_pattern () =
         (List.map string_of_range rename.Language_service.edits)
 
 let test_rename_function_parameter_pattern_updates_body_and_pattern () =
-  let text = "fun unwrap (Just(x)) = x\n" in
+  let text = "fun unwrap (Some(x)) = x\n" in
   match Language_service.rename_at_position
           ~uri:"file:///test.rizz"
           ~filename:None
@@ -932,7 +932,7 @@ let test_rename_function_parameter_pattern_updates_body_and_pattern () =
         (List.map string_of_range rename.Language_service.edits)
 
 let test_completion_in_function_parameter_pattern_sees_binding () =
-  let text = "fun unwrap (Just(x)) = x\n" in
+  let text = "fun unwrap (Some(x)) = x\n" in
   let labels =
     completion_labels
       ~text
