@@ -504,6 +504,28 @@ let test_semantic_tokens_include_function_parameters () =
        ~kind:Language_service.SemanticVariable
        ~declaration:false)
 
+let test_semantic_tokens_include_function_parameter_patterns () =
+  let text = "fun unwrap (Just(x)) = x\n" in
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "constructor token in function parameter pattern"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:0
+       ~character:12
+       ~kind:Language_service.SemanticType
+       ~declaration:false);
+  Alcotest.(check bool)
+    "pattern binding token in function parameter pattern"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:0
+       ~character:17
+       ~kind:Language_service.SemanticVariable
+       ~declaration:false)
+
 let test_semantic_tokens_after_line_comment () =
   let text =
     "let x = 1 // keep this comment\n"
@@ -683,6 +705,29 @@ let test_hover_on_function_parameter_uses_name_range () =
         "hover omits sibling parameter text"
         false
         (contains_substring ~text:hover.Language_service.contents ~substring:"second")
+
+let test_hover_on_function_parameter_pattern_uses_name_range () =
+  let text = "fun unwrap (Just(x)) = x\n" in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 0; character = 17 }
+  with
+  | None -> Alcotest.fail "expected hover for function parameter pattern binding"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover mentions pattern binding"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"pattern binding x");
+      Alcotest.(check int)
+        "hover range starts at pattern name"
+        17
+        hover.Language_service.range.start_pos.character;
+      Alcotest.(check int)
+        "hover range ends after pattern name"
+        18
+        hover.Language_service.range.end_pos.character
 
 let test_hover_inside_string_literal_uses_full_range () =
   let text = "let greeting = \"Hello World!\"\n" in
@@ -870,6 +915,34 @@ let test_rename_constructor_updates_declaration_expression_and_pattern () =
         ["0:21-0:25"; "1:13-1:17"; "2:28-2:32"]
         (List.map string_of_range rename.Language_service.edits)
 
+let test_rename_function_parameter_pattern_updates_body_and_pattern () =
+  let text = "fun unwrap (Just(x)) = x\n" in
+  match Language_service.rename_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 0; character = 23 }
+  with
+  | None -> Alcotest.fail "expected rename info for function parameter pattern"
+  | Some rename ->
+      Alcotest.(check string) "selected range" "0:23-0:24" (string_of_range rename.Language_service.range);
+      Alcotest.(check (list string))
+        "rename edits"
+        ["0:17-0:18"; "0:23-0:24"]
+        (List.map string_of_range rename.Language_service.edits)
+
+let test_completion_in_function_parameter_pattern_sees_binding () =
+  let text = "fun unwrap (Just(x)) = x\n" in
+  let labels =
+    completion_labels
+      ~text
+      ~position:{ Language_service.line = 0; character = 23 }
+  in
+  Alcotest.(check bool)
+    "completions include pattern binding in function body"
+    true
+    (completion_has_label ~labels ~name:"x")
+
 let test_rename_rejects_external_stdlib_symbol () =
   let text = "fun entry x : Int -> Int =\n  map (fun y -> y) x\n" in
   match Language_service.rename_at_position
@@ -897,6 +970,7 @@ let tests = [
   "semantic tokens builtin function references", `Quick, test_semantic_tokens_include_builtin_function_references;
   "pipe left operand keeps function metadata", `Quick, test_pipe_left_operand_keeps_function_reference_metadata;
    "semantic tokens function parameters", `Quick, test_semantic_tokens_include_function_parameters;
+    "semantic tokens function parameter patterns", `Quick, test_semantic_tokens_include_function_parameter_patterns;
    "semantic tokens after line comment", `Quick, test_semantic_tokens_after_line_comment;
    "semantic tokens after block comment", `Quick, test_semantic_tokens_after_block_comment;
    "typed top-level function symbols and tokens", `Quick, test_typed_top_level_function_symbols_and_tokens;
@@ -904,9 +978,11 @@ let tests = [
    "completion case branch scope", `Quick, test_completions_respect_case_branch_scope;
    "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
    "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
+    "completion function parameter patterns", `Quick, test_completion_in_function_parameter_pattern_sees_binding;
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
   "hover on type definition uses definition text", `Quick, test_hover_on_top_type_definition_uses_definition_text;
   "hover on function parameter uses name range", `Quick, test_hover_on_function_parameter_uses_name_range;
+    "hover on function parameter pattern uses name range", `Quick, test_hover_on_function_parameter_pattern_uses_name_range;
    "hover inside string literal uses full range", `Quick, test_hover_inside_string_literal_uses_full_range;
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
    "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;
@@ -983,5 +1059,6 @@ let tests = [
   "rename top-level function", `Quick, test_rename_top_level_function_updates_declaration_and_use;
   "rename local binding shadowing", `Quick, test_rename_local_binding_respects_shadowing;
   "rename constructor occurrences", `Quick, test_rename_constructor_updates_declaration_expression_and_pattern;
+  "rename function parameter pattern", `Quick, test_rename_function_parameter_pattern_updates_body_and_pattern;
   "rename rejects stdlib symbol", `Quick, test_rename_rejects_external_stdlib_symbol;
 ]

@@ -7,7 +7,7 @@ let rec subst_program (p: _ program) =
     | TopTypeDef _ as e -> e
     | TopLet(x, rhs, ann) -> TopLet(x, subst StringMap.empty rhs, ann))
 
-and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
+and subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
   match e with
   | EConst _ -> e
   | EVar (y, ann) when StringMap.mem y replacement_of -> EVar (StringMap.find y replacement_of, ann)
@@ -35,11 +35,21 @@ and  subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
     let e2' = subst replacement_of e2 in
     let e3' = subst replacement_of e3 in
     EIfe (e1', e2', e3', ann)
-  | EFun (args, e, ann) -> 
-    let arg_names = List.map fst args in
-    let replacement_of = List.fold_left (fun acc arg -> StringMap.add arg arg acc) replacement_of arg_names in
+  | EFun (params, e, ann) -> 
+    let (params', replacement_of) = 
+      List.fold_left
+        (fun (sub_params, acc) param -> 
+          let create_subst acc n = 
+            let sub = if StringMap.mem n acc then Utilities.new_name n else n in
+            StringMap.add n sub acc
+          in
+          let acc = List.fold_left create_subst acc (Core.pattern_bound_vars param) in 
+          (subst_pattern acc param :: sub_params, acc)) 
+        ([], replacement_of)
+        params
+      in
     let e' = subst replacement_of e in
-    EFun (args, e', ann)
+    EFun (List.rev params', e', ann)
   | ECtor (name, es, ann) -> 
     let es' = List.map (subst replacement_of) es in
     ECtor (name, es', ann)

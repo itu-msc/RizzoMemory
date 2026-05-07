@@ -42,11 +42,11 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
   | EAnno (e, t, loc) -> EAnno (lift_expr e, t, loc)
   | EUnary (UDelay, e, loc) -> 
     let fv = StringSet.to_list (Ast_helpers.free_vars_fun top_names [] e) in
-    let fv_with_loc = List.map (fun v -> (v, loc)) fv in
+    let fv_with_loc = List.map (fun v -> PVar (v, loc)) fv in
     let name = Utilities.new_name "thunk_" in
     let unit_name = Utilities.new_name "unit_arg" in
     let lifted_body = lift_expr e in
-    let thunk = TopLet((name, loc), EFun (fv_with_loc @ [unit_name, loc], lifted_body, loc), loc) in
+    let thunk = TopLet((name, loc), EFun (fv_with_loc @ [PVar (unit_name, loc)], lifted_body, loc), loc) in
     (* it's fine to leave it as an EApp even when there were no free variables, 
        since a later transformation [explicit_lifts] produces exactly this anyway *)
     let access_thunk = EApp (EVar (name, loc), List.map (fun v -> EVar (v, loc)) fv, loc) in
@@ -55,7 +55,7 @@ and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) =
   | EUnary (op, e, loc) -> EUnary (op, lift_expr e, loc)
   | EFun (params, body, loc) ->
     let fv = StringSet.to_list (Ast_helpers.free_vars_fun top_names params body) in
-    let fv_with_loc = List.map (fun v -> (v, loc)) fv in
+    let fv_with_loc = List.map (fun v -> PVar (v, loc)) fv in
     let lifted_loc = loc in
     let name = Utilities.new_name "lifted_fun" in
     let lifted_body = lift_expr body in

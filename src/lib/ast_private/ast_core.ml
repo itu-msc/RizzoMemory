@@ -65,7 +65,7 @@ and _ expr =
   | EVar : 's name -> 's expr
   | ECtor : 's name * 's expr list * 's ann -> 's expr
   | ELet : 's name * 's expr * 's expr * 's ann -> 's expr
-  | EFun : 's name list * 's expr * 's ann -> 's expr
+  | EFun : 's pattern list * 's expr * 's ann -> 's expr
   | EApp : 's expr * 's expr list * 's ann -> 's expr
   | EUnary : unary_op * 's expr * 's ann -> 's expr
   | EBinary : binary_op * 's expr * 's expr * 's ann -> 's expr
@@ -111,12 +111,21 @@ let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann)
   | EAnno (_, _, ann) -> ann
 
-let rec pattern_bound_vars = function
+let rec pattern_bound_vars_with_anns : type stage. stage pattern -> (string * stage ann) list = function
   | PWildcard _ | PConst _ -> []
-  | PVar (x, _) -> [x]
-  | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars p1 @ [fst p2]
-  | PTuple (p1, p2, _) -> pattern_bound_vars p1 @ pattern_bound_vars p2
-  | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars ps
+  | PVar (x, ann) -> [x, ann]
+  | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars_with_anns p1 @ [p2]
+  | PTuple (p1, p2, _) -> pattern_bound_vars_with_anns p1 @ pattern_bound_vars_with_anns p2
+  | PCtor (_, ps, _) -> List.concat_map pattern_bound_vars_with_anns ps
+
+let pattern_bound_vars pattern =
+  List.map fst (pattern_bound_vars_with_anns pattern)
+
+let pattern_get_ann = function
+  | PWildcard ann | PConst (_, ann)
+  | PVar (_, ann) | PSigCons (_,_ , ann) | PStringCons (_,_, ann) 
+  | PTuple (_, _, ann)
+  | PCtor (_, _, ann) -> ann
 
 let string_of_binary_op = function
   | SigCons -> "::"

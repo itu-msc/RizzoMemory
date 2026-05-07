@@ -1,9 +1,16 @@
 open Ast
 
 let has_overlap xs ys =
-  List.exists (fun x -> List.mem x ys) xs
+  (* Used to do something like: 'List.exists (fun x -> List.mem x ys) xs'
+    Below should more or less do the same?
+    Checks if any of the names bound by each function overlap, if they do then there is an overlap. *)
+  let open Collections in
+  let names_of = Fun.compose StringSet.of_list Core.pattern_bound_vars in
+  let xs_names = List.fold_left (fun acc p -> StringSet.union acc (names_of p)) StringSet.empty xs in
+  let ys_names = List.fold_left (fun acc p -> StringSet.union acc (names_of p)) StringSet.empty ys in
+  not (StringSet.disjoint xs_names ys_names)
 
-let rec collect_consecutive_params (params : _ name list) (body : _ expr) : _ name list * _ expr =
+let rec collect_consecutive_params params body =
   match body with
   | EFun (next_params, next_body, _) when not (has_overlap params next_params) ->
       collect_consecutive_params (params @ next_params) next_body

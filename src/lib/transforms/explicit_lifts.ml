@@ -26,7 +26,7 @@ let rec rewrite_expr function_names bound_names ~as_callee = function
       ELet (bound_name, rhs', body', ann)
   | EFun (params, body, ann) ->
       let bound_names =
-        List.fold_left (fun acc (name, _) -> StringSet.add name acc) bound_names params
+        List.fold_left (fun acc p -> StringSet.union acc (StringSet.of_list (Core.pattern_bound_vars p))) bound_names params
       in
       EFun (params, rewrite_expr function_names bound_names ~as_callee:false body, ann)
   | EApp (fn, args, ann) ->

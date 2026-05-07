@@ -565,7 +565,9 @@ let hover_text_for_expr : type s. s Ast.expr -> string =
       | Ast.EVar (name, _) -> "variable " ^ name
       | Ast.ECtor ((name, _), _, _) -> "constructor " ^ name
       | Ast.ELet ((name, _), _, _, _) -> "let-binding " ^ name
-      | Ast.EFun (params, _, _) -> "function(" ^ String.concat ", " (List.map fst params) ^ ")"
+      | Ast.EFun (params, _, _) -> 
+        let params_str = Format.asprintf "%a" (Format.pp_print_list ~pp_sep:(fun out _ -> Format.fprintf out ", ") Ast.pp_pattern) params in
+        Printf.sprintf "function(%s)" params_str
       | Ast.EApp _ -> "function application"
       | Ast.EUnary _ -> "unary expression"
       | Ast.EBinary _ -> "binary expression"
@@ -781,6 +783,22 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                  env)
              StringMap.empty
       in
+      let constructor_env =
+        top_level_constructor_declarations ~filename:None program
+        |> List.fold_left
+             (fun env (name, decl_filename, declaration_range) ->
+               StringMap.add
+                 name
+                 { kind = SemanticType; filename = decl_filename; range = declaration_range }
+                 env)
+             StringMap.empty
+      in
+      let lookup_constructor name _range =
+        match StringMap.find_opt name constructor_env with
+        | Some symbol when String.equal symbol.filename active_filename ->
+            Some { name; filename = symbol.filename; range = symbol.range }
+        | _ -> None
+      in
       let rec find_in_expr (env : definition_symbol StringMap.t) (expr : _ Ast.expr) : definition option =
         match expr with
         | Ast.EConst _ -> None
@@ -818,26 +836,44 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
             let declared_here =
               params
               |> List.find_map (fun param ->
-                     let param_range = range_of_name param in
-                     if range_contains_position param_range position then
-                       Some { name = name_text param; filename = active_filename; range = param_range }
-                     else
-                       None)
+                     pattern_bound_decls param
+                     |> List.find_map (fun (name, param_range) ->
+                            if range_contains_position param_range position then
+                              Some { name; filename = active_filename; range = param_range }
+                            else
+                              None))
             in
             (match declared_here with
              | Some _ as found -> found
              | None ->
-                 let env' =
-                   List.fold_left
-                     (fun acc param ->
-                       StringMap.add
-                         (name_text param)
-                         { kind = SemanticVariable; filename = active_filename; range = range_of_name param }
-                         acc)
-                     env
-                     params
+                 let constructor_here =
+                   params
+                   |> List.find_map (fun param ->
+                          pattern_constructor_occurrences param
+                          |> List.find_map (fun (ctor_name, ctor_range) ->
+                                 if range_contains_position ctor_range position then
+                                   lookup_constructor ctor_name ctor_range
+                                 else
+                                   None))
                  in
-                 find_in_expr env' body)
+                 (match constructor_here with
+                  | Some _ as found -> found
+                  | None ->
+                      let env' =
+                        List.fold_left
+                          (fun acc param ->
+                            pattern_bound_decls param
+                            |> List.fold_left
+                                 (fun acc (name, param_range) ->
+                                   StringMap.add
+                                     name
+                                     { kind = SemanticVariable; filename = active_filename; range = param_range }
+                                     acc)
+                                 acc)
+                          env
+                          params
+                      in
+                      find_in_expr env' body))
         | Ast.EApp (fn, args, _) ->
             (match find_in_expr env fn with
              | Some _ as found -> found
@@ -1027,33 +1063,47 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
             let declared_here =
               params
               |> List.find_map (fun param ->
-                     let param_range = range_of_name param in
-                     let param_target =
-                       rename_value_target ~filename:active_filename ~kind:RenameValue (name_text param) param_range
-                     in
-                     if range_contains_position param_range position then
-                       Some (param_target, param_range)
-                     else
-                       None)
+                     pattern_bound_decls param
+                     |> List.find_map (fun (name, param_range) ->
+                            if range_contains_position param_range position then
+                              let param_target =
+                                rename_value_target ~filename:active_filename ~kind:RenameValue name param_range
+                              in
+                              Some (param_target, param_range)
+                            else
+                              None))
             in
             (match declared_here with
              | Some _ as found -> found
              | None ->
-                 let env' =
-                   List.fold_left
-                     (fun acc param ->
-                       StringMap.add
-                         (name_text param)
-                         (rename_value_target
-                            ~filename:active_filename
-                            ~kind:RenameValue
-                            (name_text param)
-                            (range_of_name param))
-                         acc)
-                     env
-                     params
+                 let constructor_here =
+                   params
+                   |> List.find_map (fun param ->
+                          pattern_constructor_occurrences param
+                          |> List.find_map (fun (ctor_name, ctor_range) ->
+                                 if range_contains_position ctor_range position then
+                                   lookup_constructor ctor_name ctor_range
+                                 else
+                                   None))
                  in
-                 resolve_in_expr env' body)
+                 (match constructor_here with
+                  | Some _ as found -> found
+                  | None ->
+                      let env' =
+                        List.fold_left
+                          (fun acc param ->
+                            pattern_bound_decls param
+                            |> List.fold_left
+                                 (fun acc (name, param_range) ->
+                                   StringMap.add
+                                     name
+                                     (rename_value_target ~filename:active_filename ~kind:RenameValue name param_range)
+                                     acc)
+                                 acc)
+                          env
+                          params
+                      in
+                      resolve_in_expr env' body))
         | Ast.EApp (fn, args, _) ->
             (match resolve_in_expr env fn with
              | Some _ as found -> found
@@ -1199,16 +1249,41 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
                 let env' = StringMap.add (name_text bound_name) binding_target env in
                 collect_expr_ranges env' acc e2
             | Ast.EFun (params, body, _) ->
-                let env', acc =
+                let acc =
                   List.fold_left
-                    (fun (env_acc, range_acc) param ->
-                      let param_range = range_of_name param in
-                      let param_target =
-                        rename_value_target ~filename:active_filename ~kind:RenameValue (name_text param) param_range
+                    (fun acc param ->
+                      let acc =
+                        pattern_constructor_occurrences param
+                        |> List.fold_left
+                             (fun acc (name, ctor_range) ->
+                               match StringMap.find_opt name constructor_env with
+                               | Some candidate_target -> add_if_matching acc ctor_range candidate_target
+                               | None -> acc)
+                             acc
                       in
-                      let range_acc = add_if_matching range_acc param_range param_target in
-                      (StringMap.add (name_text param) param_target env_acc, range_acc))
-                    (env, acc)
+                      pattern_bound_decls param
+                      |> List.fold_left
+                           (fun acc (name, binding_range) ->
+                             let binding_target =
+                               rename_value_target ~filename:active_filename ~kind:RenameValue name binding_range
+                             in
+                             add_if_matching acc binding_range binding_target)
+                           acc)
+                    acc
+                    params
+                in
+                let env' =
+                  List.fold_left
+                    (fun env param ->
+                      pattern_bound_decls param
+                      |> List.fold_left
+                           (fun env (name, binding_range) ->
+                             let binding_target =
+                               rename_value_target ~filename:active_filename ~kind:RenameValue name binding_range
+                             in
+                             StringMap.add name binding_target env)
+                           env)
+                    env
                     params
                 in
                 collect_expr_ranges env' acc body
@@ -1352,16 +1427,16 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                      | Some _ as hover -> hover
                      | None -> find_symbol_hover_in_expr e2)
               | Ast.EFun (params, body, _) ->
-                  let param_hover =
-                    params
-                    |> List.find_map (fun param ->
-                           let param_range = range_of_name param in
-                           if range_contains_position param_range position then
-                             Some { range = param_range; contents = hover_text_for_named_symbol ~label:"parameter" param }
-                           else
-                             None)
+                  let hover_for_param = function
+                    | Ast.PVar (name, ann) ->
+                        let param_range = range_of_ann ann in
+                        if range_contains_position param_range position then
+                          Some { range = param_range; contents = hover_text_for_named_symbol ~label:"parameter" (name, ann) }
+                        else
+                          None
+                    | param -> pattern_hover_at_position ~position param
                   in
-                  (match param_hover with
+                  (match List.find_map hover_for_param params with
                    | Some _ as hover -> hover
                    | None -> find_symbol_hover_in_expr body)
               | Ast.EApp (fn, args, _) ->
@@ -1660,21 +1735,20 @@ let completions_at_position
                       | Some _ as found -> found
                       | None -> Some env'))
           | Ast.EFun (params, body, _) ->
-              let cursor_on_param =
-                List.exists
-                  (fun param -> range_contains_position (range_of_name param) position)
-                  params
-              in
-              if cursor_on_param then
+              if List.exists (fun param -> Option.is_some (pattern_hover_at_position ~position param)) params then
                 Some env
               else
                 let env' =
                   List.fold_left
                     (fun acc param ->
-                      completion_add_shadowing
-                        (name_text param)
-                        (completion_symbol_of_name ~source:CompletionLocal ~kind:SemanticVariable param)
-                        acc)
+                      pattern_bound_decls param
+                      |> List.fold_left
+                           (fun acc (name, binding_range) ->
+                             completion_add_shadowing
+                               name
+                               { kind = SemanticVariable; range = binding_range; detail = None; source = CompletionLocal }
+                               acc)
+                           acc)
                     env
                     params
                 in
@@ -1821,12 +1895,20 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
              let env' = StringMap.add (name_text bound_name) { kind = SemanticVariable; range = binding_range } env in
              walk_expr env' e2
          | Ast.EFun (params, body, _) ->
+             List.iter
+               (fun param ->
+                 pattern_constructor_occurrences param
+                 |> List.iter (fun (_, ctor_range) -> push_token ~kind:SemanticType ~range:ctor_range))
+               params;
              let env' =
                List.fold_left
-                 (fun acc param ->
-                   let param_range = range_of_name param in
-                   push_token ~kind:SemanticVariable ~range:param_range;
-                   StringMap.add (name_text param) { kind = SemanticVariable; range = param_range } acc)
+                 (fun env param ->
+                   pattern_bound_decls param
+                   |> List.fold_left
+                        (fun env (name, binding_range) ->
+                          push_token ~kind:SemanticVariable ~range:binding_range;
+                          StringMap.add name { kind = SemanticVariable; range = binding_range } env)
+                        env)
                  env
                  params
              in

@@ -291,7 +291,11 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 let rec compile_tree_rows lower ann clauses =
 	let clauses = List.map normalize_clause clauses in
 	match clauses with
-	| [] -> match_fail ann "Non-exhaustive pattern match"
+	| [] -> 
+		(* could add locations here: 
+		let loc = Location.to_string (Core.get_location ann) in
+		let msg = Printf.sprintf "Non-exhaustive pattern match at %s" loc in *)
+		match_fail ann "Non-exhaustive pattern match" 
 	| clause1 :: _ when StringMap.is_empty clause1.pats -> emit_bindings clause1.bindings clause1.body
 	| clause1 :: _ ->
 		(match branching_heuristic clauses with
@@ -343,7 +347,26 @@ and compile_match e =
 	| EApp (e, args, ann) -> EApp (compile_match e, List.map compile_match args, ann)
 	| EUnary (u, e, ann) -> EUnary (u, compile_match e, ann)
 	| ETuple (e1, e2, ann) -> ETuple (compile_match e1, compile_match e2, ann)
-	| EFun (args, body, ann) -> EFun (args, compile_match body, ann)
+	| EFun (params, body, ann) -> 
+		let scruts = 
+			params
+			|> List.map (function
+				| PVar (x, loc) as p -> (x, loc, p)
+				| p -> (Utilities.new_var (), Core.pattern_get_ann p, p)
+		) in
+		let body' = List.fold_right (
+			fun (scrutinee_var, pattern_ann, pattern) acc -> 
+				match pattern with
+				| PVar _ | PWildcard _ -> acc
+				| _ -> 
+					compile_tree_rows compile_match pattern_ann [ {
+						pats = StringMap.singleton scrutinee_var pattern;
+						bindings = [];
+						body = acc;
+					}]
+		) scruts (compile_match body) in
+		let params = List.map (fun (n, ann, _) -> PVar (n, ann)) scruts in
+		EFun (params, body', ann)
 	| EBinary (op, e1, e2, ann) -> EBinary (op, compile_match e1, compile_match e2, ann)
 	| EIfe (cond, e1, e2, ann) -> EIfe (compile_match cond, compile_match e1, compile_match e2, ann)
 	| EAnno (e, t, ann) -> EAnno (compile_match e, t, ann)

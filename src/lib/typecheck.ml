@@ -10,6 +10,26 @@ let dummy ann = EConst (CUnit, Ann_typed (get_location ann, TError))
 
 let get_typ e = Type_env.get_type e
 
+let check_unique_binders kind patterns =
+  let seen = Hashtbl.create 16 in
+  let duplicate_errors =
+    patterns
+    |> List.concat_map Core.pattern_bound_vars_with_anns
+    |> List.filter_map (fun (name, ann) ->
+      match Hashtbl.find_opt seen name with
+      | None ->
+        Hashtbl.add seen name (get_location ann);
+        None
+      | Some first_loc ->
+        Some (ann, Format.asprintf "Duplicate %s name '%s' (previously bound at %s)" kind name (Location.to_string first_loc)))
+  in
+  let* _ = Type_env.collect (List.map (fun (ann, msg) -> error ann msg) duplicate_errors) in
+  return ()
+
+let check_unique_param_binders params = check_unique_binders "parameter" params
+
+let check_unique_pattern_binders pattern = check_unique_binders "pattern" [pattern]
+
 type scheme = Type_env.scheme
 
 let forall vars t = Type_env.Forall (vars, t)
@@ -406,7 +426,9 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
         return t_scrutinee
     in
     let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t = 
-      fun (pattern, branch, _) -> check_pattern_and_infer_branch pattern branch t_scrutinee in
+      fun (pattern, branch, _) ->
+        let* () = check_unique_pattern_binders pattern in
+        check_pattern_and_infer_branch pattern branch t_scrutinee in
     let* tbranches = Type_env.collect (List.map branch_mapper branches) in
     let* branch_types = Type_env.collect (List.map (fun (_, branch) -> get_typ branch) tbranches) in
     (* check that all branches have the same type *)
@@ -426,18 +448,24 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
         |> Type_env.collect
       in
       return (ECase (tscrutinee, typed_branches, Ann_typed (get_location ann, t))))
-  | EFun (param_names, body, ann) -> 
-    let* param_types = Type_env.collect @@ List.map (fun (p, _) -> 
+  | EFun (params, body, ann) -> 
+    let* () = check_unique_param_binders params in
+    let* param_types = Type_env.collect @@ List.map (fun param_pat -> 
       let* pt = Type_env.fresh_type_var () in
-      return (p, mono pt)
-    ) param_names 
+      let* param_pat, bound_vars = check_pattern param_pat pt in
+      return (param_pat, bound_vars)
+    ) params
     in
-    let* typed_body = Type_env.with_locals param_types (infer body) in
+    
+    let typed_params, param_bindings = 
+      let typed_params, param_bindings = List.split param_types in
+      typed_params, List.concat param_bindings
+    in
+    let* typed_body = Type_env.with_locals param_bindings (infer body) in
     let* body_type = get_typ typed_body in
-    let* param_types = Type_env.collect (List.map (fun (_, Type_env.Forall (_, t)) -> Type_env.apply_subst t) param_types) in
+    let* param_types = Type_env.collect (List.map (fun p -> Type_env.apply_subst (Core.ann_get_type (Core.pattern_get_ann p))) typed_params) in
     let fun_type = TFun (Cons1(List.hd param_types, List.tl param_types), body_type) in
-    let param_names = List.map2 (fun (p, pann) pt -> (p, Ann_typed(get_location pann, pt))) param_names param_types in
-    return (EFun (param_names, typed_body, Ann_typed(get_location ann, fun_type)))
+    return (EFun (typed_params, typed_body, Ann_typed(get_location ann, fun_type)))
   | ECtor ((ctor_name, ctor_name_ann), args, ann) ->
     let* arg_types, ctor_type = Type_env.get_constructor_signature ann ctor_name in
     let* inferred_args = Type_env.collect (List.map infer args) in
@@ -486,8 +514,14 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
         let* _ = error ann (Format.asprintf "Type check expected non-function '%a'" Ast.pp_expr e) in
         return (Cons1(TError, List.init (List.length params - 1) (fun _ -> TError)), TError)
     in
-    let params_annotated = List.map2 (fun (pn, pann) pt -> (pn, Ann_typed(get_location pann, pt))) params (p1_type :: param_types_rest) in
-    let param_bindings = (List.map (fun (p, ann) -> (p, mono (ann_get_type ann))) params_annotated) in
+    let* () = check_unique_param_binders params in
+    let* params_annotated, param_bindings = 
+      List.map2 (fun param pt -> check_pattern param pt) params (p1_type :: param_types_rest)
+      |> Type_env.collect
+      |> Type_env.map List.split
+      |> Type_env.map (fun (pt, bindings) -> pt, List.concat bindings)
+    in
+    (* let param_bindings = (List.map (fun (p, ann) -> (p, mono (ann_get_type ann))) params_annotated) in *)
     let* typed_body = Type_env.with_locals param_bindings (check body ret_type) in
     let* body_type = get_typ typed_body in
     let new_expected = TFun (Cons1(p1_type, param_types_rest), body_type) in
@@ -521,6 +555,7 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
     in
     let branch_mapper : type s. (s pattern * s expr * s ann) -> (typed pattern * typed expr) Type_env.t =
       fun (pattern, branch, _) ->
+        let* () = check_unique_pattern_binders pattern in
         let* typed_pattern, bindings = check_pattern pattern t_scrutinee in
         let* typed_branch = Type_env.with_locals bindings (check branch expected) in
         return (typed_pattern, typed_branch)
@@ -845,7 +880,7 @@ and normalize_typed_expr id_to_name : typed expr -> typed expr Type_env.t = func
     let* ann = normalize_typed_ann id_to_name ann in
     return (ELet (name, rhs, body, ann))
   | EFun (params, body, ann) ->
-    let* params = Type_env.collect (List.map (normalize_typed_name id_to_name) params) in
+    let* params = Type_env.collect (List.map (normalize_typed_pattern id_to_name) params) in
     let* body = normalize_typed_expr id_to_name body in
     let* ann = normalize_typed_ann id_to_name ann in
     return (EFun (params, body, ann))
