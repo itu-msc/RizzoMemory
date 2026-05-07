@@ -1,9 +1,20 @@
 \section{Future work \dots}
 
+
+\subsection{Improving reuse of Rizzo beans}
+
+\todo{Reuse in advance semantics \textemdash~finding any way to reuse the signal already stored in the heap would be great! This block may be difficult to write, since we didn't describe/discuss the inner workings of the advance semantics.}
+
+\todo{One possible solution is to inline the code/logic of the particular later constructor, when it is created. Requires that we write the advance semantics in Rizzo itself (see todo below). If it can be done in such a way that the reference of the signal TO BE updated is in scope when evaluated the inlined advance logic is evaluated, it could then we reused \dots meaning no need for a fresh allocation that is then de-allocated.}
+
 \todo{Something about it being possible to write Rizzo in Rizzo. We basically just need mutable references (and weak references for the linked list nodes). What are the benefits?}
 
-\todo{Something about reuse in advance?}
+\todo{Another possible solution is to instead keep a cache of signals. When a signal is erased and removed from the signal heap, instead of calling \texttt{free} on it we put it into a cache. Then when a signal is created we check if a signal is available for reuse and if so, we pop it \dots}
+
+\subsection{Improving the runtime cost/overhead}
 
 \todo{Distinguishing between CONCRETE signals and just signal indirections. See mail 3rd of March 2026}
+
+\todo{Optimising the heap representation. Could we do a DAG in some way? A DAG for each channel? Or at least somehow encode the \textit{clocks} of later values in to the heap structure. This would (possibly greatly) limit the amount of signals to check for each time step?}
 
 \todo{\dots}
