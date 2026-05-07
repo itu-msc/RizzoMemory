@@ -157,7 +157,7 @@ let resolve_c_compiler ?compiler () =
   | _ -> find_available_c_compiler ()
 
 let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
-    ?(is_windows = Sys.win32) ?(debug_malloc = false) ?(debug_info = false)
+    ?(is_windows = Sys.win32) ?(debug_malloc = false) ?(debug_info = false) ?(heap_info = false)
     ~input_file ~output_file () =
   let compiler = resolve_c_compiler ?compiler () in
   let runtime_include =
@@ -168,7 +168,8 @@ let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
     (if is_windows then ["-m64"] else [])
     @ (if debug_malloc then ["-D__RZ_DEBUG_MALLOC"] else [])
     @ (if debug_info then ["-D__RZ_DEBUG_INFO"] else [])
-    @ (if debug_info || debug_malloc then ["-g"] else [])
+    @ (if heap_info then ["-D__RZ_HEAP_INFO"] else [])
+    @ (if debug_info || debug_malloc || heap_info then ["-g"] else [])
     @ ["-I"; runtime_include; input_file; "-o"; output_file]
     @ (if is_windows then [] else ["-lm"])
   in

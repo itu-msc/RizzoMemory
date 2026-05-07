@@ -7,7 +7,7 @@ module Parser = struct
   exception Error of Location.t * string
 
   let parse_with lexbuf =
-    Effectful.reset_custom ();
+    (* Effectful.reset_custom (); *)
     try Generated_parser.main Generated_lexer.read lexbuf with
     | Generated_lexer.Error _ as exn -> raise exn
     | exn ->

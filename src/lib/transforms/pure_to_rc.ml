@@ -202,20 +202,23 @@ let to_rc_intermediate_representation (ctor_tag_map : int StringMap.t) (builtins
     M.union (fun key _ _ -> failwith (Printf.sprintf "Duplicate global name %s" key)) builtins_arity toplevel_arity
   in
   let to_fun names body =
-    let params = List.map fst names in
-    Rc.Fun (params, expr_to_fn_body ctor_tag_map globals (LocalsEnv.of_list params) body)
+    if List.exists (function PVar _ -> false | _ -> true) names 
+    then failwith (Printf.sprintf "%s: whoops, we forgot to eliminate patterns from function parameters" __FILE__)
+    else  
+      let params = List.map (function PVar (n,_ ) -> n | _ -> failwith "bad pattern") names in
+      Rc.Fun (params, expr_to_fn_body ctor_tag_map globals (LocalsEnv.of_list params) body)
   in
   let functions, globals =
     List.fold_right
       (fun te (funcs, globs) ->
         match te with
         | TopTypeDef _ -> (funcs, globs)
-        | TopLet (name, rhs, _) ->
+        | TopLet ((name,_ ), rhs, _) ->
           match rhs with
-          | EFun (names, body, _) | EAnno (EFun (names, body, _), _, _) ->
-              ((fst name, to_fun names body) :: funcs, globs)
+          | EFun (params, body, _) | EAnno (EFun (params, body, _), _, _) ->
+              ((name, to_fun params body) :: funcs, globs)
           | _ ->
-              (funcs, (fst name, expr_to_fn_body ctor_tag_map globals LocalsEnv.empty rhs) :: globs))
+              (funcs, (name, expr_to_fn_body ctor_tag_map globals LocalsEnv.empty rhs) :: globs))
       p
       ([], [])
   in

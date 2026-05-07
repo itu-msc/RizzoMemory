@@ -2,7 +2,7 @@
 %{
 open! Ast
 
-let check_unique_params params =
+(* let check_unique_params params =
   let rec go seen = function
     | [] -> ()
     | x :: xs ->
@@ -11,7 +11,7 @@ let check_unique_params params =
       else
         go (x :: seen) xs
   in
-  go [] params
+  go [] params *)
 
 let mkloc start_pos end_pos = Ann_parsed (Location.mk start_pos end_pos)
 
@@ -101,9 +101,9 @@ top_expr:
         TopLet (top_name, EAnno(body, te, anno_loc), mkloc $symbolstartpos $endpos(body))
     }
   | effect_dec=option(EFFECTFUL)
-    FUN name=ID params=nonempty_id_list te_opt=option(type_annotation) EQ body=expr
+    FUN name=ID params=pattern_atom+ te_opt=option(type_annotation) EQ body=expr
     {
-      check_unique_params (List.map fst params);
+      (* check_unique_params (List.map fst params); *)
       if Option.is_some effect_dec then Effectful.mark_effectful name;
       let top_name = (name, mkloc $startpos(name) $endpos(name)) in
       match te_opt with
@@ -129,10 +129,6 @@ type_ctor:
     { let ctor_name = (ctor_name, mkloc $startpos(ctor_name) $endpos(ctor_name)) in
       (ctor_name, ctor_args, mkloc $startpos $endpos) }
 
-nonempty_id_list:
-  | x=ID { [(x, mkloc $startpos(x) $endpos(x))] }
-  | x=ID xs=nonempty_id_list { (x, mkloc $startpos(x) $endpos(x)) :: xs }
-
 expr:
   | LET x=ID te_opt=option(type_annotation) EQ e1=expr IN e2=expr
     { let name = (x, mkloc $startpos(x) $endpos(x)) in
@@ -144,8 +140,8 @@ expr:
     { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
     { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
-  | FUN params=nonempty_id_list ARROW body=expr
-    { check_unique_params (List.map fst params); EFun (params, body, mkloc $startpos $endpos) }
+  | FUN params=pattern_atom+ ARROW body=expr
+    { (* check_unique_params (List.map fst params); *) EFun (params, body, mkloc $startpos $endpos) }
   | e=pipe_expr
       { e }
 

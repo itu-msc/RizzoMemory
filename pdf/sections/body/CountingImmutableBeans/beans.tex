@@ -1,31 +1,43 @@
 \section{Reference Counting}
 
-In Rizzo signal combinators create new signals as an intermediate step in the computation. These intermediate signals are often only used for a short period of time, to copy over the new computed value to the head of the original signal. Given the intermediate nature of these signals, it is important to reclaim the memory used by them as soon as they are no longer needed, otherwise they will also be triggered alongside the original signal. The retrigger of the signals will lead to performance issues, memory leaks and unexpected side effects \todo{We will get back to why this is important in section XXX where we describe the structure of the heap}. To address the issue, we need a way to efficiently manage the memory used by these intermediate signals and ensure that it is reclaimed as soon as it is no longer needed.
+% GOAL: This introduction should say, we will:
+%  - explain reference counting is
+%  - explain how "Counting immutable beans" work
+%  - then finally list the constraints required by the "counting immutable beans" algorithm
 
-One way to achieve this is through reference counting, which is a technique for managing memory in programming languages. In this section, we will discuss the reference counting technique proposed by \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} and how we can adapt it to Rizzo to efficiently manage the memory used by intermediate signals.
+This section introduces reference counting as a memory management strategy and explains how the approach of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} uses \textbf{reset}/\textbf{reuse} instructions to reduce memory allocations and reference ownership information to reduce the overhead of reference counting.
+We then present the constraints required by the algorithm of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} since these become important when we later adapt the algorithm to Rizzo in Section~\ref{section:refcount}.
+
+% In Rizzo signal combinators create new signals as an intermediate step in the computation. These intermediate signals are often only used for a short period of time, to copy over the new computed value to the head of the original signal. Given the intermediate nature of these signals, it is important to reclaim the memory used by them as soon as they are no longer needed, otherwise they will also be triggered alongside the original signal. The retrigger of the signals will lead to performance issues, memory leaks and unexpected side effects \todo{We will get back to why this is important in section XXX where we describe the structure of the heap}. To address the issue, we need a way to efficiently manage the memory used by these intermediate signals and ensure that it is reclaimed as soon as it is no longer needed.
+
+% One way to achieve this is through reference counting, which is a technique for managing memory in programming languages. In this section, we will discuss the reference counting technique proposed by \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} and how we can adapt it to Rizzo to efficiently manage the memory used by intermediate signals.
 
 \subsection{What is reference counting}
 % what does it mean to reference count
-Early work on reference counting like in \citetitle{collins_method_1960} \cite{collins_method_1960}
+Early work on reference counting like that of \citeauthor*{collins_method_1960} \cite{collins_method_1960}
 %and \citetitle{bacon_computing_2001} \cite{bacon_computing_2001} 
-introduced the idea of reference counting as opposed to other memory management methods like tracing garbage collection. The basic idea of reference counting is to attach a counter to each object in memory, that keeps track of how many references point to the object. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
+introduce the idea of reference counting as an alternative to other memory management methods like tracing garbage collection. The basic idea of reference counting is to attach a counter to each object in memory, that keeps track of how many references point to the object. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
 
-These early implementations were implemented in the runtime system of the programming language. This is was a common approach, but is hard to optimize.
-Newer techniques, like the one proposed by \citetitle{ullrich_counting_2021}, are designed to be implemented in the compiler, allowing for more efficient memory management and better performance. 
+Early implementations were implemented in the runtime system of the programming language. This was a common approach but it is hard to optimize.
+Newer techniques, like the one proposed by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, do static analysis during compilation in order to achieve better performance and more efficient memory management. 
 
-By using new `reset' and `reuse' instructions in combination with ownership types, the compiler can determine when incrementing or decrementing reference counts can be safely omitted, and when it cannot.
+By using new \textbf{reset} and \textbf{reuse} instructions in combination with ownership types, the compiler can determine when memory of immutable data can be safely overwritten and when increment/decrement instructions can be safely omitted, and when they cannot.
 
 % which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
 
-In this section, we will be using the term `RC token' (Reference Counting token) to refer to the reference one instance of a reference to an object. We say that when a new reference is created, an RC token is created and when a reference is destroyed, an RC token is consumed.
+In this section, we will be using the term \textit{RC token} (Reference Counting token).
+An RC token is one counted reference to an object.
+A token is created when the reference count is incremented, and it is consumed when the reference count is decremented, either directly or by being passed to a context that eventually decrements it, such as a function or a memory allocated value.
+
+% of a reference to an object. We say that when a new reference is created, an RC token is created and when a reference is destroyed, an RC token is consumed.
 
 % circular references? bacon papers solution to this? we don't have this problem in Rizzo because of mutable heads, but maybe we can still talk about it?
 
 \subsection{Counting immutable beans}
 
-\citeauthor*{ullrich_counting_2021} \cite{ullrich_counting_2021} gains their performance improvements by using a combination of ownership types and new `reset' and `reuse' instructions.
+\citeauthor*{ullrich_counting_2021} \cite{ullrich_counting_2021} gains their performance improvements by using a combination of ownership types and new \textbf{reset} and \textbf{reuse} instructions.
 The ownership types lets the compiler track which parts of the program are responsible for managing the memory of each object. This knowledge allows the compiler to determine when an object needs to be incremented or decremented, which reduces the number of reference counting operations that need to be performed. 
-On the other hand, the new `reset' and `reuse' instructions allows the compiler to optimize memory allocations of new objects, by reusing memory from old objects that are no longer needed, instead of always allocating new memory for each object. This leads to performance improvements, especially in cases where many short-lived objects are created and destroyed.
+On the other hand, the new \textbf{reset} and \textbf{reuse} instructions allows the compiler to optimize memory allocations of new objects, by reusing memory from old objects that are no longer needed, instead of always allocating new memory for each object. This leads to performance improvements, especially in cases where many short-lived objects are created and destroyed.
 
 The paper defines three main steps for implementing their reference counting technique, where each step depends on the previous one:
 
@@ -65,7 +77,7 @@ The paper defines three main steps for implementing their reference counting tec
 % In general, variables should be incremented prior to being used in an owned context that consumes an RC token. Variables used in any other (borrowed) context do not need to be incremented. Owned references should be decremented after their last use. ...
 
 \subsection{examples}
-The following examples use a small notation close to the reference counted intermediate language generated by the compiler. The instructions `inc' and `dec' increment and decrement the reference count of a variable, while `reset' and `reuse' are used to reclaim and recycle storage.
+The following examples use a small notation close to the reference counted intermediate language generated by the compiler. The instructions \textbf{inc} and \textbf{dec} increment and decrement the reference count of a variable, while \textbf{reset} and \textbf{reuse} are used to reclaim and recycle storage.
 
 As a first example, consider the expression below where the same variable is passed twice to a function:
 
@@ -74,7 +86,7 @@ let z = c y y in
 ret z
 \end{verbatim}
 
-Assume that both parameters of `c' are owned. The call therefore consumes two RC tokens, but the variable `y' initially contributes only one. The compiler must insert an `inc' before the call to make the second owned use valid:
+Assume that both parameters of $c$ are owned. The call therefore consumes two RC tokens, but the variable $y$ initially contributes only one. The compiler must insert an \textbf{inc} before the call to make the second owned use valid:
 
 \begin{verbatim}
 let y = 5 in
@@ -83,9 +95,9 @@ let z = c y y in
 ret z
 \end{verbatim}
 
-No matching `dec' is needed afterwards, since both RC tokens are consumed by the call itself. This is the safe but cautious behaviour we get when both arguments are treated as owned.
+No matching \textbf{dec} is needed afterwards, since both RC tokens are consumed by the call itself. This is the safe but cautious behaviour we get when both arguments are treated as owned.
 
-Borrowing removes some of this overhead. If the first parameter of `c' is borrowed and the second is owned, then only one of the two uses of `y' consumes an RC token. The borrowed use still requires the object to stay alive for the duration of the call, so the compiler inserts a temporary increment before the call and a matching decrement afterwards:
+Borrowing removes some of this overhead. If the first parameter of $c$ is borrowed and the second is owned, then only one of the two uses of $y$ consumes an RC token. The borrowed use still requires the object to stay alive for the duration of the call, so the compiler inserts a temporary increment before the call and a matching decrement afterwards:
 
 \begin{verbatim}
 let y = 5 in
@@ -95,32 +107,23 @@ dec y;
 ret z
 \end{verbatim}
 
-Compared to the previous example, this makes the ownership discipline more precise: one occurrence of `y' is only observed, while the other is actually consumed. The compiler can therefore avoid treating both arguments as fully owned.
+Compared to the previous example, this makes the ownership discipline more precise: one occurrence of $y$ is only observed, while the other is actually consumed. The compiler can therefore avoid treating both arguments as fully owned.
 
-The more interesting optimisation in \citetitle{ullrich_counting_2021} is the combination of `reset' and `reuse'. In Rizzo this matters when a combinator stops using an input signal and immediately constructs a replacement signal. Consider the function below:
-\todo{Update this to not use the forced if then else.}
-\begin{verbatim}
-fun stop f s =
-    if f (head s)
-    then match s with
-             | x :: xs -> x :: never
-    else match s with
-             | x :: xs -> x :: (jump (fun a -> Just (a :: xs)) |> xs)
-\end{verbatim}
-
-In the `then' branch, the old signal `s' is dead immediately after the match. This makes it possible to reset the old signal cell and reuse its storage for the new signal:
+The more interesting optimisation in \citetitle{ullrich_counting_2021} is the combination of \textbf{reset} and \textbf{reuse}. In Rizzo this matters when a combinator stops using an input signal and immediately constructs a replacement signal. Consider the function below:
 
 \begin{verbatim}
-match s with
-| x :: xs ->
-    let r = reset s in
-    let s' = reuse r in Signal(x, never) in
-    ret s'
+fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
+  match s with
+  | x :: xs ->
+    if f x
+    then x :: never
+    else x :: (jump (fun a -> Just (a :: xs)) |> xs)
 \end{verbatim}
 
+In the `then' branch, the old signal $s$ is dead immediately after the match. This makes it possible to reset the old signal cell and reuse its storage for the new signal $x :: \mathsf{never}$.
 This avoids allocating a fresh signal object and immediately disconnects the old intermediate signal from the heap.
 
-Not every signal combinator admits this optimisation. For a function such as `map', the input signal must remain alive because its tail is needed to produce future values:
+Not every signal combinator admits this optimisation. For a function such as $map$, the input signal must remain alive because its tail is needed to produce future values:
 
 \begin{verbatim}
 fun map f s = 
@@ -128,7 +131,7 @@ fun map f s =
     | x :: xs -> f x :: (map f |> xs)
 \end{verbatim}
 
-Here the delayed computation still depends on `xs', so reusing the storage of `s' would destroy data that is needed later. This illustrates why reuse opportunities for signals in Rizzo are limited: they mainly arise in combinators that terminate, switch, or otherwise stop forwarding the original signal.
+Here the delayed computation still depends on $xs$, so reusing the storage of $s$ would destroy data that is needed later. This illustrates why reuse opportunities for signals in Rizzo are limited: they mainly arise in combinators that terminate, switch, or otherwise stop forwarding the original signal.
 
 
 \subsection{AST structure requirements}\label{sec:background:beans:assumptions}
@@ -150,7 +153,7 @@ Here the delayed computation still depends on `xs', so reusing the storage of `s
 % how we are going to use it and what we use and don't use from the paper
 % for example we don't (need to) fully apply constructors? move this somewhere later?
 
-To implement the reference counting technique proposed by \citetitle{ullrich_counting_2021}, the paper states that we need to perform a series of transformations on the abstract syntax tree (AST) of our program. These transformations are necessary to ensure that the AST is in a form that allows us to insert the appropriate `reset', `reuse', `inc', and `dec' instructions, as well as to infer ownership types for function parameters. The transformations we need to perform include:
+To implement the reference counting technique proposed by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, the shape of the abstract syntax tree (AST) must satisfy the following properties:
 
 \begin{itemize}
     \item Eta-expanding constructor applications to ensure that all constructors are fully applied.
@@ -162,4 +165,5 @@ To implement the reference counting technique proposed by \citetitle{ullrich_cou
     \item Ensuring that all parameter and let names of a function are mutually distinct to avoid name capture issues during transformations.
 \end{itemize}
 
-We have implemented each transformation as a separate pass over the AST, allowing us to modularly apply these transformations in the correct order.
+We define two separate abstract syntaxes: one for the Rizzo language, described in Section~\ref{section:rizzolang}, and another for the intermediate representation (IR) used in the insertion of reference counting instructions, described in Section~\ref{section:refcount}.
+To ensure the properties above and to convert from the Rizzo AST to the IR, we define a series of transformations in Section~\ref{section:refcount:transforms}.

@@ -37,9 +37,9 @@ and pp_expr out =
         (pp_print_list ~pp_sep:(fun out () -> fprintf out ",@ ") pp_expr) args
   | ELet ((x, _), e1, e2, _) ->
     fprintf out "@[<v 0>@{<magenta>let@} @{<lightcyan>%s@} = %a @{<magenta>in@}@,%a@]" x pp_expr e1 pp_expr e2
-  | EFun (names, body, _) ->
-    let params = List.map fst names in
-    fprintf out "@[<v 2>@{<magenta>fun@} (@{<lightcyan>%s@}) ->@,%a@]" (String.concat ", " params) pp_expr body
+  | EFun (params, body, _) ->
+    let pp_params = Format.pp_print_list ~pp_sep:(fun out _ -> Format.fprintf out ", ") pp_pattern in
+    fprintf out "@[<v 2>@{<magenta>fun@} (@{<lightcyan>%a@}) ->@,%a@]" pp_params params pp_expr body
   | EApp (f, args, _) ->
     fprintf out "@[<hov 2>%a(@[<hov>%a@])@]"
       pp_expr f
@@ -130,9 +130,9 @@ and pp_typed_expr out : typed expr -> unit =
         (pp_print_list ~pp_sep:(fun out () -> Format.fprintf out ",@ ") pp_typed_expr) args
   | ELet ((x, _), e1, e2, _) ->
     Format.fprintf out "@[<v 0>@{<magenta>let@} @{<lightcyan>%s@} = %a @{<magenta>in@}@,%a@]" x pp_typed_expr e1 pp_typed_expr e2
-  | EFun (names, body, Ann_typed (_, t)) ->
-    let params = List.map fst names in
-    Format.fprintf out "@[<v 2>@{<magenta>fun@} (@{<lightcyan>%s@}) : %a @{<magenta>->@}@,%a@]" (String.concat ", " params) pp_typ t pp_typed_expr body
+  | EFun (params, body, Ann_typed (_, t)) ->
+    let pp_params = Format.pp_print_list ~pp_sep:(fun out _ -> Format.fprintf out ", ") pp_pattern in
+    Format.fprintf out "@[<v 2>@{<magenta>fun@} (@{<lightcyan>%a@}) : %a @{<magenta>->@}@,%a@]" pp_params params pp_typ t pp_typed_expr body
   | EApp (f, args, _) ->
     Format.fprintf out "@[<hov 2>%a(@[<hov>%a@])@]"
       pp_typed_expr f

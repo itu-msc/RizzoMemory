@@ -2,6 +2,10 @@
 
 \todo{reuse in combinators, \dots}
 
+\todo{Later values are just functions, and thus if more than one depend on that Later, then the Later will be evaluated more than once. This can cause the heap to grow by N - 1 where N is the number of dependencies on the Later value. For Later signals this can be resolved by giving the Later an empty head and using the tail constructor to get the tail. In the evaluation of the signal heaps behaviour, we mention that the signals $[4]$ and $[6]$ are caused by a Later value being evaluated 2 times, once for each dependence on the Later. An example of how to fix this issue would be by using the tail constructor, to cache the result of the Later evaluation, but there is one for Later signals. We can add a dummy head to the signal and take the tail of that signal as a workaround:}
+\verb|tail ("" :: mk_sig_of_channel console)|
 
 \todo{Reuse in advance \textemdash finding any way to reuse the signal already stored in the heap would be great!}
 \todo{In semantics, we didn't explain/define advance. How do we discuss the limitation/future work that is figuring out reuse in the advance?}
+
+\todo{The order inc/dec reset/reuse insertion. In the map combinator, in the reset/reuse algorithm we insert a $reset \; s$ which forces us to then insert a $inc \; s$ instruction. This is less than ideal and the perceus paper (either 1 or 2) they observed something similar and proposed to flip the order.}

@@ -48,10 +48,10 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
               let env' = remove_keys (Ast.pattern_bound_vars pattern) env in
               (pattern, aux env' branch, ann))
             branches, ann)
-    | EFun (names, body, ann) ->
-        let params = List.map fst names in
-        let env' = remove_keys params env in
-        EFun (names, aux env' body, ann)
+    | EFun (params, body, ann) ->
+        let params_bound = List.concat_map (Ast.Core.pattern_bound_vars) params in
+        let env' = remove_keys params_bound env in
+        EFun (params, aux env' body, ann)
     | EAnno (e, t, ann) -> EAnno (aux env e, t, ann)
   in
   aux [] e

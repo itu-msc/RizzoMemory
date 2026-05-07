@@ -1,20 +1,20 @@
 let console_sig  = mk_sig (wait console)
-let quit_sig = filterL (fun x -> x == "quit") console_sig 
-let show_sig = filterL (fun x -> x == "show") console_sig 
+let quit_sig = filterL (fun x -> x == "quit") console_sig
+let show_sig = filterL (fun x -> x == "show") console_sig
 let neg_sig  = filterL (fun x -> x == "negate") console_sig
-let num_sig  = filter_mapL parse_int console_sig 
-let clock_sig = clock 1000
+let num_sig  = filter_mapL parse_int console_sig
+let clock_sig = clock 1
 let nats = fun init -> scan (fun x y -> x + 1) init clock_sig
-let interleaved = 
-  interleave 
-    (fun f g x -> f (g x)) 
-    (map (fun x n -> 0 - n) ("" :: neg_sig)) 
-    (map (fun m n -> m + n : Int -> Int -> Int) (0  :: num_sig))
+let interleaved =
+  interleave
+    (fun f g x -> f (g x))
+    (map (fun x n -> 0 - n) ("" :: neg_sig))
+    (map (fun m n -> m + n : Int -> Int -> Int) (0 :: num_sig))
 
 fun nats' init =
     switchS (nats init) ((fun s n -> nats' ((head s) n)) |> tail interleaved)
 
-fun entry x = 
+fun entry x =
     let n = 0 in
     let nats_prim = nats' n in
     let show_nat = trigger_l (fun x n -> n) show_sig (nats_prim) in

@@ -13,6 +13,121 @@ let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let currentState: State = State.Stopped;
 
+function executableSuffix(): string {
+    return process.platform === "win32" ? ".exe" : "";
+}
+
+function isExecutableFile(filePath: string): boolean {
+    try {
+        return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+    } catch {
+        return false;
+    }
+}
+
+function findExecutableOnPath(command: string): string | undefined {
+    const trimmed = command.trim();
+    if (trimmed.length === 0) {
+        return undefined;
+    }
+
+    if (trimmed.includes(path.sep) || trimmed.includes(path.posix.sep)) {
+        return isExecutableFile(trimmed) ? trimmed : undefined;
+    }
+
+    const pathValue = process.env.PATH;
+    if (!pathValue) {
+        return undefined;
+    }
+
+    const extensions = process.platform === "win32"
+        ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
+            .split(";")
+            .filter(extension => extension.length > 0)
+        : [""];
+
+    for (const directory of pathValue.split(path.delimiter)) {
+        if (directory.length === 0) {
+            continue;
+        }
+
+        if (process.platform === "win32") {
+            const hasKnownExtension = extensions.some(extension =>
+                trimmed.toLowerCase().endsWith(extension.toLowerCase())
+            );
+            const candidates = hasKnownExtension
+                ? [path.join(directory, trimmed)]
+                : extensions.map(extension => path.join(directory, `${trimmed}${extension}`));
+
+            for (const candidate of candidates) {
+                if (isExecutableFile(candidate)) {
+                    return candidate;
+                }
+            }
+
+            continue;
+        }
+
+        const candidate = path.join(directory, trimmed);
+        if (isExecutableFile(candidate)) {
+            return candidate;
+        }
+    }
+
+    return undefined;
+}
+
+function getManagedInstallSearchRoots(): string[] {
+    if (process.platform === "win32") {
+        const localAppData = process.env.LOCALAPPDATA;
+        const configuredBinDir = process.env.RIZZO_BIN_DIR;
+        const configuredHome = process.env.RIZZO_HOME;
+
+        return [
+            configuredHome ? path.join(configuredHome, "current", "bin") : undefined,
+            localAppData ? path.join(localAppData, "Rizzo", "current", "bin") : undefined,
+            configuredBinDir,
+            localAppData ? path.join(localAppData, "Programs", "Rizzo", "bin") : undefined
+        ].filter((candidate): candidate is string => !!candidate && candidate.trim().length > 0);
+    }
+
+    const home = process.env.HOME;
+    const xdgDataHome = process.env.XDG_DATA_HOME;
+    const configuredBinDir = process.env.RIZZO_BIN_DIR;
+    const configuredHome = process.env.RIZZO_HOME;
+    const defaultHome = configuredHome
+        ?? (xdgDataHome ? path.join(xdgDataHome, "rizzo") : home ? path.join(home, ".local", "share", "rizzo") : undefined);
+
+    return [
+        configuredBinDir,
+        home ? path.join(home, ".local", "bin") : undefined,
+        defaultHome ? path.join(defaultHome, "current", "bin") : undefined
+    ].filter((candidate): candidate is string => !!candidate && candidate.trim().length > 0);
+}
+
+function findExecutableInManagedInstall(commandNames: string[]): string | undefined {
+    for (const root of getManagedInstallSearchRoots()) {
+        for (const commandName of commandNames) {
+            const candidate = path.join(root, commandName);
+            if (isExecutableFile(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function findAutoDetectedExecutable(baseName: string): string | undefined {
+    if (process.platform === "win32") {
+        return findExecutableOnPath(`${baseName}.exe`)
+            ?? findExecutableInManagedInstall([`${baseName}.exe`]);
+    }
+
+    return findExecutableOnPath(baseName)
+        ?? findExecutableInManagedInstall([baseName]);
+}
+
 async function getValidWorkspaceFolder(config: vscode.WorkspaceConfiguration) {
     let workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const customWorkspaceFolders = config.get<string[]>("server.workspaceFolder", []).map(folder => folder.trim());
@@ -109,12 +224,12 @@ async function restartLanguageServer(): Promise<void> {
  * Resolves the rizzoc compiler command and arguments.
  * Priority:
  *   1. User setting rizzoLsp.compiler.command (if non-empty)
- *   2. Local dune build: <workspace>/_build/default/src/bin/main.exe
- *   3. Fallback: opam exec -- dune exec rizzoc --
+ *   2. Local dune build: <workspace>/_build/default/src/bin/main(.exe)
+ *   3. PATH-discovered rizzoc
  */
 function getRizzocCommand(
     workspaceFolder: string | undefined
-): { command: string; args: string[] } {
+): { command: string; args: string[] } | undefined {
     const config = vscode.workspace.getConfiguration("rizzoLsp");
     const userCommand = config.get<string>("compiler.command", "").trim();
     if (userCommand.length > 0) {
@@ -128,14 +243,74 @@ function getRizzocCommand(
             "default",
             "src",
             "bin",
-            "main.exe"
+            `main${executableSuffix()}`
         );
         if (fs.existsSync(localBuild)) {
             return { command: localBuild, args: ["-o", "output"] };
         }
     }
 
-    return { command: "opam", args: ["exec", "--", "dune", "exec", "rizzoc", "-o", "output", "--"] };
+    const autoDetectedCommand = findAutoDetectedExecutable("rizzoc");
+    if (autoDetectedCommand) {
+        return { command: autoDetectedCommand, args: ["-o", "output"] };
+    }
+
+    return undefined;
+}
+
+function getServerCommand(
+    workspaceFolder: string | undefined,
+    fallbackCwd: string,
+    config: vscode.WorkspaceConfiguration
+): { executable: Executable; launchCommand: string; launchArgs: string[] } | undefined {
+    const userCommand = config.get<string>("server.command", "").trim();
+    const userArgs = config.get<string[]>("server.args", []);
+    if (userCommand.length > 0) {
+        return {
+            executable: {
+                command: userCommand,
+                args: userArgs,
+                options: {
+                    cwd: workspaceFolder ?? fallbackCwd
+                }
+            },
+            launchCommand: userCommand,
+            launchArgs: userArgs
+        };
+    }
+
+    const serverRoot = workspaceFolder ?? fallbackCwd;
+    const builtServerPath = path.join(serverRoot, "_build", "default", "src", "bin", `rizzolsp${executableSuffix()}`);
+    if (isExecutableFile(builtServerPath)) {
+        return {
+            executable: {
+                command: builtServerPath,
+                args: [],
+                options: {
+                    cwd: serverRoot
+                }
+            },
+            launchCommand: builtServerPath,
+            launchArgs: []
+        };
+    }
+
+    const autoDetectedCommand = findAutoDetectedExecutable("rizzolsp");
+    if (autoDetectedCommand) {
+        return {
+            executable: {
+                command: autoDetectedCommand,
+                args: [],
+                options: {
+                    cwd: workspaceFolder ?? fallbackCwd
+                }
+            },
+            launchCommand: autoDetectedCommand,
+            launchArgs: []
+        };
+    }
+
+    return undefined;
 }
 
 /**
@@ -165,6 +340,13 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = await getValidWorkspaceFolder(vscode.workspace.getConfiguration("rizzoLsp"));
 
     const rizzoc = getRizzocCommand(workspaceFolder);
+    if (!rizzoc) {
+        await vscode.window.showErrorMessage(
+            "Rizzo: Could not find rizzoc. Set rizzoLsp.compiler.command, build the workspace, put rizzoc on PATH, or install the managed Rizzo toolchain."
+        );
+        return;
+    }
+
     const isWindows = process.platform === "win32";
 
     // Build the rizzoc invocation.
@@ -189,26 +371,19 @@ async function runCurrentFile(context: vscode.ExtensionContext): Promise<void> {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const config = vscode.workspace.getConfiguration("rizzoLsp");
-    let command = config.get<string>("server.command", "opam");
-    let args = config.get<string[]>("server.args", ["exec", "--", "dune", "exec", "rizzolsp"]);
-
     let workspaceFolder = await getValidWorkspaceFolder(config);
     const fallbackCwd = path.dirname(context.extensionPath);
-    const serverRoot = workspaceFolder ?? fallbackCwd;
-    const builtServerPath = path.join(serverRoot, "_build", "default", "src", "bin", "rizzolsp.exe");
-
-    if (fs.existsSync(builtServerPath)) {
-        command = builtServerPath;
-        args = [];
+    const serverCommand = getServerCommand(workspaceFolder, fallbackCwd, config);
+    if (!serverCommand) {
+        await vscode.window.showErrorMessage(
+            "Rizzo LSP: Could not find rizzolsp. Set rizzoLsp.server.command, build the workspace, put rizzolsp on PATH, or install the managed Rizzo toolchain."
+        );
+        currentState = State.Stopped;
+        updateStatusBar();
+        return;
     }
 
-    const serverExecutable: Executable = {
-        command,
-        args,
-        options: {
-            cwd: serverRoot
-        }
-    };
+    const serverExecutable = serverCommand.executable;
 
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     statusBarItem.command = "rizzoLsp.checkHealth";
@@ -248,12 +423,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const state = stateLabel(currentState);
             const workspace = workspaceFolder ?? "<none>";
             const cwd = serverExecutable.options?.cwd ?? "<none>";
-            const launch = [command, ...args].join(" ");
+            const launch = [serverCommand.launchCommand, ...serverCommand.launchArgs].join(" ");
             const message = [
                 `State: ${state}`,
                 `Workspace: ${workspace}`,
                 `Server cwd: ${cwd}`,
-                `Launch: ${launch}`
+                `Launch command: ${launch}`
             ].join("\n");
 
             if (currentState === State.Running) {

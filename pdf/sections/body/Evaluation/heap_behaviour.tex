@@ -1,33 +1,33 @@
-\todo{\dots we ran this Rizzo program X (code of which is in the appendix). The program does \textbf{something}. We enabled  with compiler flags `\_\_RZ\_DEBUG\_INFO', the output is shown in \dots}
+% \todo{\dots we ran this Rizzo program X (code of which is in the appendix). The program does \textbf{something}. We enabled  with compiler flags `\_\_RZ\_DEBUG\_INFO', the output is shown in \dots}
 
-In order to evaluate the heap behaviour, we will be running a small Rizzo. The program has two modes, an English mode and a Danish mode, and will print a greeting every second in a language that depends on the selected mode.
-The source code for the program is available in our repository at the path \todo{examples/eval\_small.rizz}.
+In order to evaluate the behaviour of the signal heap, we will be running a small Rizzo program. To show our signal heap can grow and shrink in a predictable way, we will make the program such that it changes which signals are actively used. For this, we have made a program with two modes. It has an English and Danish mode, and will echo back any input given to it in the respective language. 
+The full source can be found in Appendix \todo{X}.
 
-When compiling the program we enable the \texttt{--debug-info} flag, which enables the logging of debug information. Specifically, the flag enables printing of the heap every time a channel produces a value. A unique identifier will also be given to each signal so it can be traced through a series of prints.
-To compile the program, first run \texttt{rizzoc examples/eval\_small.rizz --debug-info} and then run the generated executable \texttt{output.exe}.
-Running the program we get the output as seen in \todo{Figure ?}. We have colored the user input in blue and the output from the program in green. The lines starting with `Sig index' are the debug prints of the heap, which show the signals currently in the heap and their unique identifiers. Each signal that was updated for a given time step is printed in brackets. In the example we want to focus on the heap prints, but the user input and program output are included to give context to the prints. The intention is to show how the signal heap's size changes depending which logical path of the program is taken, and to show that the heap does not grow indefinitely as the program runs.
+\begin{lstlisting}[caption={The entry point of the Rizzo program used to evaluate the heap behaviour.}]
+fun entry unused =
+    let console_sig = mk_sig_of_channel console in
+    let regular_inputs = filter_l is_regular_input console_sig in
+    let language_sig = filter_map_l parse_language console_sig in
+    let default = 
+        "Type en for English (Default).\nSkriv da for Dansk." 
+        :: language_signal regular_inputs EN in
+    let mode_funcs = map_l (language_switch regular_inputs) language_sig in
+    let switched = switch_r default mode_funcs in
+    let _out = console_out_signal switched in
+    start_event_loop ()
+\end{lstlisting}
 
-\todo{Describe that the signals 0 through 3 all initialise in the code initialisation. then on the first step of an input, the signals 4, 6 and 8 are created. 7 is missing because it is an intermediate signal.}
-\todo{Signal 0 is the \dots}
+When compiling the program we enable the \texttt{--debug-info} flag, which enables the logging of debug information. Specifically, the flag adds unique identifiers to signals and enables printing of the signal heap after each time step.
+We compiled the program with \texttt{rizzoc examples/eval\_small.rizz --debug-info} and then run the generated executable \texttt{./output(.exe)}.
+Running the program we get the output in Figure \ref{fig:heap_print}. We have colored the user input in blue and the output from the program in green. The lines starting with `Sig index' are the debug prints of the heap. 
+The prints show the next available signal index, the size of the heap, and the unique identifiers of the signals in the signal heap. 
+We also visualise which signals we mark as updated by surrounding their index with brackets.
 
-The program starts in English mode, and the first two lines are the initial greeting and the instruction for switching to Danish. This output is caused by the output function does not take a Later Signal, and thus has an initial head that must be evaluated on the first time step. Next, we input `\textit{input 1}' and `\textit{input 2}', which are regular inputs that will be printed back to us. Which as expected both trigger the same signals and keep the heap size constant after the step has finished. Switching language then then changes the signal returned by switch\_r, which causes the heap to grow as the delayed computations are evaluated. \todo{Describe the rest of the execution, and how the heap grows and shrinks depending on the path taken.}
-
-The first output is the initial print that occurs when registering a signal as a console output. The second line is from the stepping which is triggered by a second passing and on the third line we see the first print of the heap. After initialisation (and the first time step) the heap consists of six signals.
-
-% The $0\text{th}$ signal is the timer, the $1\text{st}$ and $2\text{nd}$ signals are created inside the calls to \texttt{filter\_l} and are conceptually \textit{internal channels} for an application of the \texttt{watch} constructor.
-% The initial greeting signal, called \texttt{called}, is the $3\text{rd}$ signal in the heap. The $4\text{th}$ signal is the result of the application \texttt{switch\_r default mode\_funcs}, and the $5\text{th}$ signal is created by \texttt{quit\_at}.
-% By this time in the execution not all signals have materialised. In fact, the \texttt{console\_sig} (a delayed signal over strings) will only materialise once the console input channel produces a value, this happens in lines six to eight, where a \text{da} is input. 
-% Notice, the signals 12 and 14 are created in front of 1 and 2 respectively, these are the result of applying \texttt{mk\_sig}. 
-% And similarly, signals 16 through 18 are the signals created by evaluation the delayed computation \texttt{map\_l} of \texttt{mode\_funcs} and \texttt{switch\_r} which has swapped the application to the Danish mode.
-
-% \todo{Tobias: 16 must the signal from mapL. 17 is the result of applying the \texttt{mode\_function} (called f inside cont of switchr) that was partially applied in the mapL of mode\_funcs. And the 18th, that one I am a little ensure about, I imagine it is the recursive call to \texttt{switch\_r} inside cont. This seems consistent, since after inputing `en', this signal is deleted and 32 is now where 18 were.}
-
-% \todo{Finish by something like: notice how beyond this point, when all signals have materialised, the heap size grows no more. Both the Danish and the English mode require the same amount of signal \dots and there are no signal ids unaccounted for.}
-
-
-\begin{Verbatim}[commandchars=\\\{\}]
+\begin{figure}
+    \begin{Verbatim}[commandchars=\\\{\}]
 \textcolor{greencomments}{Type en for English (Default).}
 \textcolor{greencomments}{Skriv da for Dansk.}
+After init, Sig index 4, (size: 4) | [0] [1] [2] [3] (|)
 \textcolor{blue}{input 1}
 \textcolor{greencomments}{You typed: input 1.}
 Sig index 11, (size: 7) | [4] [0] [6] [1] [8] [2] [3] (|) 
@@ -52,4 +52,29 @@ Sig index 55, (size: 9) | [4] [0] [6] [1] 22 23 [52] [46] [3] (|)
 \textcolor{blue}{input 8}
 \textcolor{greencomments}{You typed: input 8.}
 Sig index 62, (size: 9) | [4] [0] [6] [1] 22 23 [52] [46] [3] (|)
-\end{Verbatim}
+    \end{Verbatim}
+    \caption{The output of the language swapping program with debug info enabled. The blue lines are user input, the green lines are program output and the black lines are the heap prints.}
+    \label{fig:heap_print}
+\end{figure}
+
+From the output of the language swapping program with debug info enabled, we can see that on initialisation, the heap contains four signals:
+
+\begin{itemize}
+    \item Signal $[0]$ is an internal signal created and watched inside the \texttt{filter\_l} function.
+    \item Signal $[1]$ is an internal signal created and watched inside the \texttt{filter\_map\_l} function.
+    \item Signal $[2]$ is initial English echo signal stored in the \texttt{default} variable.
+    \item Signal $[3]$ is an internal signal representing the output from the \texttt{switch\_r} function.
+\end{itemize}
+
+The program starts in English mode, and the first two lines written are the initial greeting and the instruction for switching to Danish. This output is caused by the signal having been given an initial head value, which causes the output function to trigger on initialisation.
+
+% \todo{The console input is not directly a signal yet, but a Later. This means if some thing depends on that later, it can cause each dependence on the signal to create a new signal from that Later.}
+
+We then send two inputs, `\textit{input 1}' and `\textit{input 2}', causing the signal heap to grow as the filters depends on this \texttt{Later} value of the console input. Before the first input, The \texttt{console\_sig} is not directly a signal yet, but a value of type \texttt{Later (Signal String)}. This means if multiple filters depends on that \texttt{Later} value, it can cause each dependence on the \texttt{Later} to create a new signal from that \texttt{Later}. The new signals $[4]$ and $[6]$ represent these signals created from the \texttt{Later} of the console input. The double \texttt{Later} evaluation issue is described more in section \ref{sec:limitations}.
+The signal $[8]$ is the English echo signal, that is, the signal which maps the input to the form `You typed: \textit{input}'. After this first growth from `\textit{input 1}', the next input `\textit{input 2}' satisfies the same filter conditions, so the heap size remains unchanged.
+
+When we input `\textit{da}', the filter that watches for the language codes is satisfied, and outputs a new signal with index $[22]$. This signal is then mapped over by the \texttt{language\_switch} function, which creates a new signal $[23]$ whose head is the function used to construct the new branch. Applying the new head of $[23]$ to \texttt{switch\_r} then creates the new Danish branch signal $[24]$ replacing the old English branch signal $[2]$. The signal $[8]$ is not used in switching the language, so it gets removed until the next input that is not `\textit{en}' or `\textit{da}'.
+
+Inputting `\textit{input 4}' and `\textit{input 5}' now only makes the heap grow by one signal. The new signal is the Danish echo signal $[30]$, which is the replacement of the old English echo signal $[8]$. When we switch back to English with `\textit{en}',the Danish branch signal $[24]$ is replaced by the English branch signal $[46]$, and the Danish echo signal $[30]$ is removed until signal $[52]$ is created on the next input that is not `\textit{en}' or `\textit{da}'. 
+
+As we can see from the heap prints, the heap grows and shrinks in a predictable way. The signals that are not needed anymore get removed from the heap, and the signals that are needed get created when they are needed. This shows that our signal heap is working as intended, and that it can handle dynamic changes in the topology of the signal graph.

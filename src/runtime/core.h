@@ -26,10 +26,10 @@ typedef enum rz_object_type {
 
 /*TODO: how big should these fields be? */
 typedef struct rz_header {
-    uint16_t num_fields;         /* number of fields in constructor, recursively free */
-    uint8_t tag;                 /* tag of constructor for case matching */
-    uint8_t obj_type;            /* is this a signal? A regular memory block? A string? for deallocation logic! */
-    rz_refcount_t refcount;      /* ref count */
+    uint16_t num_fields;         /* number of fields in constructor, recursively free - needs 6 bits */
+    uint8_t tag;                 /* tag of constructor for case matching - needs 6 bits */
+    uint8_t obj_type;            /* is this a signal? A regular memory block? A string? for deallocation logic! - needs 4 */
+    rz_refcount_t refcount;      /* ref count - 16? 24 maybe */
 } rz_header_t;
 
 typedef struct rz_object {

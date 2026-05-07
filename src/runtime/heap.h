@@ -163,6 +163,9 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
         sig->_base.obj_type = RZ_SIGNAL;
         sig->head = head;
         sig->tail = tail;
+#ifdef __RZ_DEBUG_INFO
+        sig->debug_index = rz_make_int(rz_debug_signal_next_index++);
+#endif
         return obj;
     }
 
