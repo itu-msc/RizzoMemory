@@ -251,6 +251,7 @@ static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b)
 static bool rz_ticked(rz_object_t *later, rz_channel_t chan, rz_box_t v);
 static void rz_heap_update(rz_channel_t chan, rz_box_t v);
 static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v);
+static inline rz_box_t rz_advance_delayed(rz_box_t delayed);
 
 static void rz_heap_update(rz_channel_t chan, rz_box_t v)
 {
@@ -266,13 +267,12 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v)
         }
         else
         { /* chan produced a tick on tl of cursor! */
+            rz_refcount_dec_box(rz_heap_cursor->head);
             rz_box_t l_boxed = rz_advance(tl, chan, v);
             rz_signal_t *l = (rz_signal_t *)rz_unbox_ptr(l_boxed);
             rz_heap_cursor->updated.as.i64 = true;
             rz_refcount_inc_box(l->head);
             rz_refcount_inc_box(l->tail);
-            rz_refcount_dec_box(rz_heap_cursor->head);
-            rz_refcount_dec_box(rz_heap_cursor->tail);
             rz_heap_cursor->head = l->head;
             rz_heap_cursor->tail = l->tail;
 
@@ -282,6 +282,8 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v)
     }
 }
 
+/** Checks whether a later value produced a tick on the current time step for the channel [chan]
+ *  Takes borrowed references to [later], [chan], and [v]. */
 static bool rz_ticked(rz_object_t *later, rz_channel_t chan, rz_box_t v)
 {
     switch (rz_object_tag(later))
@@ -320,8 +322,12 @@ static bool rz_ticked(rz_object_t *later, rz_channel_t chan, rz_box_t v)
     }
 }
 
-/** No inc/dec are performed on the argument [later since it doesn't do reuse (yet)
- *  Values returned by [rz_advanced] have been incremented */
+/** Advances a value of the 'Later' type (watch, wait, tail, sync, laterapp)
+ *  which produces a value for that later for the current time step.
+ *  Takes an owned reference to [later] and borrowed references to [chan] and [v].
+ *  Returns: owned reference to resulting value 
+ *  Note: There is no caching of the resulting value. This is a limitation
+ */
 static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
 {
     switch (rz_object_tag(later))
@@ -330,33 +336,25 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
     {
         /* Technically we have already checked (wait k) -> k = chan */
         rz_refcount_inc_box(v);
+        rz_refcount_dec(later);
         return v;
     }
     case RZ_TAG_LATER_APP:
     {
-        /* let arg_later = proj1 later in
-           inc(arg_later)                       <- if later is owned, then so must its projections
-           let advanced_arg = rz_advance(arg_later, chan, v) in
-           let delayed_fun = proj0 later in
-           inc(delayed_fun)                     <- if later is owned, then so must its projections
-           dec(later)                           <- don't need the later value beyond this point
-           let fun = proj0 delayed_fun in
-           inc(fun)                             <- again, a projection of an owned variable (delayed_fun)
-           dec(delayed_fun) <- don't need delayed_fun anymore
-           let res = varapp(fun, advanced_arg)
-           ret res */
-        rz_box_t arg_later = rz_object_get_field(later, 1);
-        rz_box_t arg = rz_advance(rz_unbox_ptr(arg_later), chan, v);
         rz_box_t delayed_fun = rz_object_get_field(later, 0);
+        rz_refcount_inc_box(delayed_fun);
         rz_box_t fun = rz_advance_delayed(delayed_fun);
-        // although arg is used in apply1 (varapp), it doesn't need inc because advance returns +1
-        // and the same applies to fun, which is also returned with rc+1 by advance_delayed
+        rz_box_t arg_later = rz_object_get_field(later, 1);
+        rz_refcount_inc_box(arg_later);
+        rz_refcount_dec(later);
+        rz_box_t arg = rz_advance(rz_unbox_ptr(arg_later), chan, v);
         return rz_apply1(rz_unbox_ptr(fun), arg);
     }
     case RZ_TAG_LATER_TAIL:
     {
         rz_box_t l = rz_object_get_field(later, 0);
         rz_refcount_inc_box(l);
+        rz_refcount_dec(later);
         return l;
     }
     case RZ_TAG_LATER_WATCH:
@@ -371,6 +369,7 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
         /* assume some -> ctor1(v) */
         rz_box_t v = rz_object_get_field(some, 0);
         rz_refcount_inc_box(v);
+        rz_refcount_dec(later);
         return v;
     }
     case RZ_TAG_LATER_SYNC:
@@ -381,6 +380,9 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
         bool ticked2 = rz_ticked(v2, chan, v);
         if (ticked1 && ticked2)
         {
+            rz_refcount_inc(v1);
+            rz_refcount_inc(v2);
+            rz_refcount_dec(later);
             rz_box_t u1 = rz_advance(v1, chan, v);
             rz_box_t u2 = rz_advance(v2, chan, v);
             rz_object_t *both = rz_ctor_var(RZ_TAG_SYNC_BOTH, 2, u1, u2);
@@ -388,12 +390,16 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
         }
         else if (ticked1)
         {
+            rz_refcount_inc(v1);
+            rz_refcount_dec(later);
             rz_box_t u1 = rz_advance(v1, chan, v);
             rz_object_t *left = rz_ctor_var(RZ_TAG_SYNC_LEFT, 1, u1);
             return rz_make_ptr(left);
         }
         else /* if (ticked2) */
         {
+            rz_refcount_inc(v2);
+            rz_refcount_dec(later);
             rz_box_t u2 = rz_advance(v2, chan, v);
             rz_object_t *right = rz_ctor_var(RZ_TAG_SYNC_RIGHT, 1, u2);
             return rz_make_ptr(right);
@@ -404,4 +410,35 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
         printf("rz_advance(%s) - unknown later tag '%d'", __FILE__, rz_object_tag(later));
         exit(1);
     }
+}
+
+/** Forces a Delayed value (either 'delay' or 'ostar') - NO caching of the resulting values.
+ * Takes an owned reference to [delayed]
+ */
+static inline rz_box_t rz_advance_delayed(rz_box_t delayed) {
+    rz_object_t* ptr_delayed = rz_unbox_ptr(delayed);
+    switch (rz_object_tag(ptr_delayed)) {
+        case RZ_TAG_DELAY: {
+            rz_object_t* thunk = rz_unbox_ptr(rz_object_get_field(ptr_delayed, 0));
+            rz_refcount_inc(thunk);
+            rz_refcount_dec(ptr_delayed);
+            return rz_apply1(thunk, RZ_UNIT);
+        }
+        case RZ_TAG_OSTAR: {
+            // typeof OSTAR: Delayed ('a -> 'b) -> Delayed 'a -> Delayed 'b
+            rz_box_t operand_left_delay = rz_object_get_field(ptr_delayed, 0);
+            rz_box_t operand_right_delay = rz_object_get_field(ptr_delayed, 1);
+            rz_refcount_inc_box(operand_left_delay);
+            rz_refcount_inc_box(operand_right_delay);
+            rz_refcount_dec(ptr_delayed);
+            rz_object_t* f =  rz_unbox_ptr(rz_advance_delayed(operand_left_delay));
+            rz_box_t operand_right = rz_advance_delayed(operand_right_delay);
+            return rz_apply1(f, operand_right);
+        }
+        default: {
+            printf("Unknown delayed tag in 'rz_advance_delayed': %d", rz_object_tag(ptr_delayed));
+            exit(1);
+        }
+    }
+    
 }

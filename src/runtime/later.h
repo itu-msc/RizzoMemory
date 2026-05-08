@@ -25,31 +25,6 @@ typedef enum {
 static rz_object_t RZ_NEVER_OBJ = { .header = { .num_fields = 0, .tag = RZ_TAG_LATER_NEVER, .refcount = -1 } };
 static rz_box_t RZ_NEVER = { .kind = RZ_BOX_INT, .as.obj = &RZ_NEVER_OBJ }; /* should it have kind int? */
 
-/** Forces a Delayed value (either 'delay' or 'ostar') - NO caching of the resulting values.
- * Returns a boxed value with refcount +1, so the caller doesn't need to inc.
- */
-static inline rz_box_t rz_advance_delayed(rz_box_t delayed) {
-    rz_object_t* ptr_delayed = rz_unbox_ptr(delayed);
-    switch (rz_object_tag(ptr_delayed)) {
-        case RZ_TAG_DELAY: {
-            rz_object_t* thunk = rz_unbox_ptr(rz_object_get_field(ptr_delayed, 0));
-            rz_refcount_inc(thunk);
-            return rz_apply1(thunk, RZ_UNIT);
-        }
-        case RZ_TAG_OSTAR: {
-            // typeof OSTAR: Delayed ('a -> 'b) -> Delayed 'a -> Delayed 'b
-            rz_box_t operand_left =  rz_advance_delayed(rz_object_get_field(ptr_delayed, 0));
-            rz_box_t operand_right = rz_advance_delayed(rz_object_get_field(ptr_delayed, 1));
-            rz_object_t* f = rz_unbox_ptr(operand_left);
-            return rz_apply1(f, operand_right);
-        }
-        default: {
-            printf("Unknown delayed tag in 'rz_advance_delayed': %d", rz_object_tag(ptr_delayed));
-            exit(1);
-        }
-    }
-    
-}
 
 static inline void rz_debug_print_delayed(rz_box_t delay);
 

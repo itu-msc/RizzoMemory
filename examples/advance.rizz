@@ -1,0 +1,49 @@
+fun entry () = "see below"
+
+type MyChan 'a = MChan
+
+type MyDelayed 'a 'b = 
+    | MDelay(Unit -> 'b)
+    // | MOstar(MyDelayed ('a -> 'b), MyDelayed ('a, 'b))
+
+type MyLater 'a 'b =
+    | Never
+    | Wait (MyChan 'a)
+    | Watch (Signal (Option 'a))
+    | Tail (Signal 'a)
+    | LaterApp( MyDelayed (('a->'b), 'b) , MyLater('a, 'b))
+    | MSync(MyLater('a,'b), MyLater ('a, 'b))
+
+fun advance_delay d : MyDelayed('a, 'b) -> 'b = 
+    match d with
+    | MDelay(f) -> f ()
+    // | MOstar(d1, d2) ->
+    //     let x = advance_delay d2 in
+    //     let f = advance_delay d1 in 
+    //     f x
+
+fun or a b = if a then true else b
+
+fun is_updated s = false
+
+fun ticked l c v = 
+    match l with
+    | Wait (c) -> c == c
+    | Watch ((None) :: xs) -> false
+    | Watch ((Some(_)) :: xs) -> false
+    | Tail (s) -> is_updated s
+    | LaterApp (_, x) -> ticked l c x
+    | MSync (l1, l2) -> or (ticked l1 c v) (ticked l2 c v)
+
+fun advance l c v =
+    match l with
+    | Wait (_) -> v
+    | Watch ((Some(x)) :: xs) -> x 
+    | Tail (s) -> s
+    | LaterApp (f, l) -> 
+        let x = advance l c v in
+        advance_delay f x
+    | MSync (l1, l2) -> 
+        if ticked l1 c v then Left(advance l1 c v) 
+        else if ticked l2 c v then Right(advance l2 c v)
+        else Both (advance l1 c v, advance l2 c v)
