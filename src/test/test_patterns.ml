@@ -181,6 +181,35 @@ let test_tree_signal_tail_is_sunk_only_where_used () =
        | None -> Alcotest.fail "expected if-expression in branch")
   | _ -> Alcotest.fail "unexpected transformed AST shape"
 
+let test_patterns_tree_flattens_same_scrutinee_cases () =
+  let open Rizzoc in
+  Utilities.new_name_reset ();
+  let program =
+    [
+      toplet "describe"
+        (fun_ ["value"]
+           (case (var "value")
+              [
+                (pctor (name "Some") [pvar "x"], var "x");
+                (pctor (name "None") [], int 0);
+                (pwild, int 1);
+              ]));
+    ]
+  in
+  let transformed = Transformations.eliminate_patterns_tree program in
+  match transformed with
+  | [TopLet (_, EFun (_, ELet ((scrutinee_name, _), _, ECase (EVar (case_name, _), branches, _), _), _), _)] ->
+      Alcotest.(check string) "case uses generated scrutinee" scrutinee_name case_name;
+      Alcotest.(check int) "same-scrutinee cases are flattened" 3 (List.length branches);
+      (match List.rev branches with
+       | (PWildcard _, body, _) :: _ ->
+           (match body with
+            | ECase (EVar (nested_name, _), _, _) when String.equal nested_name scrutinee_name ->
+                Alcotest.fail "default branch should not nest a match on the same scrutinee"
+            | _ -> ())
+       | _ -> Alcotest.fail "expected a default branch")
+  | _ -> Alcotest.fail "unexpected transformed AST shape"
+
 let pattern_matching_tests =
   [
     ( "SIMPLE PATTERNS: signal tail is bound once in else",
@@ -192,4 +221,7 @@ let pattern_matching_tests =
     ( "unused signal tail is not bound",
       `Quick,
       test_sigcons_tail_unused_is_not_bound );
+    ( "PATTERN TREE: same-scrutinee case fallback is flattened",
+      `Quick,
+      test_patterns_tree_flattens_same_scrutinee_cases );
   ]

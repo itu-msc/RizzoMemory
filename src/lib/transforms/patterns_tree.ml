@@ -230,6 +230,14 @@ let emit_bindings bindings body =
 		bindings
 		body
 
+let case_or_flatten scrutinee first_branch no ann =
+	match scrutinee, no with
+	| EVar (scrutinee_name, _), ECase (EVar (nested_name, _), nested_branches, _)
+		when String.equal scrutinee_name nested_name ->
+		ECase (scrutinee, first_branch :: nested_branches, ann)
+	| _ ->
+		ECase (scrutinee, [first_branch; (PWildcard ann, no, ann)], ann)
+
 let rec compile_leaf_clauses lower ann clauses =
 	match clauses with
 	| [] -> match_fail ann "Non-exhaustive pattern match"
@@ -260,14 +268,12 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 	| PTuple _ ->
 		(match fresh_vars with
 		| [left; right] ->
-			ECase (
-				scrutinee,
-				[
-					(PTuple (PWildcard ann, PWildcard ann, ann),
-					 	ELet ((left, ann), proj 0 ann scrutinee, ELet ((right, ann), proj 1 ann scrutinee, yes, ann), ann), ann);
-					(PWildcard ann, no, ann)
-				],
-				ann)
+			case_or_flatten
+				scrutinee
+				(PTuple (PWildcard ann, PWildcard ann, ann),
+					ELet ((left, ann), proj 0 ann scrutinee, ELet ((right, ann), proj 1 ann scrutinee, yes, ann), ann), ann)
+				no
+				ann
 		| _ -> failwith "Tuple tests expect two field variables")
 	| PCtor ((ctor_name, ctor_ann), _, _) ->
 		let field_pats = List.map (fun _ -> PWildcard ann) fresh_vars in
@@ -278,13 +284,11 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 				(List.init (List.length fresh_vars) Fun.id)
 				yes
 		in
-		ECase (
-			scrutinee,
-			[
-				(PCtor ((ctor_name, ctor_ann), field_pats, ann), yes_branch, ann);
-				(PWildcard ann, no, ann)
-			],
-			ann)
+		case_or_flatten
+			scrutinee
+			(PCtor ((ctor_name, ctor_ann), field_pats, ann), yes_branch, ann)
+			no
+			ann
 	| PSigCons _ ->
 		(match fresh_vars with
 		| [head; tail] ->
@@ -292,13 +296,11 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 			let tl_proj = EUnary (UTail, scrutinee, ann) in
 			let yes_body = sink_until_first_use (tail, ann) tl_proj ann yes in
 			let yes_branch = ELet ((head, ann), hd_proj, yes_body, ann) in
-			ECase (
-				scrutinee,
-				[
-					(PSigCons (PWildcard ann, (tail, ann), ann), yes_branch, ann);
-					(PWildcard ann, no, ann)
-				],
-				ann)
+			case_or_flatten
+				scrutinee
+				(PSigCons (PWildcard ann, (tail, ann), ann), yes_branch, ann)
+				no
+				ann
 		| _ -> failwith "Signal-cons tests expect two field variables")
 	| PStringCons _ ->
 		failwith "String-cons patterns should be lowered by the string pass"
