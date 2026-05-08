@@ -235,6 +235,14 @@ and run_type_env_from_state : 'a. Type_env.typing_state -> 'a Type_env.t -> 'a *
   let Type_env.Env run = m in
   run state
 
+and flatten_fun_type : typ -> (typ list * typ) Type_env.t = fun t ->
+  let* t = Type_env.apply_subst t in
+  match t with
+  | TFun (Cons1 (front, rest), ret_type) ->
+    let* nested_params, ret_type = flatten_fun_type ret_type in
+    return (front :: (rest @ nested_params), ret_type)
+  | _ -> return ([], t)
+
 and tail_expr_has_known_list_shape : type stage. stage expr -> bool Type_env.t = function
   | ECtor (("Nil", _), _, _) | ECtor (("Cons", _), _, _) -> return true
   | EAnno (_, TApp (TName "List", _), _) -> return true
@@ -549,21 +557,31 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
     let name' = (name, Ann_typed (get_location name_ann, t_rhs)) in
     return (ELet (name', trhs, tbody, Ann_typed (get_location ann, tbody_type)))
   | EFun (params, body, ann) -> 
-    let* Cons1(p1_type, param_types_rest), ret_type = 
+    let* param_types, ret_type = 
       match expected with
-      | TFun (param_types, ret_type) when List1.length param_types = List.length params -> 
-        return (param_types, ret_type)
-      | TFun (ps, _) -> 
-        let ps_len = List1.length ps in
-        let* _ = error ann (Format.asprintf "Function has %d parameters but expected type '%a'" ps_len Ast.pp_typ expected) in
-        return (Cons1(TError, List.init (List.length params - 1) (fun _ -> TError)), TError)
+      | TFun _ ->
+        let* expected_params, ret_type = flatten_fun_type expected in
+        if List.length expected_params = List.length params then
+          return (expected_params, ret_type)
+        else if List.length expected_params < List.length params then
+          let missing_param_count = List.length params - List.length expected_params in
+          let* extra_params =
+            Type_env.collect (List.init missing_param_count (fun _ -> Type_env.fresh_type_var ()))
+          in
+          let* body_ret_type = Type_env.fresh_type_var () in
+          let extra_fun_type = TFun (Cons1 (List.hd extra_params, List.tl extra_params), body_ret_type) in
+          let* _ = Type_env.expected_equal ann ret_type extra_fun_type in
+          return (expected_params @ extra_params, body_ret_type)
+        else
+          let* _ = error ann (Format.asprintf "Function has %d parameters but expected type '%a'" (List.length params) Ast.pp_typ expected) in
+          return (List.init (List.length params) (fun _ -> TError), TError)
       | _ -> 
         let* _ = error ann (Format.asprintf "Type check expected non-function '%a'" Ast.pp_expr e) in
-        return (Cons1(TError, List.init (List.length params - 1) (fun _ -> TError)), TError)
+        return (List.init (List.length params) (fun _ -> TError), TError)
     in
     let* () = check_unique_param_binders params in
     let* params_annotated, param_bindings = 
-      List.map2 (fun param pt -> check_pattern param pt) params (p1_type :: param_types_rest)
+      List.map2 (fun param pt -> check_pattern param pt) params param_types
       |> Type_env.collect
       |> Type_env.map List.split
       |> Type_env.map (fun (pt, bindings) -> pt, List.concat bindings)
@@ -571,7 +589,7 @@ and check : type stage. stage expr -> typ -> typed expr Type_env.t = fun e expec
     (* let param_bindings = (List.map (fun (p, ann) -> (p, mono (ann_get_type ann))) params_annotated) in *)
     let* typed_body = Type_env.with_locals param_bindings (check body ret_type) in
     let* body_type = get_typ typed_body in
-    let new_expected = TFun (Cons1(p1_type, param_types_rest), body_type) in
+    let new_expected = TFun (Cons1(List.hd param_types, List.tl param_types), body_type) in
     return (EFun (params_annotated, typed_body, Ann_typed(get_location ann, new_expected)))
   | ECase (scrutinee, branches, ann) ->
     let* tscrutinee = infer scrutinee in

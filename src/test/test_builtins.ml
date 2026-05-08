@@ -143,6 +143,16 @@ let test_list_fold_lambda_uses_contextual_list_type () =
   in
   ()
 
+let test_contextual_function_literals_allow_curried_shapes () =
+  let _ =
+    parse_and_typecheck
+      ("fun accepts_comp f : ((Int -> Int) -> (Int -> Int) -> (Int -> Int)) -> Int = 0\n"
+      ^ "let composed = accepts_comp (fun f g x -> f (g x))\n"
+      ^ "fun accepts_map_fn f : (String -> 'a) -> Int = 0\n"
+      ^ "let mapped = accepts_map_fn (fun x n -> 0 - n)\n")
+  in
+  ()
+
 let builtin_tests = [
   "console is a string channel", `Quick, test_console_is_string_channel;
   "parse_int returns option int", `Quick, test_parse_int_has_expected_type;
@@ -152,4 +162,5 @@ let builtin_tests = [
   "list support builtins have expected types", `Quick, test_list_supporting_builtins_have_expected_types;
   "list cons lowers to constructors", `Quick, test_lower_typed_program_rewrites_list_cons_to_constructor;
   "list_fold lambda uses contextual list type", `Quick, test_list_fold_lambda_uses_contextual_list_type;
+  "contextual function literals allow curried shapes", `Quick, test_contextual_function_literals_allow_curried_shapes;
 ]
