@@ -188,15 +188,11 @@ let apply_transforms p =
   |> Transformations.lift
   |> Transformations.explicit_lift_function_values_program
   |> Transformations.eliminate_copy_propagation_program
-  (* |> Transformations.eliminate_dead_let_program *)
-  (* |> Transformations.eliminate_patterns *)
   |> Transformations.remove_duplicate_names
-  (* |> Transformations.eliminate_patterns_simple *)
-  (* |> Transformations.eliminate_patterns *)
   |> Transformations.eliminate_patterns_tree
   |> Transformations.eliminate_dead_let_program
   |> Transformations.ANF.anf
-  |> Transformations.eliminate_copy_propagation_program (* TODO *)
+  |> Transformations.eliminate_copy_propagation_program
 
 let ref_count p = Transformations.auto_ref_count p
 
