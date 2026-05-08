@@ -1,6 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast] [-I <path>] [more-files.rizz ...] <entrypoint.rizz>"
+let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast[:parsed|typed|transformed|rc|all]] [-I <path>] [more-files.rizz ...] <entrypoint.rizz>"
 
 let ansi_of_tag = function
 	| "red" -> "\027[31m"
@@ -50,12 +50,12 @@ let () =
 	let stdlib_path = ref None in
 	let include_paths = ref [] in
 	let input_files = ref [] in
-	let print_ast = ref false in
+	let ast_dump = ref None in
 	let set_stdlib_path path =
 		stdlib_path := Some path
 	in
-	let set_print_ast () =
-		print_ast := true
+	let set_ast_dump format () =
+		ast_dump := Some format
 	in
 	let add_include_path path =
 		include_paths := !include_paths @ [path]
@@ -71,7 +71,12 @@ let () =
 	Arg.parse
 		[ ("--version", Arg.Unit print_version, "Print compiler version and exit")
 		; ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
-		; ("--print-ast", Arg.Unit set_print_ast, "Print parsed, typed, transformed, and reference-counted ASTs during compilation")
+		; ("--print-ast", Arg.Unit (set_ast_dump Dump_ref_counted), "Print the reference-counted AST during compilation")
+		; ("--print-ast:parsed", Arg.Unit (set_ast_dump Dump_parsed), "Print the parsed AST during compilation")
+		; ("--print-ast:typed", Arg.Unit (set_ast_dump Dump_typed), "Print the typed AST during compilation")
+		; ("--print-ast:transformed", Arg.Unit (set_ast_dump Dump_transformed), "Print the transformed AST during compilation")
+		; ("--print-ast:rc", Arg.Unit (set_ast_dump Dump_ref_counted), "Print the reference-counted AST during compilation")
+		; ("--print-ast:all", Arg.Unit (set_ast_dump Dump_all), "Print every AST dump during compilation")
 		; ("-I", Arg.String add_include_path, "Include an extra .rizz file or a directory of .rizz files before user files")
 		; ("--debug-malloc", Arg.Set debug_malloc, "Print debug info about memory allocations and deallocations at runtime")
 		; ("--debug-info"	 , Arg.Set debug_info	 , "Print debug info about the signal heap, when new time steps occur, and which channels produced the input")
@@ -88,7 +93,7 @@ let () =
 			exit 1
 	in
 	List.iter ensure_rizz_extension input_files;
-	print_ast_dumps := !print_ast;
+	print_ast_dump := !ast_dump;
 	if Sys.file_exists !out_name && Sys.is_directory !out_name then (
 		Fmt.epr "@{<red>Error@}: output path cannot be a directory: %s@." !out_name;
 		exit 1
@@ -114,4 +119,3 @@ let () =
 	) else (
 		Fmt.pr "Compilation successful! Executable generated at: %s@." output_file
 	)
-

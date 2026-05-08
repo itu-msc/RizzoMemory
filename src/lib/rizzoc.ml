@@ -52,6 +52,7 @@ module Transformations = struct
   let eliminate_copy_propagation_program = Transforms.Copy_propagation.copy_propagate
   let eliminate_dead_let = Transforms.Dead_let_elimination.eliminate_dead_let
   let eliminate_dead_let_program = Transforms.Dead_let_elimination.dead_let_eliminate
+  let eliminate_unused_top_levels = Transforms.Dead_let_elimination.eliminate_unused_top_levels
   let eliminate_patterns = Transforms.Patterns.transform_patterns
   let eliminate_simple_patterns = Transforms.Simple_patterns.transform_patterns
   let eliminate_patterns_tree = Transforms.Patterns_tree.transform_patterns
@@ -187,12 +188,14 @@ let apply_transforms p =
   |> Transformations.eliminate_consecutive_lambdas_program
   |> Transformations.lift
   |> Transformations.explicit_lift_function_values_program
+  |> Transformations.eliminate_unused_top_levels
   |> Transformations.eliminate_copy_propagation_program
   |> Transformations.remove_duplicate_names
   |> Transformations.eliminate_patterns_tree
   |> Transformations.eliminate_dead_let_program
   |> Transformations.ANF.anf
   |> Transformations.eliminate_copy_propagation_program
+  |> Transformations.eliminate_unused_top_levels
 
 let ref_count p = Transformations.auto_ref_count p
 
@@ -206,7 +209,14 @@ let source_units_for_compile ?executable_path ?stdlib_path ?(include_paths = [])
   @ Source_units.included_source_units include_paths
   @ List.map Source_units.source_file input_files
 
-let print_ast_dumps = ref false
+type ast_dump_format =
+  | Dump_parsed
+  | Dump_typed
+  | Dump_transformed
+  | Dump_ref_counted
+  | Dump_all
+
+let print_ast_dump = ref None
 
 let rec compile_from_files ?executable_path ?stdlib_path ?(include_paths = []) input_files output_file =
   try
@@ -259,10 +269,13 @@ and compile parsed_program output_file =
     | [] -> ()
     | _ -> raise (Source_units.Validation_failed validation_errors)
     );
-    if !print_ast_dumps then print_section "------- Parsed -------" Ast.pp_program parsed_program;
+    if !print_ast_dump = Some Dump_all || !print_ast_dump = Some Dump_parsed then
+      print_section "------- Parsed -------" Ast.pp_program parsed_program;
 		let {typed_program = typed; type_errors = errors; type_definitions} : TypeCheck.typing_result = TypeCheck.typecheck parsed_program in
 		(match errors with
-    | [] -> if !print_ast_dumps then print_section "------- Type checked -------" Ast.pp_typed_program typed
+    | [] ->
+        if !print_ast_dump = Some Dump_all || !print_ast_dump = Some Dump_typed then
+          print_section "------- Type checked -------" Ast.pp_typed_program typed
 		| _ ->
 			Fmt.pr "@{<yellow>------- Type checking failed, showing partial typechecked program -------@}@.";
 			List.iter (fun err -> 
@@ -273,10 +286,12 @@ and compile parsed_program output_file =
       failwith "Type checking failed"
 		);
     let transformed = apply_typed_transforms typed in
-    if !print_ast_dumps then print_section "------- Transformed -------" Ast.pp_program transformed;
+    if !print_ast_dump = Some Dump_all || !print_ast_dump = Some Dump_transformed then
+      print_section "------- Transformed -------" Ast.pp_program transformed;
     let ctor_mappings = TypeCheck.type_definitions_to_ctor_mappings type_definitions in
     let rc_env, rc_program = ref_count ctor_mappings transformed in
-    if !print_ast_dumps then print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
+    if !print_ast_dump = Some Dump_all || !print_ast_dump = Some Dump_ref_counted then
+      print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
 		emit rc_program output_file
 	with
 	| Lexer.Error (loc, msg) ->
