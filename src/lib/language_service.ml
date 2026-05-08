@@ -1987,6 +1987,11 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
               | None -> ());
              walk_expr env e
+        | Ast.EUnary (Ast.UTail, e, _) ->
+          (match keyword_range_from_expr ~text ~name:"tail" expr with
+            | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+            | None -> ());
+           walk_expr env e
           | Ast.EUnary (Ast.UDelay, e, _) ->
             (match keyword_range_from_expr ~text ~name:"delay" expr with
                | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range

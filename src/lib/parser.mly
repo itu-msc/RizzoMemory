@@ -89,8 +89,10 @@ let rec list_pattern_of_list start_pos end_pos = function
 
 %nonassoc BELOW_BAR
 %nonassoc BELOW_CTOR_ARGS
+%nonassoc MISSING_EXPR
 %nonassoc LPAREN
 %nonassoc BAR
+%nonassoc LET FUN
 // %left PIPE_GT EQEQ
 
 %%
@@ -158,26 +160,20 @@ expr:
       | None    -> ELet (name, e1, e2, mkloc $startpos $endpos) 
       | Some (te, anno_loc) -> ELet (name, EAnno(e1, te, anno_loc), e2, mkloc $startpos $endpos) 
     }
-  | IF e1=expr THEN e2=expr ELSE e3=expr
-    { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
-  | IF e1=expr then_kw=THEN else_kw=ELSE e3=expr
+  | IF e1=expr then_kw=THEN e2=if_then_body else_kw=ELSE e3=if_else_body
     {
       let _ = then_kw, else_kw in
-      let missing_then = syntax_error_expr "Syntax error: expected expression after 'then'." $endpos(then_kw) $startpos(else_kw) in
-      EIfe (e1, missing_then, e3, mkloc $startpos $endpos)
-    }
-  | IF e1=expr then_kw=THEN else_kw=ELSE
-    {
-      let _ = then_kw, else_kw in
-      let missing_then = syntax_error_expr "Syntax error: expected expression after 'then'." $endpos(then_kw) $startpos(else_kw) in
-      let missing_else = syntax_error_expr "Syntax error: expected expression after 'else'." $endpos(else_kw) $endpos(else_kw) in
-      EIfe (e1, missing_then, missing_else, mkloc $startpos $endpos)
-    }
-  | IF e1=expr THEN e2=expr else_kw=ELSE
-    {
-      let _ = else_kw in
-      let missing_else = syntax_error_expr "Syntax error: expected expression after 'else'." $endpos(else_kw) $endpos(else_kw) in
-      EIfe (e1, e2, missing_else, mkloc $startpos $endpos)
+      let e2 =
+        match e2 with
+        | Some e -> e
+        | None -> syntax_error_expr "Syntax error: expected expression after 'then'." $endpos(then_kw) $startpos(else_kw)
+      in
+      let e3 =
+        match e3 with
+        | Some e -> e
+        | None -> syntax_error_expr "Syntax error: expected expression after 'else'." $endpos(else_kw) $endpos(else_kw)
+      in
+      EIfe (e1, e2, e3, mkloc $startpos $endpos)
     }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
     { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
@@ -196,10 +192,18 @@ opt_leading_bar:
   | { () }
   | BAR { () }
 
+if_then_body:
+  | e=expr { Some e }
+  | { None }
+
+if_else_body:
+  | e=expr { Some e }
+  | %prec MISSING_EXPR { None }
+
 match_case:
   | p=pattern ARROW e=expr
   { (p, e, mkloc $startpos $endpos) }
-  | p=pattern arrow=ARROW
+  | p=pattern arrow=ARROW %prec MISSING_EXPR
   {
     let _ = arrow in
     let missing_body = syntax_error_expr "Syntax error: expected expression after '->'." $endpos(arrow) $endpos(arrow) in
