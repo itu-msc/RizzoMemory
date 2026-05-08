@@ -355,6 +355,53 @@ let test_list_pattern_match_outputs_head () =
     | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
     | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
 
+let test_scan_l_accumulator_list_append_reuses_cells () =
+  let program =
+    {|
+      fun list_fold f acc lst : ('a -> 'b -> 'a) -> 'a -> List 'b -> 'a =
+        match lst with
+        | [] -> acc
+        | x :: xs -> list_fold f (f acc x) xs
+
+      fun list_fold_right f acc lst : ('a -> 'b -> 'b) -> 'b -> List 'a -> 'b =
+        match lst with
+        | [] -> acc
+        | x :: xs -> f x (list_fold_right f acc xs)
+
+      fun list_reverse lst =
+        list_fold (fun acc x -> x :: acc) [] lst
+
+      fun list_append lst1 lst2 : List 'a -> List 'a -> List 'a =
+        match lst1 with
+        | [] -> lst2
+        | x :: xs -> x :: list_append xs lst2
+
+      fun entry _ =
+        let x = list_reverse [1, 2, 3] in
+        let y = mk_sig_of_channel console in
+        let xs = scan_l (fun acc n ->
+          match parse_int n with
+          | None -> acc
+          | Some(v) -> list_append acc [v]
+        ) x y in
+        let stringify = map_l (fun n -> list_fold_right (fun v acc -> acc + string_of_int v + " ") "" n) xs in
+        let _out = console_out_signal_l stringify in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~debug_malloc:true ~program ~input:"123" () in
+  Alcotest.(check bool) "list append cell is reused" true
+    (List.exists
+       (fun line ->
+         contains_substring ~text:line ~substring:"reuse:"
+         && contains_substring ~text:line ~substring:"with tag 1 and 2 fields")
+       outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
 let end_to_end_tests = [
   "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity;
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
@@ -364,6 +411,7 @@ let end_to_end_tests = [
   "runtime mod and string helpers", `Quick, test_runtime_mod_and_string_helpers;
   "string_split and list_length output count", `Quick, test_string_split_and_list_length_output_count;
   "list pattern match outputs head", `Quick, test_list_pattern_match_outputs_head;
+  "scan_l accumulator list append reuses cells", `Quick, test_scan_l_accumulator_list_append_reuses_cells;
   "Console signal input string is freed", `Quick, test_console_signal_input_string_is_freed;
   "Clock signal outputs ticks", `Quick, test_clock_signal_outputs_ticks;
 ]
