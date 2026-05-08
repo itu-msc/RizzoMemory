@@ -148,6 +148,21 @@ let test_type_annotation_with_applied_tuple_type () =
     Alcotest.(check bool) "annotation parses as expected" true (eq_typ annotated_type expected_type)
   | _ -> Alcotest.fail "expected a single annotated top-level let"
 
+let test_local_let_accepts_wildcard_name () =
+  let input =
+    "let entry = let _ = console_out_signal s in start_event_loop ()\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [
+      toplet "entry"
+        (let_ "_"
+           (app (var "console_out_signal") [var "s"])
+           (app (var "start_event_loop") [const CUnit]));
+    ]
+  in
+  Alcotest.check program_testable "local let accepts wildcard name" expected parsed
+
 let test_missing_if_branch_expressions_recover () =
   let input =
     "let missing_then = if true then else 1\n"
@@ -205,6 +220,7 @@ let parser_tests =
     "constructor application with parenthesized let", `Quick, test_constructor_application_with_parenthesized_let;
     "list literals and patterns", `Quick, test_list_literals_and_patterns_parse;
     "type annotation with applied tuple type", `Quick, test_type_annotation_with_applied_tuple_type;
+    "local let accepts wildcard name", `Quick, test_local_let_accepts_wildcard_name;
     "missing if branch expressions recover", `Quick, test_missing_if_branch_expressions_recover;
     "missing match parts recover", `Quick, test_missing_match_parts_recover;
   ]

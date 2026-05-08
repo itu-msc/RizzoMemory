@@ -37,7 +37,7 @@ let cons_expr start_pos end_pos head tail =
   ECtor (("Cons", mkloc start_pos end_pos), [head; tail], mkloc start_pos end_pos)
 
 let syntax_error_expr msg start_pos end_pos =
-  EError (msg, mkloc start_pos end_pos)
+  EError (msg, mkloc start_pos end_pos) 
 
 let rec list_expr_of_list start_pos end_pos = function
   | [] -> nil_expr start_pos end_pos
@@ -106,10 +106,10 @@ top_exprs:
 
 top_expr:
   | effect_dec=option(EFFECTFUL) 
-    LET name=ID te_opt=option(type_annotation) EQ body=expr
+    LET name=let_name te_opt=option(type_annotation) EQ body=expr
     { 
-      if Option.is_some effect_dec then Effectful.mark_effectful name;
-      let top_name = (name, mkloc $startpos(name) $endpos(name)) in
+      if Option.is_some effect_dec then Effectful.mark_effectful (fst name);
+      let top_name = name in
       match te_opt with
       | None -> TopLet (top_name, body, mkloc $symbolstartpos $endpos(body)) 
       | Some (te, anno_loc) ->
@@ -144,18 +144,22 @@ type_ctor:
     { let ctor_name = (ctor_name, mkloc $startpos(ctor_name) $endpos(ctor_name)) in
       (ctor_name, ctor_args, mkloc $startpos $endpos) }
 
+let_name:
+  | name=ID { (name, mkloc $startpos(name) $endpos(name)) }
+  | UNDERSCORE { ("_", mkloc $startpos $endpos) }
+
 expr:
-  | LET x=ID te_opt=option(type_annotation) eq=EQ in_kw=IN e2=expr
+  | LET x=let_name te_opt=option(type_annotation) eq=EQ in_kw=IN e2=expr
     {
       let _ = eq, in_kw in
-      let name = (x, mkloc $startpos(x) $endpos(x)) in
+      let name = x in
       let missing_rhs = EError ("Syntax error: expected expression after '='.", mkloc $endpos(eq) $startpos(in_kw)) in
       match te_opt with
       | None    -> ELet (name, missing_rhs, e2, mkloc $startpos $endpos)
       | Some (te, anno_loc) -> ELet (name, EAnno(missing_rhs, te, anno_loc), e2, mkloc $startpos $endpos)
     }
-  | LET x=ID te_opt=option(type_annotation) EQ e1=expr IN e2=expr
-    { let name = (x, mkloc $startpos(x) $endpos(x)) in
+  | LET x=let_name te_opt=option(type_annotation) EQ e1=expr IN e2=expr
+    { let name = x in
       match te_opt with
       | None    -> ELet (name, e1, e2, mkloc $startpos $endpos) 
       | Some (te, anno_loc) -> ELet (name, EAnno(e1, te, anno_loc), e2, mkloc $startpos $endpos) 
