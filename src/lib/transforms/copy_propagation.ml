@@ -46,12 +46,36 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
     | Geq, Some (CInt i), Some (CInt j) -> Some (EConst (CBool (i >= j), ann))
     | _ -> None
   in
+  let folded_builtin_app name args ann =
+    match name, List.map const_of_expr args with
+    | "add", [Some (CInt i); Some (CInt j)] -> Some (EConst (CInt (i + j), ann))
+    | "sub", [Some (CInt i); Some (CInt j)] -> Some (EConst (CInt (i - j), ann))
+    | "mul", [Some (CInt i); Some (CInt j)] -> Some (EConst (CInt (i * j), ann))
+    | "div", [Some (CInt _); Some (CInt 0)] -> None
+    | "div", [Some (CInt i); Some (CInt j)] -> Some (EConst (CInt (i / j), ann))
+    | "mod", [Some (CInt _); Some (CInt 0)] -> None
+    | "mod", [Some (CInt i); Some (CInt j)] -> Some (EConst (CInt (i mod j), ann))
+    | "eq", [Some c1; Some c2] -> Some (EConst (CBool (c1 = c2), ann))
+    | "lt", [Some (CInt i); Some (CInt j)] -> Some (EConst (CBool (i < j), ann))
+    | "leq", [Some (CInt i); Some (CInt j)] -> Some (EConst (CBool (i <= j), ann))
+    | "gt", [Some (CInt i); Some (CInt j)] -> Some (EConst (CBool (i > j), ann))
+    | "geq", [Some (CInt i); Some (CInt j)] -> Some (EConst (CBool (i >= j), ann))
+    | "string_concat", [Some (CString s1); Some (CString s2)] -> Some (EConst (CString (s1 ^ s2), ann))
+    | "string_eq", [Some (CString s1); Some (CString s2)] -> Some (EConst (CBool (s1 = s2), ann))
+    | _ -> None
+  in
   let rec aux (env: (string * _ expr) list) (e: _ expr) : _ expr =
     match e with
     | EConst _ -> e
     | EVar (x, _) -> Option.value (List.assoc_opt x env) ~default:e
     | ECtor (name, args, ann) -> ECtor (name, List.map (aux env) args, ann)
-    | EApp (f, args, ann) -> EApp (aux env f, List.map (aux env) args, ann)
+    | EApp (f, args, ann) ->
+        let f' = aux env f in
+        let args' = List.map (aux env) args in
+        (match f' with
+        | EVar (name, _) ->
+            Option.value (folded_builtin_app name args' ann) ~default:(EApp (f', args', ann))
+        | _ -> EApp (f', args', ann))
     | EBinary (op, e1, e2, ann) ->
         let e1' = aux env e1 in
         let e2' = aux env e2 in

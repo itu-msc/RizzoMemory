@@ -129,6 +129,23 @@ let test_copy_prop_folds_constant_string_add () =
 
   Alcotest.(check expr_testable) "folds chained string add" (str "hello world!") e'
 
+let test_copy_prop_folds_lowered_add_builtin () =
+  (* add(add(1, 2), 3), which is the shape produced by typed lowering for Int '+'. *)
+  let e = app (var "add") [app (var "add") [int 1; int 2]; int 3] in
+  let e' = eliminate_copy_propagation e in
+
+  Alcotest.(check expr_testable) "folds lowered add builtin" (int 6) e'
+
+let test_copy_prop_folds_lowered_string_concat_builtin () =
+  (* string_concat(string_concat("hello", " world"), "!"), the lowered String '+'. *)
+  let e =
+    app (var "string_concat")
+      [app (var "string_concat") [str "hello"; str " world"]; str "!"]
+  in
+  let e' = eliminate_copy_propagation e in
+
+  Alcotest.(check expr_testable) "folds lowered string concat builtin" (str "hello world!") e'
+
 let test_copy_prop_does_not_fold_division_by_zero () =
   let e = binary Div (int 1) (int 0) in
   let e' = eliminate_copy_propagation e in
@@ -148,5 +165,7 @@ let tests_copy_propagation = [
   "folds constant binary equality", `Quick, test_copy_prop_folds_constant_binary_equality;
   "folds constant int arithmetic", `Quick, test_copy_prop_folds_constant_int_arithmetic;
   "folds constant string add", `Quick, test_copy_prop_folds_constant_string_add;
+  "folds lowered add builtin", `Quick, test_copy_prop_folds_lowered_add_builtin;
+  "folds lowered string concat builtin", `Quick, test_copy_prop_folds_lowered_string_concat_builtin;
   "does not fold division by zero", `Quick, test_copy_prop_does_not_fold_division_by_zero;
 ]
