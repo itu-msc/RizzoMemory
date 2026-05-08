@@ -528,6 +528,13 @@ let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
 let type_info_block_of_ann : type s. s Ast.ann -> string =
   fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
 
+let definition_type_info_block_of_typ_opt (typ : Ast.typ option) : string =
+  match typ with
+  | None -> ""
+  | Some t ->
+      let type_text = Format.asprintf "%a" Ast.pp_typ t |> dedent_text in
+      Format.asprintf "\n\nDefinition type:\n```rizz\n%s\n```" type_text
+
 let top_level_type_definition_text : type s. s Ast.top_expr -> string =
   fun top ->
     let top_text = Format.asprintf "%a" Ast.pp_top_expr top |> dedent_text in
@@ -536,6 +543,12 @@ let top_level_type_definition_text : type s. s Ast.top_expr -> string =
 let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
   fun ~label (name, ann) ->
     label ^ " " ^ name ^ type_info_block_of_ann ann
+
+let hover_text_for_named_symbol_with_definition_type : type s.
+    label:string -> definition_type:Ast.typ option -> s Ast.name -> string =
+  fun ~label ~definition_type (name, ann) ->
+    hover_text_for_named_symbol ~label (name, ann)
+    ^ definition_type_info_block_of_typ_opt definition_type
 
 let hover_text_for_pattern_ann : type s. label:string -> s Ast.ann -> string =
   fun ~label ann -> label ^ type_info_block_of_ann ann
@@ -1370,6 +1383,16 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
+      let top_level_function_types =
+        program
+        |> List.fold_left
+             (fun env (top : Ast.typed Ast.top_expr) ->
+               match top with
+               | Ast.TopLet (top_name, rhs, _) when symbol_kind_of_expr rhs = Function ->
+                   StringMap.add (name_text top_name) (typ_of_ann_opt (snd top_name)) env
+               | Ast.TopLet _ | Ast.TopTypeDef _ -> env)
+             StringMap.empty
+      in
       let top_level_hover =
         List.find_map
           (fun (top : Ast.typed Ast.top_expr) ->
@@ -1402,14 +1425,31 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
       match top_level_hover with
       | Some _ as hover -> hover
       | None ->
-          let rec find_symbol_hover_in_expr : type s. s Ast.expr -> hover_info option =
-            fun expr ->
+          let rec find_symbol_hover_in_expr : type s. StringSet.t -> s Ast.expr -> hover_info option =
+            fun local_names expr ->
               match expr with
               | Ast.EConst _ -> None
               | Ast.EVar var_name ->
                   let var_range = range_of_name var_name in
                   if range_contains_position var_range position then
-                    Some { range = var_range; contents = hover_text_for_named_symbol ~label:"variable" var_name }
+                    let var_text = name_text var_name in
+                    let definition_type =
+                      if StringSet.mem var_text local_names then
+                        None
+                      else
+                        match StringMap.find_opt var_text top_level_function_types with
+                        | Some definition_type -> definition_type
+                        | None -> None
+                    in
+                    Some
+                      {
+                        range = var_range;
+                        contents =
+                          hover_text_for_named_symbol_with_definition_type
+                            ~label:"variable"
+                            ~definition_type
+                            var_name;
+                      }
                   else
                     None
               | Ast.ECtor (ctor_name, args, _) ->
@@ -1417,15 +1457,18 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                   if range_contains_position ctor_range position then
                     Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
                   else
-                    List.find_map find_symbol_hover_in_expr args
+                    List.find_map (find_symbol_hover_in_expr local_names) args
               | Ast.ELet (bound_name, e1, e2, _) ->
                   let binding_range = range_of_name bound_name in
                   if range_contains_position binding_range position then
                     Some { range = binding_range; contents = hover_text_for_named_symbol ~label:"let-binding" bound_name }
                   else
-                    (match find_symbol_hover_in_expr e1 with
+                    (match find_symbol_hover_in_expr local_names e1 with
                      | Some _ as hover -> hover
-                     | None -> find_symbol_hover_in_expr e2)
+                     | None ->
+                         find_symbol_hover_in_expr
+                           (StringSet.add (name_text bound_name) local_names)
+                           e2)
               | Ast.EFun (params, body, _) ->
                   let hover_for_param = function
                     | Ast.PVar (name, ann) ->
@@ -1438,22 +1481,31 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                   in
                   (match List.find_map hover_for_param params with
                    | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr body)
+                   | None ->
+                       let local_names' =
+                         params
+                         |> List.fold_left
+                              (fun acc param ->
+                                pattern_bound_names param
+                                |> List.fold_left (fun acc (name, _) -> StringSet.add name acc) acc)
+                              local_names
+                       in
+                       find_symbol_hover_in_expr local_names' body)
               | Ast.EApp (fn, args, _) ->
-                  (match find_symbol_hover_in_expr fn with
+                  (match find_symbol_hover_in_expr local_names fn with
                    | Some _ as hover -> hover
-                   | None -> List.find_map find_symbol_hover_in_expr args)
-              | Ast.EUnary (_, e, _) -> find_symbol_hover_in_expr e
+                   | None -> List.find_map (find_symbol_hover_in_expr local_names) args)
+              | Ast.EUnary (_, e, _) -> find_symbol_hover_in_expr local_names e
               | Ast.EBinary (_, e1, e2, _) ->
-                  (match find_symbol_hover_in_expr e1 with
+                  (match find_symbol_hover_in_expr local_names e1 with
                    | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr e2)
+                   | None -> find_symbol_hover_in_expr local_names e2)
               | Ast.ETuple (e1, e2, _) ->
-                  (match find_symbol_hover_in_expr e1 with
+                  (match find_symbol_hover_in_expr local_names e1 with
                    | Some _ as hover -> hover
-                   | None -> find_symbol_hover_in_expr e2)
+                   | None -> find_symbol_hover_in_expr local_names e2)
               | Ast.ECase (scrutinee, branches, _) ->
-                  (match find_symbol_hover_in_expr scrutinee with
+                  (match find_symbol_hover_in_expr local_names scrutinee with
                    | Some _ as hover -> hover
                    | None ->
                        List.find_map
@@ -1461,16 +1513,23 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                            let pattern_hover = pattern_hover_at_position ~position pattern in
                            match pattern_hover with
                            | Some _ as hover -> hover
-                           | None -> find_symbol_hover_in_expr branch_expr)
+                           | None ->
+                               let local_names' =
+                                 pattern_bound_names pattern
+                                 |> List.fold_left
+                                      (fun acc (name, _) -> StringSet.add name acc)
+                                      local_names
+                               in
+                               find_symbol_hover_in_expr local_names' branch_expr)
                          branches)
               | Ast.EIfe (c, t, e, _) ->
-                  (match find_symbol_hover_in_expr c with
+                  (match find_symbol_hover_in_expr local_names c with
                    | Some _ as hover -> hover
                    | None ->
-                       match find_symbol_hover_in_expr t with
+                       match find_symbol_hover_in_expr local_names t with
                        | Some _ as hover -> hover
-                       | None -> find_symbol_hover_in_expr e)
-              | Ast.EAnno (e, _, _) -> find_symbol_hover_in_expr e
+                       | None -> find_symbol_hover_in_expr local_names e)
+              | Ast.EAnno (e, _, _) -> find_symbol_hover_in_expr local_names e
           in
           let symbol_hover =
             List.find_map
@@ -1478,7 +1537,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                 match top with
                 | Ast.TopLet (_, rhs, top_ann) ->
                     if ann_in_file ~filename:active_filename top_ann then
-                      find_symbol_hover_in_expr rhs
+                      find_symbol_hover_in_expr StringSet.empty rhs
                     else
                       None
                 | Ast.TopTypeDef _ -> None)

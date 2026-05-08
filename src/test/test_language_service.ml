@@ -857,6 +857,30 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
         false
         (contains_substring ~text:hover.Language_service.contents ~substring:"match expression")
 
+let test_hover_on_function_use_shows_usage_and_definition_types () =
+  let text =
+    "fun id x = x\n"
+    ^ "let y = id 1\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 8 }
+  with
+  | None -> Alcotest.fail "expected hover for function use"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover shows usage type"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+      Alcotest.(check bool)
+        "hover shows definition type"
+        true
+        (contains_substring
+           ~text:hover.Language_service.contents
+           ~substring:"Definition type:\n```rizz")
+
 let string_of_range (range : Language_service.range) : string =
   Printf.sprintf
     "%d:%d-%d:%d"
@@ -987,6 +1011,7 @@ let tests = [
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
    "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;
    "hover on wildcard pattern uses range and type", `Quick, test_hover_on_wildcard_pattern_uses_pattern_range_and_type;
+   "hover on function use shows usage and definition types", `Quick, test_hover_on_function_use_shows_usage_and_definition_types;
    "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in
