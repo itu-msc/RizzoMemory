@@ -1,0 +1,67 @@
+l: Owned, c: Borrowed, v: Borrowed
+fun advance(l, c, v) =
+  match l with
+  | #1 dec l;
+       inc v;
+       ret v
+  | #2 let ctor_field163 = proj_0 l in
+       inc ctor_field163;
+       dec l;
+       match ctor_field163 with
+       | #0 let sig_head170 = proj_0 ctor_field163 in
+            inc sig_head170;
+            dec ctor_field163;
+            match sig_head170 with
+            | #1 let ctor_field171 = proj_0 sig_head170 in
+                 inc ctor_field171;
+                 dec sig_head170;
+                 ret ctor_field171
+            | default dec sig_head170;
+                      let var303 = match_fail("Non-exhaustive pattern match") in
+                      ret var303
+       | default dec ctor_field163;
+                 let var304 = match_fail("Non-exhaustive pattern match") in
+                 ret var304
+  | #3 let ctor_field164 = proj_0 l in
+       inc ctor_field164;
+       dec l;
+       ret ctor_field164
+  | #4 let ctor_field165 = proj_0 l in
+       inc ctor_field165;
+       let ctor_field166 = proj_1 l in
+       inc ctor_field166;
+       dec l;
+       let x = advance(ctor_field166, c, v) in
+       let var305 = advance_delay(ctor_field165) in
+       let var306 = var305 x in
+       ret var306
+  | #5 let ctor_field167 = proj_0 l in
+       inc ctor_field167;
+       let ctor_field168 = proj_1 l in
+       inc ctor_field168;
+       let var492 = reset l in
+       let var297 = ticked(ctor_field167, c, v) in
+       match var297 with
+       | #0 dec var492;
+            dec var297;
+            dec ctor_field168;
+            let var298 = advance(ctor_field167, c, v) in
+            let var309 = Ctor0(var298) in
+            ret var309
+       | #1 dec var297;
+            let var299 = ticked(ctor_field168, c, v) in
+            match var299 with
+            | #0 dec var492;
+                 dec var299;
+                 dec ctor_field167;
+                 let var300 = advance(ctor_field168, c, v) in
+                 let var308 = Ctor1(var300) in
+                 ret var308
+            | #1 dec var299;
+                 let var301 = advance(ctor_field167, c, v) in
+                 let var302 = advance(ctor_field168, c, v) in
+                 let var307 = reuse var492 in Ctor2(var301, var302) in
+                 ret var307
+  | default dec l;
+            let var310 = match_fail("Non-exhaustive pattern match") in
+            ret var310

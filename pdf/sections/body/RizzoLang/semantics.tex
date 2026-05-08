@@ -81,13 +81,18 @@ The \textbf{signal} constructor is evaluated like any other $\textbf{ctor}_i$ wi
 When a signal is later erased, its fields are decremented and the signal is removed from the signal heap.
 
 %GOAL: the delay constructor should have call-by-name semantics.
-There is one additional adjustment required for \texttt{Delayed} values. In particular, the constructor $\mathsf{delay} \; e$ should behave as call-by-name, but this is not enforced by operational semantics since such values are treated as $\textbf{ctor}_i$ values. Instead the AST is rewritten so that expressions of the form $\mathsf{delay} \; e$ become $\mathsf{delay} \; (\lambda x.e$).\ \todo{This instead costs runtime memory, since we must effectively allocate a closure AND a constructor value for $\mathsf{delay}$}.
+There is one additional adjustment required for \texttt{Delayed} values. In particular, the constructor $\mathsf{delay} \; e$ should behave as call-by-name, but this is not enforced by operational semantics since such values are treated as $\textbf{ctor}_i$ values. Instead the AST is rewritten so that expressions of the form $\mathsf{delay} \; e$ become $\mathsf{delay} \; (\lambda x.e$).
+% \todo{This instead costs runtime memory, since we must effectively allocate a closure AND a constructor value for $\mathsf{delay}$}.
 
 %GOAL: Where do we reference count in reactive semantics? Signals are created, data is overwritten. Immediate erasure of intermediate signals. This must be managed.
-This leaves the interaction between reference counting and the reactive semantics.
-Although we treat the advance semantics as a black-box, its interface is expected to borrow any arguments passed and return incremented values, so the update semantics can safely decrement the result of calling advance, whether it creates a fresh signal value or not.
-The remaining reference-counting steps in update follow naturally; before overwriting the data of a signal, we decrement the head and tail of the original signal and increment the head and tail of the intermediate signal.
-Once the entire heap has been updated, we decrement the value that triggered the update process.
+This leaves us with the interaction between reference counting and the reactive semantics.
+Although we treat the advance semantics as a black-box, its interface must consume an RC token of any the later value it receives. When the update semantics call advance on a signal's tail, advance is therefore responsible for decrementing that tail once it is no longer needed.
+This ensures later values, and the data they reference, are released as early as possible. This is crucial for the success of \textbf{reset}/\textbf{reuse}. If advance only borrowed the later value, the update semantics would have to perform the decrement after advance returned, which would block reuse of memory captured inside the later.
+We base these requirements on the result of running the program in Appendix~\ref{appendix:advance_func} through the reference counting algorithm of Section~\ref{section:refcount} to achieve the pseudo-code from Appendix~\ref{appendix:advance_ir}.
+
+With this interface in place, reference counting in the update semantics proceeds as: if a signal does not produce a new value, then there is nothing to do. If it does produce a value, the original head is decremented before advancing the tail, because it is stale and it may hold onto references, which could block reuse. The head and tail of the intermediate signal are incremented before being copied back into the original signal.
+
+Once the entire heap has been updated, the value that triggered the update process is decremented to release it.
 
 \todo{is this a better spot to show the heap? We could show example of general heap to show how the signal heap is just a subset}
 

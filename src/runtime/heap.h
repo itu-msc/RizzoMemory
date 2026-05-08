@@ -376,30 +376,28 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
     {
         rz_object_t *v1 = rz_unbox_ptr(rz_object_get_field(later, 0));
         rz_object_t *v2 = rz_unbox_ptr(rz_object_get_field(later, 1));
+        rz_refcount_inc(v1);
+        rz_refcount_inc(v2);
+        rz_object_t *ll = rz_reset_object(later);
         bool ticked1 = rz_ticked(v1, chan, v);
         bool ticked2 = rz_ticked(v2, chan, v);
         if (ticked1 && ticked2)
         {
-            rz_refcount_inc(v1);
-            rz_refcount_inc(v2);
-            rz_refcount_dec(later);
             rz_box_t u1 = rz_advance(v1, chan, v);
             rz_box_t u2 = rz_advance(v2, chan, v);
-            rz_object_t *both = rz_ctor_var(RZ_TAG_SYNC_BOTH, 2, u1, u2);
+            rz_object_t *both = rz_reuse_object(ll, RZ_TAG_SYNC_BOTH, 2, (rz_box_t[]){u1, u2});
             return rz_make_ptr(both);
         }
         else if (ticked1)
         {
-            rz_refcount_inc(v1);
-            rz_refcount_dec(later);
+            rz_refcount_dec(v2);
             rz_box_t u1 = rz_advance(v1, chan, v);
             rz_object_t *left = rz_ctor_var(RZ_TAG_SYNC_LEFT, 1, u1);
             return rz_make_ptr(left);
         }
         else /* if (ticked2) */
         {
-            rz_refcount_inc(v2);
-            rz_refcount_dec(later);
+            rz_refcount_dec(v1);
             rz_box_t u2 = rz_advance(v2, chan, v);
             rz_object_t *right = rz_ctor_var(RZ_TAG_SYNC_RIGHT, 1, u2);
             return rz_make_ptr(right);
