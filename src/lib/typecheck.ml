@@ -391,13 +391,60 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | EBinary (op, e1, e2, ann) -> infer_binary op e1 e2 ann
   | EUnary (op, e, ann) -> infer_unary op e ann
   | EApp (f, args, ann) -> 
-    let* inferred_args = Type_env.collect (List.map infer args) in
-    let* arg_types = Type_env.collect (List.map get_typ inferred_args) in
-    let* ret_type = Type_env.fresh_type_var () in
-    let expected_fun_type = TFun (Cons1(List.hd arg_types, List.tl arg_types), ret_type) in
-    let* tf = check f expected_fun_type in
-    let* ret_type = Type_env.apply_subst ret_type in
-    return (EApp (tf, inferred_args, Ann_typed (get_location ann, ret_type)))
+    let* tf = infer f in
+    let* f_type = get_typ tf in
+    let* f_type = Type_env.apply_subst f_type in
+    let infer_args_against_fun_type () =
+      let* inferred_args = Type_env.collect (List.map infer args) in
+      let* arg_types = Type_env.collect (List.map get_typ inferred_args) in
+      let* ret_type = Type_env.fresh_type_var () in
+      let expected_fun_type = TFun (Cons1(List.hd arg_types, List.tl arg_types), ret_type) in
+      let* _ = Type_env.expected_equal ann expected_fun_type f_type in
+      let* ret_type = Type_env.apply_subst ret_type in
+      return (EApp (tf, inferred_args, Ann_typed (get_location ann, ret_type)))
+    in
+    (match f_type with
+    | TFun (Cons1 (param_hd, param_rest), fn_ret_type) ->
+      let param_types = param_hd :: param_rest in
+      let arg_count = List.length args in
+      let param_count = List.length param_types in
+      if arg_count <= param_count then
+        let expected_arg_types = List.take arg_count param_types in
+        let is_function_literal : type s. s expr -> bool = function
+          | EFun _ | EAnno (EFun _, _, _) -> true
+          | _ -> false
+        in
+        let indexed_args = List.mapi (fun idx arg -> (idx, arg)) args in
+        let indexed_expected = List.mapi (fun idx expected -> (idx, expected)) expected_arg_types in
+        let indexed_arg_expected =
+          List.map2 (fun (idx, arg) (_, expected) -> (idx, arg, expected)) indexed_args indexed_expected
+        in
+        let non_function_args, function_args =
+          List.partition (fun (_, arg, _) -> not (is_function_literal arg)) indexed_arg_expected
+        in
+        let check_indexed (idx, arg, expected) =
+          let* checked_arg = check arg expected in
+          return (idx, checked_arg)
+        in
+        let* checked_non_function_args = Type_env.collect (List.map check_indexed non_function_args) in
+        let* checked_function_args = Type_env.collect (List.map check_indexed function_args) in
+        let checked_args =
+          checked_non_function_args @ checked_function_args
+          |> List.sort (fun (idx1, _) (idx2, _) -> Int.compare idx1 idx2)
+          |> List.map snd
+        in
+        let result_type =
+          if arg_count = param_count then
+            fn_ret_type
+          else
+            let remaining_params = List.drop arg_count param_types in
+            TFun (List1.of_list remaining_params, fn_ret_type)
+        in
+        let* result_type = Type_env.apply_subst result_type in
+        return (EApp (tf, checked_args, Ann_typed (get_location ann, result_type)))
+      else
+        infer_args_against_fun_type ()
+    | _ -> infer_args_against_fun_type ())
   | ECase (scrutinee, branches, ann) ->
     let* tscrutinee = infer scrutinee in
     let* t_scrutinee = get_typ tscrutinee in

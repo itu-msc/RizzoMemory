@@ -130,6 +130,19 @@ let test_lower_typed_program_rewrites_list_cons_to_constructor () =
   let expected = [toplet "nums" (ctor "Cons" [int 1; ctor "Nil" []])] in
   Alcotest.check program_testable "list cons lowers to constructors" expected lowered
 
+let test_list_fold_lambda_uses_contextual_list_type () =
+  let _ =
+    parse_and_typecheck
+      ("fun list_fold f acc lst : ('a -> 'b -> 'a) -> 'a -> List 'b -> 'a =\n"
+      ^ "  match lst with\n"
+      ^ "  | [] -> acc\n"
+      ^ "  | x :: xs -> list_fold f (f acc x) xs\n"
+      ^ "\n"
+      ^ "fun list_reverse lst : List 'a -> List 'a =\n"
+      ^ "  list_fold (fun acc x -> x :: acc) [] lst\n")
+  in
+  ()
+
 let builtin_tests = [
   "console is a string channel", `Quick, test_console_is_string_channel;
   "parse_int returns option int", `Quick, test_parse_int_has_expected_type;
@@ -138,4 +151,5 @@ let builtin_tests = [
   "list constructors and builtins have expected types", `Quick, test_list_constructors_and_projection_builtins_have_expected_types;
   "list support builtins have expected types", `Quick, test_list_supporting_builtins_have_expected_types;
   "list cons lowers to constructors", `Quick, test_lower_typed_program_rewrites_list_cons_to_constructor;
+  "list_fold lambda uses contextual list type", `Quick, test_list_fold_lambda_uses_contextual_list_type;
 ]
