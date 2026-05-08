@@ -380,6 +380,37 @@ static inline rz_box_t rz_apply1(rz_object_t* fun_obj, rz_box_t arg) {
     }
 }
 
+static inline rz_box_t rz_apply1_owned(rz_object_t* fun_obj, rz_box_t arg) {
+    if (!fun_obj || fun_obj->header.refcount != 1) {
+        return rz_apply1(fun_obj, arg);
+    }
+
+    rz_function_t* fun = (rz_function_t*)fun_obj;
+    size_t fun_arity = rz_function_get_arity(fun);
+    rz_fun* function_ptr = fun->fun;
+    size_t n = fun->_base.header.num_fields;
+    rz_function_args_t* fun_free_args = ARGS_OF(fun);
+
+    if(fun_arity == n + 1) {
+        rz_box_t* args = (rz_box_t*) alloca((n + 1) * sizeof(rz_box_t));
+        for(int i = 0; i < n; i++) {
+            args[i] = fun_free_args->args[i];
+        }
+        args[n] = arg;
+        rz_free(fun);
+        return function_ptr(n + 1, args);
+    } else {
+        rz_function_t* copy = rz_malloc_func(function_ptr, fun_arity, n + 1);
+        rz_function_args_t* copy_free_args = ARGS_OF(copy);
+        for(int i = 0; i < n; i++) {
+            copy_free_args->args[i] = fun_free_args->args[i];
+        }
+        copy_free_args->args[n] = arg;
+        rz_free(fun);
+        return rz_make_ptr_fun(copy);
+    }
+}
+
 static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b);
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b) {
     if (rz_box_is_string(a) || rz_box_is_string(b)) {

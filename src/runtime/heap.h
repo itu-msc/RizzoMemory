@@ -251,6 +251,7 @@ static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b)
 static bool rz_ticked(rz_object_t *later, rz_channel_t chan, rz_box_t v);
 static void rz_heap_update(rz_channel_t chan, rz_box_t v);
 static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v);
+static rz_box_t rz_advance_owned(rz_object_t *later, rz_channel_t chan, rz_box_t v);
 
 static void rz_heap_update(rz_channel_t chan, rz_box_t v)
 {
@@ -266,13 +267,12 @@ static void rz_heap_update(rz_channel_t chan, rz_box_t v)
         }
         else
         { /* chan produced a tick on tl of cursor! */
-            rz_box_t l_boxed = rz_advance(tl, chan, v);
+            rz_refcount_dec_box(rz_heap_cursor->head);
+            rz_box_t l_boxed = rz_advance_owned(tl, chan, v);
             rz_signal_t *l = (rz_signal_t *)rz_unbox_ptr(l_boxed);
             rz_heap_cursor->updated.as.i64 = true;
             rz_refcount_inc_box(l->head);
             rz_refcount_inc_box(l->tail);
-            rz_refcount_dec_box(rz_heap_cursor->head);
-            rz_refcount_dec_box(rz_heap_cursor->tail);
             rz_heap_cursor->head = l->head;
             rz_heap_cursor->tail = l->tail;
 
@@ -402,6 +402,92 @@ static rz_box_t rz_advance(rz_object_t *later, rz_channel_t chan, rz_box_t v)
     case RZ_TAG_LATER_NEVER: /* never happens*/
     default:
         printf("rz_advance(%s) - unknown later tag '%d'", __FILE__, rz_object_tag(later));
+        exit(1);
+    }
+}
+
+static rz_box_t rz_advance_owned(rz_object_t *later, rz_channel_t chan, rz_box_t v)
+{
+    if (!later || later->header.refcount != 1)
+    {
+        rz_box_t result = rz_advance(later, chan, v);
+        rz_refcount_dec(later);
+        return result;
+    }
+
+    switch (rz_object_tag(later))
+    {
+    case RZ_TAG_LATER_WAIT:
+    {
+        rz_refcount_inc_box(v);
+        rz_free(later);
+        return v;
+    }
+    case RZ_TAG_LATER_APP:
+    {
+        rz_box_t delayed_fun = rz_object_get_field(later, 0);
+        rz_box_t arg_later = rz_object_get_field(later, 1);
+        rz_box_t arg = rz_advance_owned(rz_unbox_ptr(arg_later), chan, v);
+        rz_box_t fun = rz_advance_delayed_owned(delayed_fun);
+        rz_free(later);
+        return rz_apply1_owned(rz_unbox_ptr(fun), arg);
+    }
+    case RZ_TAG_LATER_TAIL:
+    {
+        rz_box_t l = rz_object_get_field(later, 0);
+        rz_free(later);
+        return l;
+    }
+    case RZ_TAG_LATER_WATCH:
+    {
+        rz_box_t l_boxed = rz_object_get_field(later, 0);
+        rz_signal_t *l = (rz_signal_t *)rz_unbox_ptr(l_boxed);
+        rz_object_t *some = rz_unbox_ptr(l->head);
+        if (RZ_TAG_SOME != rz_object_tag(some))
+        {
+            fprintf(stderr, "RUNTIME ERROR: tried to advance signal where head wasn't a SOME");
+            exit(1);
+        }
+        rz_box_t v = rz_object_get_field(some, 0);
+        rz_refcount_inc_box(v);
+        rz_refcount_dec_box(l_boxed);
+        rz_free(later);
+        return v;
+    }
+    case RZ_TAG_LATER_SYNC:
+    {
+        rz_box_t later1 = rz_object_get_field(later, 0);
+        rz_box_t later2 = rz_object_get_field(later, 1);
+        rz_object_t *v1 = rz_unbox_ptr(later1);
+        rz_object_t *v2 = rz_unbox_ptr(later2);
+        bool ticked1 = rz_ticked(v1, chan, v);
+        bool ticked2 = rz_ticked(v2, chan, v);
+        rz_free(later);
+        if (ticked1 && ticked2)
+        {
+            rz_box_t u1 = rz_advance_owned(v1, chan, v);
+            rz_box_t u2 = rz_advance_owned(v2, chan, v);
+            rz_object_t *both = rz_ctor_var(RZ_TAG_SYNC_BOTH, 2, u1, u2);
+            return rz_make_ptr(both);
+        }
+        else if (ticked1)
+        {
+            rz_box_t u1 = rz_advance_owned(v1, chan, v);
+            rz_refcount_dec_box(later2);
+            rz_object_t *left = rz_ctor_var(RZ_TAG_SYNC_LEFT, 1, u1);
+            return rz_make_ptr(left);
+        }
+        else
+        {
+            rz_refcount_dec_box(later1);
+            rz_box_t u2 = rz_advance_owned(v2, chan, v);
+            rz_object_t *right = rz_ctor_var(RZ_TAG_SYNC_RIGHT, 1, u2);
+            return rz_make_ptr(right);
+        }
+    }
+    case RZ_TAG_LATER_NEVER:
+    default:
+        printf("rz_advance_owned(%s) - unknown later tag '%d'", __FILE__, rz_object_tag(later));
         exit(1);
     }
 }

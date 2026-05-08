@@ -51,6 +51,34 @@ static inline rz_box_t rz_advance_delayed(rz_box_t delayed) {
     
 }
 
+static inline rz_box_t rz_advance_delayed_owned(rz_box_t delayed) {
+    rz_object_t* ptr_delayed = rz_unbox_ptr(delayed);
+    if (!ptr_delayed || ptr_delayed->header.refcount != 1) {
+        rz_box_t result = rz_advance_delayed(delayed);
+        rz_refcount_dec(ptr_delayed);
+        return result;
+    }
+
+    switch (rz_object_tag(ptr_delayed)) {
+        case RZ_TAG_DELAY: {
+            rz_object_t* thunk = rz_unbox_ptr(rz_object_get_field(ptr_delayed, 0));
+            rz_free(ptr_delayed);
+            return rz_apply1_owned(thunk, RZ_UNIT);
+        }
+        case RZ_TAG_OSTAR: {
+            rz_box_t operand_left = rz_advance_delayed_owned(rz_object_get_field(ptr_delayed, 0));
+            rz_box_t operand_right = rz_advance_delayed_owned(rz_object_get_field(ptr_delayed, 1));
+            rz_object_t* f = rz_unbox_ptr(operand_left);
+            rz_free(ptr_delayed);
+            return rz_apply1_owned(f, operand_right);
+        }
+        default: {
+            printf("Unknown delayed tag in 'rz_advance_delayed_owned': %d", rz_object_tag(ptr_delayed));
+            exit(1);
+        }
+    }
+}
+
 static inline void rz_debug_print_delayed(rz_box_t delay);
 
 static inline void rz_debug_print_later(rz_box_t later) {
