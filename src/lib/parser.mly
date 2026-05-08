@@ -36,6 +36,9 @@ let nil_expr start_pos end_pos =
 let cons_expr start_pos end_pos head tail =
   ECtor (("Cons", mkloc start_pos end_pos), [head; tail], mkloc start_pos end_pos)
 
+let syntax_error_expr msg start_pos end_pos =
+  EError (msg, mkloc start_pos end_pos)
+
 let rec list_expr_of_list start_pos end_pos = function
   | [] -> nil_expr start_pos end_pos
   | head :: tail -> cons_expr start_pos end_pos head (list_expr_of_list start_pos end_pos tail)
@@ -157,8 +160,33 @@ expr:
     }
   | IF e1=expr THEN e2=expr ELSE e3=expr
     { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
+  | IF e1=expr then_kw=THEN else_kw=ELSE e3=expr
+    {
+      let _ = then_kw, else_kw in
+      let missing_then = syntax_error_expr "Syntax error: expected expression after 'then'." $endpos(then_kw) $startpos(else_kw) in
+      EIfe (e1, missing_then, e3, mkloc $startpos $endpos)
+    }
+  | IF e1=expr then_kw=THEN else_kw=ELSE
+    {
+      let _ = then_kw, else_kw in
+      let missing_then = syntax_error_expr "Syntax error: expected expression after 'then'." $endpos(then_kw) $startpos(else_kw) in
+      let missing_else = syntax_error_expr "Syntax error: expected expression after 'else'." $endpos(else_kw) $endpos(else_kw) in
+      EIfe (e1, missing_then, missing_else, mkloc $startpos $endpos)
+    }
+  | IF e1=expr THEN e2=expr else_kw=ELSE
+    {
+      let _ = else_kw in
+      let missing_else = syntax_error_expr "Syntax error: expected expression after 'else'." $endpos(else_kw) $endpos(else_kw) in
+      EIfe (e1, e2, missing_else, mkloc $startpos $endpos)
+    }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
     { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
+  | match_kw=MATCH with_kw=WITH leading=opt_leading_bar first=match_case rest=match_case_tail
+    {
+      let _ = match_kw, with_kw, leading in
+      let missing_scrutinee = syntax_error_expr "Syntax error: expected expression after 'match'." $endpos(match_kw) $startpos(with_kw) in
+      ECase (missing_scrutinee, first :: rest, mkloc $startpos $endpos)
+    }
   | FUN params=pattern_atom+ ARROW body=expr
     { (* check_unique_params (List.map fst params); *) EFun (params, body, mkloc $startpos $endpos) }
   | e=pipe_expr
@@ -171,6 +199,12 @@ opt_leading_bar:
 match_case:
   | p=pattern ARROW e=expr
   { (p, e, mkloc $startpos $endpos) }
+  | p=pattern arrow=ARROW
+  {
+    let _ = arrow in
+    let missing_body = syntax_error_expr "Syntax error: expected expression after '->'." $endpos(arrow) $endpos(arrow) in
+    (p, missing_body, mkloc $startpos $endpos)
+  }
 
 match_case_tail:
   | { [] } %prec BELOW_BAR

@@ -31,6 +31,7 @@ let int (i : int) : parsed expr = EConst (CInt i, ann)
 let str (s : string) : parsed expr = EConst (CString s, ann)
 let bool (b : bool) : parsed expr = EConst (CBool b, ann)
 let const (c : const) : parsed expr = EConst (c, ann)
+let error (msg : string) : parsed expr = EError (msg, ann)
 
 let let_ (n : string) (e1 : parsed expr) (e2 : parsed expr) : parsed expr =
   ELet (name n, e1, e2, ann)
