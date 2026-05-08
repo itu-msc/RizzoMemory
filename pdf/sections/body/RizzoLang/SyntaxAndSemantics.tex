@@ -10,7 +10,7 @@ We chose an ML-inspired syntax because it is familiar to functional programmers 
 
 In this section we first present the concrete syntax of Rizzo.
 We then describe the type system with a focus on the modal types \texttt{Later} and \texttt{Delayed}. 
-After that, we describe the operational semantics of Rizzo, the constraints these semantics place on the choice of heap representation, and finally how we merge these semantics with the reference-counting semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}
+After that, we describe the operational semantics of Rizzo, the constraints the semantics put on the choice of heap representation, and finally how we merge the semantics with the reference-counting semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}
 
 \subsection{Syntax}
 
@@ -64,8 +64,8 @@ p ::= _                           (* wildcard *)
     | x                           (* variable binding *)
     | c                           (* constant pattern *)
     | (p1, p2)                    (* tuple pattern *)
-    | p1 :: p2                    (* signal/cons pattern *)
-    | c :: s                      (* string pattern *)
+    | p1 :: x                     (* signal/cons pattern *)
+    | c :: x                      (* string pattern *)
     | C (p1, ..., pn)             (* constructor pattern *)
 \end{verbatim}
 

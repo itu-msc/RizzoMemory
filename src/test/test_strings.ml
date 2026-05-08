@@ -40,21 +40,21 @@ let rec expr_contains_call target : _ expr -> bool = function
   | EIfe (c, t, e, _) -> expr_contains_call target c || expr_contains_call target t || expr_contains_call target e
   | EAnno (e, _, _) -> expr_contains_call target e
 
-  let rec expr_contains_let_binding target : _ expr -> bool = function
-    | ELet ((name, _), rhs, body, _) ->
-      String.equal name target || expr_contains_let_binding target rhs || expr_contains_let_binding target body
-    | EConst _ | EVar _ -> false
-    | ECtor (_, args, _) -> List.exists (expr_contains_let_binding target) args
-    | EFun (_, body, _) -> expr_contains_let_binding target body
-    | EApp (fn, args, _) -> expr_contains_let_binding target fn || List.exists (expr_contains_let_binding target) args
-    | EUnary (_, e, _) -> expr_contains_let_binding target e
-    | EBinary (_, e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
-    | ETuple (e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
-    | ECase (scrutinee, branches, _) ->
-      expr_contains_let_binding target scrutinee
-      || List.exists (fun (_, body, _) -> expr_contains_let_binding target body) branches
-    | EIfe (c, t, e, _) -> expr_contains_let_binding target c || expr_contains_let_binding target t || expr_contains_let_binding target e
-    | EAnno (e, _, _) -> expr_contains_let_binding target e
+let rec expr_contains_let_binding target : _ expr -> bool = function
+  | ELet ((name, _), rhs, body, _) ->
+    String.equal name target || expr_contains_let_binding target rhs || expr_contains_let_binding target body
+  | EConst _ | EVar _ -> false
+  | ECtor (_, args, _) -> List.exists (expr_contains_let_binding target) args
+  | EFun (_, body, _) -> expr_contains_let_binding target body
+  | EApp (fn, args, _) -> expr_contains_let_binding target fn || List.exists (expr_contains_let_binding target) args
+  | EUnary (_, e, _) -> expr_contains_let_binding target e
+  | EBinary (_, e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
+  | ETuple (e1, e2, _) -> expr_contains_let_binding target e1 || expr_contains_let_binding target e2
+  | ECase (scrutinee, branches, _) ->
+    expr_contains_let_binding target scrutinee
+    || List.exists (fun (_, body, _) -> expr_contains_let_binding target body) branches
+  | EIfe (c, t, e, _) -> expr_contains_let_binding target c || expr_contains_let_binding target t || expr_contains_let_binding target e
+  | EAnno (e, _, _) -> expr_contains_let_binding target e
 
 let test_string_cons_pattern_binds_strings () =
   let typed =

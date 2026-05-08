@@ -78,23 +78,38 @@ let is_string_case cases =
 	has_string_discriminator
 	&& List.for_all (fun (pattern, _, _) -> is_string_case_pattern pattern) cases
 
+type 's clause_pat = {
+	pat: 's pattern;
+	sink_binding: bool;
+}
+
+type 's binding = {
+	name: string;
+	source: string;
+	ann: 's ann;
+	sink: bool;
+}
+
 type 's clause = {
-	pats: 's pattern StringMap.t;
-	bindings: (string * string * 's ann) list;
+	pats: 's clause_pat StringMap.t;
+	bindings: 's binding list;
 	body: 's expr;
 }
+
+let clause_pat pat = { pat; sink_binding = false }
+let clause_pat_sinking pat = { pat; sink_binding = true }
 
 let normalize_clause clause =
 	let bindings = ref clause.bindings in
 	let pats =
 		StringMap.fold
-			(fun var pat acc ->
-				 match pat with
+			(fun var entry acc ->
+				 match entry.pat with
 				 | PWildcard _ -> acc
 				 | PVar (name, ann) ->
-					 bindings := (name, var, ann) :: !bindings;
+					 bindings := { name; source = var; ann; sink = entry.sink_binding } :: !bindings;
 					 acc
-				 | _ -> StringMap.add var pat acc)
+				 | _ -> StringMap.add var entry acc)
 			clause.pats
 			StringMap.empty
 	in
@@ -167,13 +182,16 @@ let add_test_subpatterns branch_var fresh_vars test_pat clause =
 	| PConst _, [] -> { clause with pats }
 	| PTuple (p1, p2, _), [left; right] ->
 		{ clause with
-			pats = pats |> StringMap.add left p1 |> StringMap.add right p2 }
+			pats = pats |> StringMap.add left (clause_pat p1) |> StringMap.add right (clause_pat p2) }
 	| PCtor (_, args, _), fresh_vars when List.length args = List.length fresh_vars ->
-		let pats = List.fold_left2 (fun acc fresh pat -> StringMap.add fresh pat acc) pats fresh_vars args in
+		let pats = List.fold_left2 (fun acc fresh pat -> StringMap.add fresh (clause_pat pat) acc) pats fresh_vars args in
 		{ clause with pats }
 	| PSigCons (head_pat, (tail_name, tail_ann), _), [head; tail] ->
 		{ clause with
-			pats = pats |> StringMap.add head head_pat |> StringMap.add tail (PVar (tail_name, tail_ann)) }
+			pats =
+				pats
+				|> StringMap.add head (clause_pat head_pat)
+				|> StringMap.add tail (clause_pat_sinking (PVar (tail_name, tail_ann))) }
 	| _ -> failwith "Unexpected test shape in pattern lowering"
 
 let branching_heuristic clauses =
@@ -182,7 +200,7 @@ let branching_heuristic clauses =
 	| first :: _ ->
 		let candidates =
 			StringMap.fold
-				(fun var pat acc -> if is_tree_testable pat then var :: acc else acc)
+				(fun var { pat; _ } acc -> if is_tree_testable pat then var :: acc else acc)
 				first.pats
 				[]
 		in
@@ -190,7 +208,7 @@ let branching_heuristic clauses =
 			List.fold_left
 				(fun total clause ->
 					 match StringMap.find_opt var clause.pats with
-					 | Some pat when is_tree_testable pat -> total + 1
+					 | Some { pat; _ } when is_tree_testable pat -> total + 1
 					 | _ -> total)
 				0
 				clauses
@@ -206,7 +224,9 @@ let branching_heuristic clauses =
 
 let emit_bindings bindings body =
 	List.fold_right
-		(fun (name, source, ann) acc -> ELet ((name, ann), EVar (source, ann), acc, ann))
+		(fun { name; source; ann; sink } acc ->
+			if sink then sink_until_first_use (name, ann) (EVar (source, ann)) ann acc
+			else ELet ((name, ann), EVar (source, ann), acc, ann))
 		bindings
 		body
 
@@ -220,14 +240,14 @@ let rec compile_leaf_clauses lower ann clauses =
 and compile_leaf_clause lower ann clause rest =
 	match StringMap.bindings clause.pats with
 	| [] -> emit_bindings clause.bindings clause.body
-	| (branch_var, pattern) :: remaining ->
+	| (branch_var, {pat; _}) :: remaining ->
 		let continue_clause =
 			compile_leaf_clause lower ann { clause with pats = StringMap.of_list remaining } rest
 		in
 		let next_clause () = compile_leaf_clauses lower ann rest in
-		(match pattern with
+		(match pat with
 		| PWildcard _ | PVar _ | PConst (CString _, _) | PStringCons _ ->
-			compile_string_pattern lower (var (branch_var, ann)) pattern continue_clause next_clause ann
+			compile_string_pattern lower (var (branch_var, ann)) pat continue_clause next_clause ann
 		| _ -> failwith "Unexpected tree leaf pattern in decision-tree compiler")
 
 let emit_test ann branch_var test_pat fresh_vars yes no =
@@ -268,13 +288,10 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 	| PSigCons _ ->
 		(match fresh_vars with
 		| [head; tail] ->
-			let yes_branch =
-				ELet (
-					(head, ann),
-					app (head_elim, ann) [scrutinee],
-					ELet ((tail, ann), EUnary (UTail, scrutinee, ann), yes, ann),
-					ann)
-			in
+			let hd_proj = app (head_elim, ann) [scrutinee] in
+			let tl_proj = EUnary (UTail, scrutinee, ann) in
+			let yes_body = sink_until_first_use (tail, ann) tl_proj ann yes in
+			let yes_branch = ELet ((head, ann), hd_proj, yes_body, ann) in
 			ECase (
 				scrutinee,
 				[
@@ -301,14 +318,14 @@ let rec compile_tree_rows lower ann clauses =
 		(match branching_heuristic clauses with
 		| None -> compile_leaf_clauses lower ann clauses
 		| Some branch_var ->
-			let test_pat = StringMap.find branch_var clause1.pats in
+			let {pat = test_pat;_ } = StringMap.find branch_var clause1.pats in
 			let fresh_vars = test_fresh_vars test_pat in
 			let yes_clauses, no_clauses =
 				List.fold_right
 					(fun clause (yes, no) ->
 						 match StringMap.find_opt branch_var clause.pats with
 						 | None -> (clause :: yes, clause :: no)
-						 | Some pat when same_test_pattern test_pat pat ->
+						 | Some { pat; _ } when same_test_pattern test_pat pat ->
 							 (add_test_subpatterns branch_var fresh_vars pat clause :: yes, no)
 						 | Some _ -> (yes, clause :: no))
 					clauses
@@ -325,8 +342,8 @@ and compile_tree_case lower scrutinee cases ann =
 		List.map
 			(fun (pat, body, _) ->
 				 {
-					 pats = StringMap.singleton (fst root_name) pat;
-					 bindings = [];
+				 		pats = StringMap.singleton (fst root_name) (clause_pat pat);
+				 		bindings = [];
 					 body = lower body;
 				 })
 			cases
@@ -360,7 +377,7 @@ and compile_match e =
 				| PVar _ | PWildcard _ -> acc
 				| _ -> 
 					compile_tree_rows compile_match pattern_ann [ {
-						pats = StringMap.singleton scrutinee_var pattern;
+						pats = StringMap.singleton scrutinee_var (clause_pat pattern);
 						bindings = [];
 						body = acc;
 					}]

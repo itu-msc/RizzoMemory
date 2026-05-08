@@ -16,7 +16,7 @@ let () =
     "LAMBDA TESTS", Test_lambda.lambda_tests;
     "COPY PROP TESTS", Test_copr.tests_copy_propagation;
     "DEAD LET TESTS", Test_dead_let.tests_dead_let;
-    "SIMPLE PATTERN TESTS", Test_simple_patterns.simple_pattern_tests;
+    "SIMPLE PATTERN TESTS", Test_patterns.pattern_matching_tests;
     "RESET REUSE TESTS", Test_reset_reuse.reset_reuse_tests;
     "WINDOWS RUNTIME TESTS", Test_runtime_windows.windows_runtime_tests;
     "END TO END TESTS", Test_end_to_end.end_to_end_tests;
