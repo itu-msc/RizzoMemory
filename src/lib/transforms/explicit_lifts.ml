@@ -17,7 +17,7 @@ let top_level_function_name = function
 let rec rewrite_expr function_names bound_names ~as_callee = function
   | EVar (((name, _) as var_name)) when (not as_callee) && StringSet.mem name function_names && not (StringSet.mem name bound_names) ->
       EApp (EVar var_name, [], snd var_name)
-  | EConst _ | EVar _ as expr -> expr
+  | EConst _ | EVar _ | EError _ as expr -> expr
   | ECtor (name, args, ann) ->
       ECtor (name, List.map (rewrite_expr function_names bound_names ~as_callee:false) args, ann)
   | ELet (((name, _) as bound_name), rhs, body, ann) ->

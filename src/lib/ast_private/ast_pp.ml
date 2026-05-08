@@ -11,6 +11,7 @@ let rec pp_pattern out = function
   | PWildcard _ -> Format.fprintf out "@{<lightcyan>_@}"
   | PVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | PConst (c, _) -> pp_const out c
+  | PError (msg, _) -> Format.fprintf out "@{<red><parse-error: %s>@}" msg
   | PTuple (p1, p2, _) -> Format.fprintf out "(%a, %a)" pp_pattern p1 pp_pattern p2
   | PSigCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
   | PStringCons (p1, p2, _) -> Format.fprintf out "(%a :: @{<lightcyan>%s@})" pp_pattern p1 (fst p2)
@@ -26,6 +27,7 @@ and pp_expr out =
   let open Format in
   function
   | EConst (c, _) -> pp_const out c
+  | EError (msg, _) -> fprintf out "@{<red><parse-error: %s>@}" msg
   | EVar (x, _) -> fprintf out "@{<lightcyan>%s@}" x
   | ECtor (name, args, _) ->
     if List.length args = 0 then fprintf out "@{<green>%s@}" (fst name)
@@ -113,6 +115,7 @@ and pp_typed_expr out : typed expr -> unit =
   let open Format in
   function
   | EConst (c, _) -> Format.fprintf out "%a" pp_const c
+  | EError (msg, _) -> Format.fprintf out "@{<red><parse-error: %s>@}" msg
   | EVar (x, _) -> Format.fprintf out "@{<lightcyan>%s@}" x
   | ECtor (name, args, _) ->
     if List.length args = 0 then Format.fprintf out "@{<green>%s@}" (fst name)

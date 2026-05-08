@@ -66,7 +66,7 @@ let eliminate_copy_propagation (e: _ expr) : _ expr =
   in
   let rec aux (env: (string * _ expr) list) (e: _ expr) : _ expr =
     match e with
-    | EConst _ -> e
+    | EConst _ | EError _ -> e
     | EVar (x, _) -> Option.value (List.assoc_opt x env) ~default:e
     | ECtor (name, args, ann) -> ECtor (name, List.map (aux env) args, ann)
     | EApp (f, args, ann) ->

@@ -24,7 +24,7 @@ let rec find_typed_let_binding target (e : typed expr) : (typ * typ * typed expr
     (match find_typed_let_binding target rhs with
         | Some _ as found -> found
     | None -> find_typed_let_binding target body)
-  | EConst _ | EVar _ -> None
+  | EConst _ | EError _ | EVar _ -> None
   | ECtor (_, args, _) ->
     List.find_map (find_typed_let_binding target) args
   | EFun (_, body, _) -> find_typed_let_binding target body

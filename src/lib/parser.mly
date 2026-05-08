@@ -140,6 +140,15 @@ type_ctor:
       (ctor_name, ctor_args, mkloc $startpos $endpos) }
 
 expr:
+  | LET x=ID te_opt=option(type_annotation) eq=EQ in_kw=IN e2=expr
+    {
+      let _ = eq, in_kw in
+      let name = (x, mkloc $startpos(x) $endpos(x)) in
+      let missing_rhs = EError ("Syntax error: expected expression after '='.", mkloc $endpos(eq) $startpos(in_kw)) in
+      match te_opt with
+      | None    -> ELet (name, missing_rhs, e2, mkloc $startpos $endpos)
+      | Some (te, anno_loc) -> ELet (name, EAnno(missing_rhs, te, anno_loc), e2, mkloc $startpos $endpos)
+    }
   | LET x=ID te_opt=option(type_annotation) EQ e1=expr IN e2=expr
     { let name = (x, mkloc $startpos(x) $endpos(x)) in
       match te_opt with

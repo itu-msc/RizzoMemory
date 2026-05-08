@@ -26,7 +26,7 @@ and lift_top_expr top_names (lifted_lambdas: _ top_expr list ref) (te: _ top_exp
 and lift_expr top_names (lifted_lambdas: _ top_expr list ref) (e: _ expr) = 
   let lift_expr = lift_expr top_names lifted_lambdas in
   match e with
-  | EConst _ | EVar _ -> e
+  | EConst _ | EVar _ | EError _ -> e
   | ECtor (name, args, loc) -> ECtor (name, List.map lift_expr args, loc)
   | EApp (f, args, loc) -> EApp (lift_expr f, List.map lift_expr args, loc)
   | EBinary (op, e1, e2, loc) -> EBinary (op, lift_expr e1, lift_expr e2, loc)

@@ -141,6 +141,7 @@ and expr_to_fn_body ctor_tag_map globals locals (e : _ expr) : Rc.fn_body =
     let tagof = tagof ctor_tag_map in
     let body = expr_to_fn_body locals branch in
     match pattern with
+    | PError _ -> failwith "Parse error pattern reached RC lowering"
     | PVar _ | PWildcard _ -> case_arm body
     | PConst (CBool false, _) -> case_arm ~tag:(tagof "false") ~num_fields:0 body
     | PConst (CBool true, _) -> case_arm ~tag:(tagof "true") ~num_fields:0 body
@@ -166,6 +167,7 @@ and expr_to_fn_body ctor_tag_map globals locals (e : _ expr) : Rc.fn_body =
     aux [] [] cases
   in
   match e with
+  | EError _ -> failwith "Parse error expression reached RC lowering"
   | EVar (x, _) -> FnRet (Var x)
   | EConst (c, _) -> FnRet (Const c)
   | EApp _ | ELet _ -> app_to_fn_body ctor_tag_map globals locals e

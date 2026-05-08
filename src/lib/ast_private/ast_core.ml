@@ -55,6 +55,7 @@ type _ pattern =
   | PWildcard : 's ann -> 's pattern
   | PVar : string * 's ann -> 's pattern
   | PConst : const * 's ann -> 's pattern
+  | PError : string * 's ann -> 's pattern
   | PTuple : 's pattern * 's pattern * 's ann -> 's pattern
   | PSigCons : 's pattern * 's name * 's ann -> 's pattern
   | PStringCons : 's pattern * 's name * 's ann -> 's pattern
@@ -62,6 +63,7 @@ type _ pattern =
 
 and _ expr =
   | EConst : const * 's ann -> 's expr
+  | EError : string * 's ann -> 's expr
   | EVar : 's name -> 's expr
   | ECtor : 's name * 's expr list * 's ann -> 's expr
   | ELet : 's name * 's expr * 's expr * 's ann -> 's expr
@@ -109,10 +111,10 @@ let expr_get_ann : type stage. stage expr -> stage ann = fun e ->
   | EConst (_, ann) | EVar (_, ann) | ECtor (_, _, ann) | ELet (_, _, _, ann) | EFun (_, _, ann)
   | EApp (_, _, ann) | EUnary (_, _, ann) | EBinary (_, _, _, ann)
   | ETuple (_, _, ann) | ECase (_, _, ann) | EIfe (_, _, _, ann)
-  | EAnno (_, _, ann) -> ann
+  | EAnno (_, _, ann) | EError (_, ann) -> ann
 
 let rec pattern_bound_vars_with_anns : type stage. stage pattern -> (string * stage ann) list = function
-  | PWildcard _ | PConst _ -> []
+  | PWildcard _ | PConst _ | PError _ -> []
   | PVar (x, ann) -> [x, ann]
   | PSigCons (p1, p2, _) | PStringCons (p1, p2, _) -> pattern_bound_vars_with_anns p1 @ [p2]
   | PTuple (p1, p2, _) -> pattern_bound_vars_with_anns p1 @ pattern_bound_vars_with_anns p2
@@ -123,6 +125,7 @@ let pattern_bound_vars pattern =
 
 let pattern_get_ann = function
   | PWildcard ann | PConst (_, ann)
+  | PError (_, ann)
   | PVar (_, ann) | PSigCons (_,_ , ann) | PStringCons (_,_, ann) 
   | PTuple (_, _, ann)
   | PCtor (_, _, ann) -> ann

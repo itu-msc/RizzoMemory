@@ -22,6 +22,7 @@ and lower_top_expr = function
 and lower_expr (e : typed expr) : parsed expr =
   match e with
   | EConst (c, ann) -> EConst (c, parsed_ann ann)
+  | EError (msg, ann) -> EError (msg, parsed_ann ann)
   | EVar name -> EVar (parsed_name name)
   | ECtor (name, args, ann) -> ECtor (parsed_name name, List.map lower_expr args, parsed_ann ann)
   | ELet (name, rhs, body, ann) ->
@@ -66,6 +67,7 @@ and lower_pattern : type s. s pattern -> parsed pattern = function
   | PWildcard ann -> PWildcard (parsed_ann ann)
   | PVar (name, ann) -> PVar (name, parsed_ann ann)
   | PConst (c, ann) -> PConst (c, parsed_ann ann)
+  | PError (msg, ann) -> PError (msg, parsed_ann ann)
   | PTuple (p1, p2, ann) -> PTuple (lower_pattern p1, lower_pattern p2, parsed_ann ann)
   | PSigCons (p1, p2, ann) -> PSigCons (lower_pattern p1, parsed_name p2, parsed_ann ann)
   | PStringCons (p1, p2, ann) -> PStringCons (lower_pattern p1, parsed_name p2, parsed_ann ann)

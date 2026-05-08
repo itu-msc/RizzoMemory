@@ -12,7 +12,7 @@ let app ((name, ann) : _ name) args =
 	EApp (var (name, ann), args, ann)
   
   let is_simple_expr = function
-	| EVar _ | EConst _ -> true
+	| EVar _ | EConst _ | EError _ -> true
 	| _ -> false
   
 let match_fail = (Rizzo_builtins.get "match_fail").name
@@ -28,6 +28,7 @@ let rec transform_patterns (program: 's Ast.program) =
 and compile_pattern p scrutinee good bad =
 	match p with
 	| PWildcard _ -> good scrutinee
+	| PError _ -> bad ()
 	| PVar (name, ann) ->
 		ELet ((name, ann), scrutinee, good (EVar (name, ann)), ann)
 	| PConst (CString s, ann) ->
@@ -124,7 +125,7 @@ and compile_match_cases scrutinee cases =
 
 and compile_match e =
 	match e with
-	| EVar _ | EConst _ -> e
+	| EVar _ | EConst _ | EError _ -> e
 	| ECtor (name, args, ann) -> ECtor (name, List.map compile_match args, ann)
 	| ECase (scrutinee, cases, ann) ->
 		let scrutinee = compile_match scrutinee in

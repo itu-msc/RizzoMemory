@@ -7,7 +7,7 @@ let rec count_let_bindings target = function
       (if String.equal name target then 1 else 0)
       + count_let_bindings target rhs
       + count_let_bindings target body
-  | EConst _ | EVar _ -> 0
+  | EConst _ | EVar _ | EError _ -> 0
   | ECtor (_, args, _) -> List.fold_left (fun acc e -> acc + count_let_bindings target e) 0 args
   | EApp (fn, args, _) ->
       count_let_bindings target fn
@@ -33,7 +33,7 @@ let rec count_let_bindings_prefix prefix : _ expr -> int = function
     (if matches_prefix then 1 else 0)
     + count_let_bindings_prefix prefix rhs
     + count_let_bindings_prefix prefix body
-  | EConst _ | EVar _ -> 0
+  | EConst _ | EVar _ | EError _ -> 0
   | ECtor (_, args, _) -> List.fold_left (fun acc e -> acc + count_let_bindings_prefix prefix e) 0 args
   | EFun (_, body, _) -> count_let_bindings_prefix prefix body
   | EApp (fn, args, _) ->
@@ -84,7 +84,7 @@ let rec first_ife_branches = function
                   | None -> search rest)
             in
             search branches)
-  | EConst _ | EVar _ -> None
+  | EConst _ | EVar _ | EError _ -> None
 
 
 let extract_single_case_branch_body = function

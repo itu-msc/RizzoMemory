@@ -3,7 +3,7 @@ open Collections
 
 let rec has_effectful_call (e : _ expr) : bool =
 	match e with
-	| EConst _ | EVar _ -> false
+	| EConst _ | EVar _ | EError _ -> false
 	| ECtor (_, args, _) -> List.exists has_effectful_call args
 	| EApp (f, args, _) ->
 			let direct_effectful =
@@ -26,7 +26,7 @@ let rec has_effectful_call (e : _ expr) : bool =
 
 let rec eliminate_dead_let (e : _ expr) : _ expr =
 	match e with
-	| EConst _ | EVar _ -> e
+	| EConst _ | EVar _ | EError _ -> e
 	| ECtor (name, args, ann) -> ECtor (name, List.map eliminate_dead_let args, ann)
 	| EApp (f, args, ann) -> EApp (eliminate_dead_let f, List.map eliminate_dead_let args, ann)
 	| EUnary (op, e, ann) -> EUnary (op, eliminate_dead_let e, ann)

@@ -1,8 +1,7 @@
 open Ast
 
 let is_name = function
-| EVar _ -> true
-| EConst _ -> true
+| EConst _ | EVar _ | EError _ -> true
 | _ -> false
 
 let new_var () = Utilities.new_var ()
@@ -10,7 +9,7 @@ let new_var () = Utilities.new_var ()
 (* Pretty much exactly: Flanagan et. al 1993 *)
 let rec normalize_expr m = normalize m Fun.id
 and normalize (m: _ expr) k = match m with
-| EConst _ | EVar _ -> k m
+| EConst _ | EVar _ | EError _ -> k m
 | ECtor (name, args, loc) ->
   normalize_name_mult args (fun args' -> k (ECtor (name, args', loc)))
 | EFun (params, body, loc) -> k (EFun (params, normalize_expr body, loc))
