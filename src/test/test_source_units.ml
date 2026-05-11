@@ -31,6 +31,16 @@ let test_compile_from_file_includes_signal_prelude () =
           Rizzoc.compile_from_file input_path output_path;
           Alcotest.(check bool) "generated C file exists" true (Sys.file_exists output_path)))
 
+let test_compile_from_file_includes_list_prelude () =
+  let program =
+    "fun entry _ : Int -> Int =\n"
+    ^ "  list_length (list_reverse (list_append [1] [2, 3]))\n"
+  in
+  with_temp_file ~prefix:"list-prelude-user" ~suffix:".rizz" program (fun input_path ->
+      with_temp_output "list-prelude-output" (fun output_path ->
+          Rizzoc.compile_from_file input_path output_path;
+          Alcotest.(check bool) "generated C file exists" true (Sys.file_exists output_path)))
+
 let test_compile_from_files_respects_left_to_right_order () =
   let first_file = "fun double x : Int -> Int = x + x\n" in
   let second_file = "fun entry x : Int -> Int = double x\n" in
@@ -93,6 +103,7 @@ let test_compile_from_file_accepts_included_file () =
 
 let tests =
   [ "compile_from_file includes signal prelude", `Quick, test_compile_from_file_includes_signal_prelude;
+    "compile_from_file includes list prelude", `Quick, test_compile_from_file_includes_list_prelude;
     "compile_from_files respects left-to-right order", `Quick, test_compile_from_files_respects_left_to_right_order;
     "compile_from_files rejects reverse-order dependency", `Quick, test_compile_from_files_rejects_reverse_order_dependencies;
     "compile_from_file rejects prelude collision", `Quick, test_compile_from_file_rejects_prelude_name_collision;

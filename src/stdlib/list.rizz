@@ -1,0 +1,120 @@
+fun list_fold f acc lst : ('a -> 'b -> 'a) -> 'a -> List 'b -> 'a =
+    match lst with
+    | [] -> acc
+    | x :: xs -> list_fold f (f acc x) xs
+
+fun list_fold_right f acc lst : ('a -> 'b -> 'b) -> 'b -> List 'a -> 'b =
+    match lst with
+    | [] -> acc
+    | x :: xs -> f x (list_fold_right f acc xs)
+
+fun list_append lst1 lst2 : List 'a -> List 'a -> List 'a =
+    match lst1 with
+    | [] -> lst2
+    | x :: xs -> x :: list_append xs lst2
+
+fun list_reverse_acc acc lst : List 'a -> List 'a -> List 'a =
+    match lst with
+    | [] -> acc
+    | x :: xs -> list_reverse_acc (x :: acc) xs
+
+fun list_reverse lst : List 'a -> List 'a =
+    list_reverse_acc [] lst
+
+fun list_map f lst : ('a -> 'b) -> List 'a -> List 'b =
+    match lst with
+    | [] -> []
+    | x :: xs -> f x :: list_map f xs
+
+fun list_map2 f xs ys : ('a -> 'b -> 'c) -> List 'a -> List 'b -> List 'c =
+    match xs with
+    | [] -> []
+    | x :: xs_ ->
+        match ys with
+        | [] -> []
+        | y :: ys_ -> f x y :: list_map2 f xs_ ys_
+
+fun list_filter f lst : ('a -> Bool) -> List 'a -> List 'a =
+    match lst with
+    | [] -> []
+    | x :: xs ->
+        if f x
+        then list_append [x] (list_filter f xs)
+        else list_filter f xs
+
+fun list_filter_map f lst : ('a -> (Option 'b)) -> List 'a -> List 'b =
+    match lst with
+    | [] -> []
+    | x :: xs ->
+        match f x with
+        | None -> list_filter_map f xs
+        | Some(y) -> y :: list_filter_map f xs
+
+fun list_find f lst : ('a -> Bool) -> List 'a -> (Option 'a) =
+    match lst with
+    | [] -> None
+    | x :: xs ->
+        if f x
+        then Some(x)
+        else list_find f xs
+
+fun list_find_map f lst : ('a -> (Option 'b)) -> List 'a -> (Option 'b) =
+    match lst with
+    | [] -> None
+    | x :: xs ->
+        match f x with
+        | None -> list_find_map f xs
+        | Some(y) -> Some(y)
+
+fun list_exists f lst : ('a -> Bool) -> List 'a -> Bool =
+    match lst with
+    | [] -> false
+    | x :: xs -> if f x then true else list_exists f xs
+
+fun list_for_all f lst : ('a -> Bool) -> List 'a -> Bool =
+    match lst with
+    | [] -> true
+    | x :: xs -> if f x then list_for_all f xs else false
+
+fun list_head_option lst : List 'a -> (Option 'a) =
+    match lst with
+    | [] -> None
+    | x :: xs -> Some(x)
+
+fun list_last lst : List 'a -> (Option 'a) =
+    match lst with
+    | [] -> None
+    | x :: xs ->
+        match xs with
+        | [] -> Some(x)
+        | _ -> list_last xs
+
+fun list_zip xs ys : List 'a -> List 'b -> List ('a * 'b) =
+    match xs with
+    | [] -> []
+    | x :: xs_ ->
+        match ys with
+        | [] -> []
+        | y :: ys_ -> (x, y) :: list_zip xs_ ys_
+
+fun list_unzip pairs : List ('a * 'b) -> (List 'a * List 'b) =
+    match pairs with
+    | [] -> ([], [])
+    | pair :: rest ->
+        match pair with
+        | (left, right) ->
+            match list_unzip rest with
+            | (lefts, rights) -> (list_append [left] lefts, list_append [right] rights)
+
+fun list_flatten lsts : List (List 'a) -> List 'a =
+    match lsts with
+    | [] -> []
+    | xs :: rest -> list_append xs (list_flatten rest)
+
+fun list_concat lsts : List (List 'a) -> List 'a =
+    list_flatten lsts
+
+fun list_concat_map f lst : ('a -> List 'b) -> List 'a -> List 'b =
+    match lst with
+    | [] -> []
+    | x :: xs -> list_append (f x) (list_concat_map f xs)

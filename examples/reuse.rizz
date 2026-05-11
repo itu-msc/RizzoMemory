@@ -1,32 +1,12 @@
 
-fun list_fold f acc lst : ('a -> 'b -> 'a) -> 'a -> List 'b -> 'a =
-    match lst with
-    | [] -> acc
-    | x :: xs -> list_fold f (f acc x) xs
-
-fun list_fold_right f acc lst : ('a -> 'b -> 'b) -> 'b -> List 'a -> 'b =
-    match lst with
-    | [] -> acc
-    | x :: xs -> f x (list_fold_right f acc xs)
-
-fun list_append lst1 lst2 : List 'a -> List 'a -> List 'a =
-    match lst1 with
-    | [] -> lst2
-    | x :: xs -> x :: list_append xs lst2
-
-fun list_reverse lst : List 'a -> List 'a =
-    match lst with
-    | [] -> []
-    | x :: xs -> list_append (list_reverse xs) [x]
-
 fun entry _ =
-    let x = [1, 2, 3] in
+    let x = ["1", "2", "3"] in
     let y = mk_sig_of_channel console in
-    let _x = scan_l (fun acc n ->
-        (match (parse_int n) with
+    let state = scan_l (fun acc n ->
+        list_reverse (match (parse_int n) with
         | None -> acc
-        | Some(v) -> list_append acc [v])
+        | Some(v) -> list_append acc [n])
     ) x y in
-    let stringify = map_l (fun n -> list_fold (fun acc v -> acc + string_of_int v + " ") "" n) _x in
-    let out = console_out_signal_l stringify in
+    // let stringify = map_l (fun n -> list_fold (fun acc v -> acc + v) "" n) state in
+    let out = console_out_signal_l state in
     start_event_loop ()
