@@ -464,7 +464,7 @@ let top_level_constructor_declarations : type s.
       fun f expr ->
       f expr;
       match expr with
-      | Ast.EConst _ | Ast.EVar _ -> ()
+      | Ast.EConst _ | Ast.EError _ | Ast.EVar _ -> ()
       | Ast.ECtor (_, args, _) ->
         List.iter (iter_expr f) args
       | Ast.ELet (_, e1, e2, _) ->
@@ -575,6 +575,7 @@ let hover_text_for_expr : type s. s Ast.expr -> string =
            | Ast.CInt n -> string_of_int n
            | Ast.CBool b -> if b then "true" else "false"
            | Ast.CString s -> s)
+      | Ast.EError (msg, _) -> "parse error " ^ msg
       | Ast.EVar (name, _) -> "variable " ^ name
       | Ast.ECtor ((name, _), _, _) -> "constructor " ^ name
       | Ast.ELet ((name, _), _, _, _) -> "let-binding " ^ name
@@ -594,7 +595,7 @@ let hover_text_for_expr : type s. s Ast.expr -> string =
 let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
   fun pat ->
     match pat with
-    | Ast.PWildcard _ | Ast.PConst _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ | Ast.PError _ -> []
     | Ast.PVar (name, ann) -> [ (name, range_of_ann ann) ]
   | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
         pattern_bound_decls p1 @ [ (fst p2, range_of_ann (snd p2)) ]
@@ -606,7 +607,7 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
   let rec pattern_constructor_occurrences : type s. s Ast.pattern -> (string * range) list =
     fun pat ->
     match pat with
-    | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ | Ast.PError _ -> []
     | Ast.PSigCons (p1, _, _) | Ast.PStringCons (p1, _, _) ->
       pattern_constructor_occurrences p1
     | Ast.PTuple (p1, p2, _) ->
@@ -618,7 +619,7 @@ let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
 let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_symbol) list =
   fun pat ->
     match pat with
-    | Ast.PWildcard _ | Ast.PConst _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ | Ast.PError _ -> []
     | Ast.PVar (name, ann) ->
         [
           ( name,
@@ -648,7 +649,7 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
   let rec pattern_bound_names : type s. s Ast.pattern -> s Ast.name list =
     fun pat ->
     match pat with
-    | Ast.PWildcard _ | Ast.PConst _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ | Ast.PError _ -> []
     | Ast.PVar (name, ann) -> [ (name, ann) ]
     | Ast.PSigCons (p1, p2, _) | Ast.PStringCons (p1, p2, _) ->
       pattern_bound_names p1 @ [ p2 ]
@@ -660,7 +661,7 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
 let rec pattern_constructor_ranges : type s. s Ast.pattern -> range list =
   fun pat ->
     match pat with
-    | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ -> []
+    | Ast.PWildcard _ | Ast.PConst _ | Ast.PVar _ | Ast.PError _ -> []
   | Ast.PSigCons (p1, _, _) | Ast.PStringCons (p1, _, _) ->
         pattern_constructor_ranges p1
     | Ast.PTuple (p1, p2, _) ->
@@ -684,6 +685,7 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
         else
           None
     | Ast.PConst (_, _) -> None
+    | Ast.PError (_, _) -> None
     | Ast.PTuple (p1, p2, _) ->
         (match pattern_hover_at_position ~position p1 with
          | Some _ as hover -> hover
@@ -814,7 +816,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
       in
       let rec find_in_expr (env : definition_symbol StringMap.t) (expr : _ Ast.expr) : definition option =
         match expr with
-        | Ast.EConst _ -> None
+        | Ast.EConst _ | Ast.EError _ -> None
         | Ast.EVar var_name ->
             let var_range = range_of_name var_name in
             if range_contains_position var_range position then
@@ -1046,7 +1048,7 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
       in
       let rec resolve_in_expr (env : rename_target StringMap.t) (expr : _ Ast.expr) : (rename_target * range) option =
         match expr with
-        | Ast.EConst _ -> None
+        | Ast.EConst _ | Ast.EError _ -> None
         | Ast.EVar var_name ->
             let var_range = range_of_name var_name in
             if range_contains_position var_range position then
@@ -1235,7 +1237,7 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
           in
           let rec collect_expr_ranges (env : rename_target StringMap.t) (acc : range list) (expr : Ast.typed Ast.expr) : range list =
             match expr with
-            | Ast.EConst _ -> acc
+            | Ast.EConst _ | Ast.EError _ -> acc
             | Ast.EVar var_name ->
                 let var_range = range_of_name var_name in
                 let acc =
@@ -1428,7 +1430,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
           let rec find_symbol_hover_in_expr : type s. StringSet.t -> s Ast.expr -> hover_info option =
             fun local_names expr ->
               match expr with
-              | Ast.EConst _ -> None
+              | Ast.EConst _ | Ast.EError _ -> None
               | Ast.EVar var_name ->
                   let var_range = range_of_name var_name in
                   if range_contains_position var_range position then
@@ -1768,7 +1770,7 @@ let completions_at_position
           None
         else
           match expr with
-          | Ast.EConst _ | Ast.EVar _ -> Some env
+          | Ast.EConst _ | Ast.EError _ | Ast.EVar _ -> Some env
           | Ast.ECtor (ctor_name, args, _) ->
               if range_contains_position (range_of_name ctor_name) position then
                 Some env
@@ -1935,7 +1937,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
       in
       let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.typed Ast.expr) : unit =
         (match expr with
-         | Ast.EConst _ -> ()
+         | Ast.EConst _ | Ast.EError _ -> ()
          | Ast.EVar var_name ->
              let name = name_text var_name in
              let kind =
@@ -1985,6 +1987,11 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
               | None -> ());
              walk_expr env e
+        | Ast.EUnary (Ast.UTail, e, _) ->
+          (match keyword_range_from_expr ~text ~name:"tail" expr with
+            | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+            | None -> ());
+           walk_expr env e
           | Ast.EUnary (Ast.UDelay, e, _) ->
             (match keyword_range_from_expr ~text ~name:"delay" expr with
                | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range

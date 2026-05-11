@@ -401,6 +401,58 @@ let test_semantic_tokens_include_local_let_declaration () =
        ~kind:Language_service.SemanticVariable
        ~declaration:false)
 
+let test_missing_local_let_rhs_keeps_lsp_semantics () =
+  let text =
+    "let something_that_would_compile = 1 + 2\n"
+    ^ "\n"
+    ^ "fun entry _ =\n"
+    ^ "    let _x =  in\n"
+    ^ "    let _y = match  with | _ ->  in\n"
+    ^ "    let _z = if true then  else  in\n"
+    ^ "    start_event_loop ()\n"
+  in
+  let analysis = Language_service.analyze_document ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "reports missing rhs diagnostic"
+    true
+    (List.exists
+       (fun (diag : Language_service.diagnostic) ->
+         contains_substring ~text:diag.message ~substring:"expected expression after '='")
+       analysis.Language_service.diagnostics);
+  Alcotest.(check bool)
+    "reports missing match scrutinee diagnostic"
+    true
+    (List.exists
+       (fun (diag : Language_service.diagnostic) ->
+         contains_substring ~text:diag.message ~substring:"expected expression after 'match'")
+       analysis.Language_service.diagnostics);
+  Alcotest.(check bool)
+    "reports missing if branch diagnostic"
+    true
+    (List.exists
+       (fun (diag : Language_service.diagnostic) ->
+         contains_substring ~text:diag.message ~substring:"expected expression after 'else'")
+       analysis.Language_service.diagnostics);
+  let tokens = Language_service.semantic_tokens ~uri:"file:///test.rizz" ~filename:None ~text in
+  Alcotest.(check bool)
+    "tokens continue after recovered local let"
+    true
+    (has_semantic_token
+       ~tokens
+       ~line:6
+       ~character:4
+       ~kind:Language_service.SemanticFunction
+       ~declaration:false);
+  let labels =
+    completion_labels
+      ~text
+      ~position:{ Language_service.line = 6; character = 4 }
+  in
+  Alcotest.(check bool)
+    "completion still has builtins after recovered local let"
+    true
+    (completion_has_label ~labels ~name:"start_event_loop")
+
 let test_semantic_tokens_include_builtin_operators () =
   let text =
     "fun main x =\n"
@@ -990,6 +1042,7 @@ let tests = [
   "missing bracket gives hint", `Quick, test_missing_bracket_reports_hint;
   "semantic tokens MVP", `Quick, test_semantic_tokens_mvp;
   "semantic tokens local let declaration", `Quick, test_semantic_tokens_include_local_let_declaration;
+  "missing local let rhs keeps LSP semantics", `Quick, test_missing_local_let_rhs_keeps_lsp_semantics;
   "semantic tokens builtin operators", `Quick, test_semantic_tokens_include_builtin_operators;
   "semantic tokens builtin function references", `Quick, test_semantic_tokens_include_builtin_function_references;
   "pipe left operand keeps function metadata", `Quick, test_pipe_left_operand_keeps_function_reference_metadata;

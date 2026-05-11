@@ -36,6 +36,9 @@ let nil_expr start_pos end_pos =
 let cons_expr start_pos end_pos head tail =
   ECtor (("Cons", mkloc start_pos end_pos), [head; tail], mkloc start_pos end_pos)
 
+let syntax_error_expr msg start_pos end_pos =
+  EError (msg, mkloc start_pos end_pos) 
+
 let rec list_expr_of_list start_pos end_pos = function
   | [] -> nil_expr start_pos end_pos
   | head :: tail -> cons_expr start_pos end_pos head (list_expr_of_list start_pos end_pos tail)
@@ -86,8 +89,10 @@ let rec list_pattern_of_list start_pos end_pos = function
 
 %nonassoc BELOW_BAR
 %nonassoc BELOW_CTOR_ARGS
+%nonassoc MISSING_EXPR
 %nonassoc LPAREN
 %nonassoc BAR
+%nonassoc LET FUN
 // %left PIPE_GT EQEQ
 
 %%
@@ -101,10 +106,10 @@ top_exprs:
 
 top_expr:
   | effect_dec=option(EFFECTFUL) 
-    LET name=ID te_opt=option(type_annotation) EQ body=expr
+    LET name=let_name te_opt=option(type_annotation) EQ body=expr
     { 
-      if Option.is_some effect_dec then Effectful.mark_effectful name;
-      let top_name = (name, mkloc $startpos(name) $endpos(name)) in
+      if Option.is_some effect_dec then Effectful.mark_effectful (fst name);
+      let top_name = name in
       match te_opt with
       | None -> TopLet (top_name, body, mkloc $symbolstartpos $endpos(body)) 
       | Some (te, anno_loc) ->
@@ -139,17 +144,49 @@ type_ctor:
     { let ctor_name = (ctor_name, mkloc $startpos(ctor_name) $endpos(ctor_name)) in
       (ctor_name, ctor_args, mkloc $startpos $endpos) }
 
+let_name:
+  | name=ID { (name, mkloc $startpos(name) $endpos(name)) }
+  | UNDERSCORE { ("_", mkloc $startpos $endpos) }
+
 expr:
-  | LET x=ID te_opt=option(type_annotation) EQ e1=expr IN e2=expr
-    { let name = (x, mkloc $startpos(x) $endpos(x)) in
+  | LET x=let_name te_opt=option(type_annotation) eq=EQ in_kw=IN e2=expr
+    {
+      let _ = eq, in_kw in
+      let name = x in
+      let missing_rhs = EError ("Syntax error: expected expression after '='.", mkloc $endpos(eq) $startpos(in_kw)) in
+      match te_opt with
+      | None    -> ELet (name, missing_rhs, e2, mkloc $startpos $endpos)
+      | Some (te, anno_loc) -> ELet (name, EAnno(missing_rhs, te, anno_loc), e2, mkloc $startpos $endpos)
+    }
+  | LET x=let_name te_opt=option(type_annotation) EQ e1=expr IN e2=expr
+    { let name = x in
       match te_opt with
       | None    -> ELet (name, e1, e2, mkloc $startpos $endpos) 
       | Some (te, anno_loc) -> ELet (name, EAnno(e1, te, anno_loc), e2, mkloc $startpos $endpos) 
     }
-  | IF e1=expr THEN e2=expr ELSE e3=expr
-    { EIfe (e1, e2, e3, mkloc $startpos $endpos) }
+  | IF e1=expr then_kw=THEN e2=if_then_body else_kw=ELSE e3=if_else_body
+    {
+      let _ = then_kw, else_kw in
+      let e2 =
+        match e2 with
+        | Some e -> e
+        | None -> syntax_error_expr "Syntax error: expected expression after 'then'." $endpos(then_kw) $startpos(else_kw)
+      in
+      let e3 =
+        match e3 with
+        | Some e -> e
+        | None -> syntax_error_expr "Syntax error: expected expression after 'else'." $endpos(else_kw) $endpos(else_kw)
+      in
+      EIfe (e1, e2, e3, mkloc $startpos $endpos)
+    }
   | MATCH scrutinee=expr WITH leading=opt_leading_bar first=match_case rest=match_case_tail
     { let _ = leading in ECase (scrutinee, first :: rest, mkloc $startpos $endpos) }
+  | match_kw=MATCH with_kw=WITH leading=opt_leading_bar first=match_case rest=match_case_tail
+    {
+      let _ = match_kw, with_kw, leading in
+      let missing_scrutinee = syntax_error_expr "Syntax error: expected expression after 'match'." $endpos(match_kw) $startpos(with_kw) in
+      ECase (missing_scrutinee, first :: rest, mkloc $startpos $endpos)
+    }
   | FUN params=pattern_atom+ ARROW body=expr
     { (* check_unique_params (List.map fst params); *) EFun (params, body, mkloc $startpos $endpos) }
   | e=pipe_expr
@@ -159,9 +196,23 @@ opt_leading_bar:
   | { () }
   | BAR { () }
 
+if_then_body:
+  | e=expr { Some e }
+  | { None }
+
+if_else_body:
+  | e=expr { Some e }
+  | %prec MISSING_EXPR { None }
+
 match_case:
   | p=pattern ARROW e=expr
   { (p, e, mkloc $startpos $endpos) }
+  | p=pattern arrow=ARROW %prec MISSING_EXPR
+  {
+    let _ = arrow in
+    let missing_body = syntax_error_expr "Syntax error: expected expression after '->'." $endpos(arrow) $endpos(arrow) in
+    (p, missing_body, mkloc $startpos $endpos)
+  }
 
 match_case_tail:
   | { [] } %prec BELOW_BAR

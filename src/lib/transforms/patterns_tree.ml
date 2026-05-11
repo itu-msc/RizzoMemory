@@ -23,7 +23,7 @@ let app ((name, ann) : _ name) args = EApp (var (name, ann), args, ann)
 let proj index ann expr = EUnary (UProj index, expr, ann)
 
 let is_simple_expr = function
-	| EVar _ | EConst _ -> true
+	| EVar _ | EConst _ | EError _ -> true
 	| _ -> false
 
 let match_fail ann message = app (match_fail_name, ann) [EConst (CString message, ann)]
@@ -33,7 +33,7 @@ let rec sink_until_first_use name proj ann expr =
 	let used_in expr = Collections.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals expr) in
 	match expr with
 	| EVar (n1, _) when var_name = n1 -> ELet (name, proj, expr, ann)
-	| EVar _ | EConst _ -> expr
+	| EVar _ | EConst _ | EError _ -> expr
 	| ELet (name', rhs, body, ann') ->
 		if used_in rhs then ELet (name, proj, expr, ann)
 		else ELet (name', rhs, sink_until_first_use name proj ann body, ann')
@@ -106,6 +106,7 @@ let normalize_clause clause =
 			(fun var entry acc ->
 				 match entry.pat with
 				 | PWildcard _ -> acc
+				 | PError _ -> acc
 				 | PVar (name, ann) ->
 					 bindings := { name; source = var; ann; sink = entry.sink_binding } :: !bindings;
 					 acc
@@ -116,7 +117,7 @@ let normalize_clause clause =
 	{ clause with pats; bindings = List.rev !bindings }
 
 let is_tree_testable = function
-	| PWildcard _ | PVar _ | PStringCons _ -> false
+	| PWildcard _ | PVar _ | PStringCons _ | PError _ -> false
 	| _ -> true
 
 let same_test_pattern left right =
@@ -129,7 +130,6 @@ let same_test_pattern left right =
 	| _ -> false
 
 let test_fresh_vars = function
-	| PConst _ -> []
 	| PTuple _ -> [Utilities.new_name "tuple_left"; Utilities.new_name "tuple_right"]
 	| PCtor (_, args, _) -> List.init (List.length args) (fun _ -> Utilities.new_name "ctor_field")
 	| PSigCons _ -> [Utilities.new_name "sig_head"; Utilities.new_name "sig_tail"]
@@ -152,6 +152,7 @@ and compile_string_branches lower scrutinee cases ann =
 and compile_string_pattern lower scrutinee pattern success next ann =
 	match pattern with
 	| PWildcard _ -> success
+	| PError _ -> next ()
 	| PVar (name, name_ann) -> ELet ((name, name_ann), scrutinee, success, ann)
 	| PConst (CString s, patt_ann) ->
 		EIfe (app (string_eq, ann) [scrutinee; EConst (CString s, patt_ann)], success, next (), ann)
@@ -304,6 +305,8 @@ let emit_test ann branch_var test_pat fresh_vars yes no =
 		| _ -> failwith "Signal-cons tests expect two field variables")
 	| PStringCons _ ->
 		failwith "String-cons patterns should be lowered by the string pass"
+	| PError _ ->
+		no
 	| PWildcard _ | PVar _ ->
 		failwith "Unexpected non-test pattern in emit_test"
 
@@ -354,7 +357,7 @@ and compile_tree_case lower scrutinee cases ann =
 
 and compile_match e =
 	match e with
-	| EVar _ | EConst _ -> e
+	| EVar _ | EConst _ | EError _ -> e
 	| ECtor (name, args, ann) -> ECtor (name, List.map compile_match args, ann)
 	| ECase (scrutinee, cases, ann) when is_string_case cases ->
 		compile_string_case compile_match scrutinee cases ann
@@ -376,7 +379,7 @@ and compile_match e =
 		let body' = List.fold_right (
 			fun (scrutinee_var, pattern_ann, pattern) acc -> 
 				match pattern with
-				| PVar _ | PWildcard _ -> acc
+				| PVar _ | PWildcard _ | PError _ -> acc
 				| _ -> 
 					compile_tree_rows compile_match pattern_ann [ {
 						pats = StringMap.singleton scrutinee_var (clause_pat pattern);

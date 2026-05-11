@@ -354,6 +354,9 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | EConst (c, ann) -> 
     let* const_type = infer_const_type ann c in
     return (EConst (c, Ann_typed (get_location ann, const_type)))
+  | EError (msg, ann) ->
+    let* _ = error ann msg in
+    return (EError (msg, Ann_typed (get_location ann, TError)))
   | EAnno (e, t, ann) -> 
     let* () = is_valid_type ann t in
     let* te = check e t in
@@ -676,6 +679,9 @@ and check_pattern : type stage. stage pattern -> typ -> (typed pattern * (string
   | PWildcard ann ->
     let* pattern_type = Type_env.apply_subst expected_type in
     return (PWildcard (Ann_typed (get_location ann, pattern_type)), [])
+  | PError (msg, ann) ->
+    let* _ = error ann msg in
+    return (PError (msg, Ann_typed (get_location ann, TError)), [])
   | PVar (name, ann) ->
     let* pattern_type = Type_env.apply_subst expected_type in
     return (PVar (name, Ann_typed (get_location ann, pattern_type)), [name, mono pattern_type])
@@ -925,6 +931,9 @@ and normalize_typed_pattern id_to_name : typed pattern -> typed pattern Type_env
     let* args = Type_env.collect (List.map (normalize_typed_pattern id_to_name) args) in
     let* ann = normalize_typed_ann id_to_name ann in
     return (PCtor (name, args, ann))
+  | PError (msg, ann) ->
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (PError (msg, ann))
 
 and normalize_typed_expr id_to_name : typed expr -> typed expr Type_env.t = function
   | EConst (c, ann) ->
@@ -990,6 +999,9 @@ and normalize_typed_expr id_to_name : typed expr -> typed expr Type_env.t = func
     let* typ = Type_env.generalize_type_vars ~id_to_name typ in
     let* ann = normalize_typed_ann id_to_name ann in
     return (EAnno (expr, typ, ann))
+  | EError (msg, ann) ->
+    let* ann = normalize_typed_ann id_to_name ann in
+    return (EError (msg, ann))
 
 and normalize_typed_top_expr id_to_name : typed top_expr -> typed top_expr Type_env.t = function
   | TopLet (name, expr, ann) ->

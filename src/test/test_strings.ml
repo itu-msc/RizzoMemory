@@ -13,7 +13,7 @@ let parse_and_typecheck input =
 
 let rec expr_contains_case : _ expr -> bool = function
   | ECase _ -> true
-  | EConst _ | EVar _ -> false
+  | EConst _ | EVar _ | EError _ -> false
   | ECtor (_, args, _) -> List.exists expr_contains_case args
   | ELet (_, rhs, body, _) -> expr_contains_case rhs || expr_contains_case body
   | EFun (_, body, _) -> expr_contains_case body
@@ -26,7 +26,7 @@ let rec expr_contains_case : _ expr -> bool = function
 
 let rec expr_contains_call target : _ expr -> bool = function
   | EApp (EVar (name, _), _, _) when String.equal name target -> true
-  | EConst _ | EVar _ -> false
+  | EConst _ | EVar _ | EError _ -> false
   | ECtor (_, args, _) -> List.exists (expr_contains_call target) args
   | ELet (_, rhs, body, _) -> expr_contains_call target rhs || expr_contains_call target body
   | EFun (_, body, _) -> expr_contains_call target body
@@ -43,7 +43,7 @@ let rec expr_contains_call target : _ expr -> bool = function
 let rec expr_contains_let_binding target : _ expr -> bool = function
   | ELet ((name, _), rhs, body, _) ->
     String.equal name target || expr_contains_let_binding target rhs || expr_contains_let_binding target body
-  | EConst _ | EVar _ -> false
+  | EConst _ | EVar _ | EError _ -> false
   | ECtor (_, args, _) -> List.exists (expr_contains_let_binding target) args
   | EFun (_, body, _) -> expr_contains_let_binding target body
   | EApp (fn, args, _) -> expr_contains_let_binding target fn || List.exists (expr_contains_let_binding target) args

@@ -17,7 +17,7 @@ let parsed_app ((name, ann) : _ name) args =
   EApp (parsed_var (name, ann), args, ann)
 
 let is_simple_expr = function
-  | EVar _ | EConst _ -> true
+  | EVar _ | EConst _ | EError _ -> true
   | _ -> false
 
 let is_string_case_head = function
@@ -43,7 +43,7 @@ let rec sink_until_first_use name proj ann e =
   let used_in e = Collections.StringSet.mem var_name (Ast_helpers.free_vars_expr_no_globals e) in
   match e with
   | EVar (n1,_) when var_name = n1 -> ELet(name, proj, e, ann)
-  | EVar _ | EConst _ -> e
+  | EVar _ | EConst _ | EError _ -> e
   | ELet (name', rhs, e2, ann') -> 
     if used_in rhs then ELet(name, proj, e, ann)
     else ELet (name', rhs, sink_until_first_use name proj ann e2, ann')
@@ -76,6 +76,8 @@ let rec transform_patterns (p: 's Ast.program) =
 and compile_simple_pattern scrutinee case_body = function
   | PWildcard _ ->
     Some (case_body ())
+  | PError _ ->
+    None
   | PVar (s, ann) -> 
     let x = ELet ((s, ann), scrutinee, case_body (), ann) in
     Some (x)
@@ -131,6 +133,7 @@ and compile_string_branches scrutinee cases ann =
 and compile_string_pattern scrutinee pattern success next ann =
   match pattern with
   | PWildcard _ -> success
+  | PError _ -> next ()
   | PVar (name, name_ann) -> ELet ((name, name_ann), scrutinee, success, ann)
   | PConst (CString s, patt_ann) ->
     EIfe (
@@ -166,7 +169,7 @@ and compile_string_cons scrutinee head_pat tail_name success next ann =
 
 and compile_match e = 
   match e with
-  | EVar _ | EConst _ -> e 
+  | EVar _ | EConst _ | EError _ -> e 
   | ECtor (name, args, ann) -> ECtor (name, List.map compile_match args, ann)
   | ECase (scrutinee, cases, ann) when is_string_case cases ->
     compile_string_case scrutinee cases ann

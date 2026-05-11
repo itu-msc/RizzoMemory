@@ -9,7 +9,7 @@ let rec subst_program (p: _ program) =
 
 and subst (replacement_of : string StringMap.t) (e : 's expr) : 's expr =
   match e with
-  | EConst _ -> e
+  | EConst _ | EError _ -> e
   | EVar (y, ann) when StringMap.mem y replacement_of -> EVar (StringMap.find y replacement_of, ann)
   | EVar _ -> e
   | ELet ((y, y_ann), e1, e2,  ann) when StringMap.mem y replacement_of ->
@@ -73,6 +73,7 @@ and subst_pattern (replacement_of : string StringMap.t) (p : 's pattern) : 's pa
   match p with
   | PWildcard _ -> p
   | PConst _ -> p
+  | PError _ -> p
   | PVar (y, ann) when StringMap.mem y replacement_of -> PVar (StringMap.find y replacement_of, ann)
   | PVar _ -> p
   | PSigCons (p1, (y, y_ann), ann) ->

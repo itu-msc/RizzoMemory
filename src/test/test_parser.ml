@@ -148,6 +148,67 @@ let test_type_annotation_with_applied_tuple_type () =
     Alcotest.(check bool) "annotation parses as expected" true (eq_typ annotated_type expected_type)
   | _ -> Alcotest.fail "expected a single annotated top-level let"
 
+let test_local_let_accepts_wildcard_name () =
+  let input =
+    "let entry = let _ = console_out_signal s in start_event_loop ()\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [
+      toplet "entry"
+        (let_ "_"
+           (app (var "console_out_signal") [var "s"])
+           (app (var "start_event_loop") [const CUnit]));
+    ]
+  in
+  Alcotest.check program_testable "local let accepts wildcard name" expected parsed
+
+let test_missing_if_branch_expressions_recover () =
+  let input =
+    "let missing_then = if true then else 1\n"
+    ^ "let missing_both = let _z = if true then else in _z\n"
+    ^ "let missing_else = if true then 1 else\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [
+      toplet "missing_then"
+        (ife (bool true)
+           (error "Syntax error: expected expression after 'then'.")
+           (int 1));
+      toplet "missing_both"
+        (let_ "_z"
+           (ife (bool true)
+              (error "Syntax error: expected expression after 'then'.")
+              (error "Syntax error: expected expression after 'else'."))
+           (var "_z"));
+      toplet "missing_else"
+        (ife (bool true)
+           (int 1)
+           (error "Syntax error: expected expression after 'else'."));
+    ]
+  in
+  Alcotest.check program_testable "missing if branch expressions recover" expected parsed
+
+let test_missing_match_parts_recover () =
+  let input =
+    "let missing_scrutinee = match with | _ -> 1\n"
+    ^ "let missing_arm_body = match x with | _ ->\n"
+  in
+  let parsed = Rizzoc.Parser.parse_string input in
+  let expected : parsed program =
+    [
+      toplet "missing_scrutinee"
+        (case
+           (error "Syntax error: expected expression after 'match'.")
+           [ (pwild, int 1) ]);
+      toplet "missing_arm_body"
+        (case (var "x")
+           [ (pwild, error "Syntax error: expected expression after '->'.") ]);
+    ]
+  in
+  Alcotest.check program_testable "missing match parts recover" expected parsed
+
 let parser_tests =
   [
     "parser accepts syntax", `Quick, test_parser_program;
@@ -159,4 +220,7 @@ let parser_tests =
     "constructor application with parenthesized let", `Quick, test_constructor_application_with_parenthesized_let;
     "list literals and patterns", `Quick, test_list_literals_and_patterns_parse;
     "type annotation with applied tuple type", `Quick, test_type_annotation_with_applied_tuple_type;
+    "local let accepts wildcard name", `Quick, test_local_let_accepts_wildcard_name;
+    "missing if branch expressions recover", `Quick, test_missing_if_branch_expressions_recover;
+    "missing match parts recover", `Quick, test_missing_match_parts_recover;
   ]

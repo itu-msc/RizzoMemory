@@ -3,6 +3,7 @@ open! Ast_core
 let rec eq_expr a b =
   match a, b with
   | EConst (c1, _), EConst (c2, _) -> c1 = c2
+  | EError (msg1, _), EError (msg2, _) -> String.equal msg1 msg2
   | EVar (x1, _), EVar (x2, _) -> x1 = x2
   | ECtor (name1, args1, _), ECtor (name2, args2, _) ->
     eq_name name1 name2 && List.length args1 = List.length args2 && List.for_all2 eq_expr args1 args2
@@ -27,6 +28,7 @@ and eq_pattern a b =
   | PWildcard _, PWildcard _ -> true
   | PVar (x1, _), PVar (x2, _) -> x1 = x2
   | PConst (c1, _), PConst (c2, _) -> c1 = c2
+  | PError (msg1, _), PError (msg2, _) -> String.equal msg1 msg2
   | PTuple (a1, b1, _), PTuple (a2, b2, _) -> eq_pattern a1 a2 && eq_pattern b1 b2
   | PSigCons (a1, b1, _), PSigCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2
   | PStringCons (a1, b1, _), PStringCons (a2, b2, _) -> eq_pattern a1 a2 && eq_name b1 b2

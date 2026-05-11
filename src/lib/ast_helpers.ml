@@ -22,7 +22,7 @@ and free_vars_expr_no_globals e = free_vars_expr StringSet.empty e
 and free_vars_expr top_decl_names e : StringSet.t = 
   let free_vars_expr = free_vars_expr top_decl_names in  
   match e with
-  | EConst _ -> StringSet.empty
+  | EConst _ | EError _ -> StringSet.empty
   | EVar (x, _) -> StringSet.singleton x
   | ECtor (_, args, _) ->
     List.fold_left StringSet.union StringSet.empty (List.map free_vars_expr args)

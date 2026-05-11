@@ -101,7 +101,7 @@ let ann_has_tvar : type s. s Ast.ann -> bool = function
   | Ast.Ann_parsed _ | Ast.Ann_bound _ -> false
 
 let rec pattern_has_tvar : type s. s Ast.pattern -> bool = function
-  | Ast.PWildcard ann | Ast.PConst (_, ann) | Ast.PVar (_, ann) -> ann_has_tvar ann
+  | Ast.PWildcard ann | Ast.PConst (_, ann) | Ast.PVar (_, ann) | Ast.PError (_, ann) -> ann_has_tvar ann
   | Ast.PTuple (p1, p2, ann) -> ann_has_tvar ann || pattern_has_tvar p1 || pattern_has_tvar p2
   | Ast.PSigCons (p1, (_, ann2), ann) | Ast.PStringCons (p1, (_, ann2), ann) ->
       ann_has_tvar ann || ann_has_tvar ann2 || pattern_has_tvar p1
@@ -110,6 +110,7 @@ let rec pattern_has_tvar : type s. s Ast.pattern -> bool = function
 
 let rec expr_has_tvar : type s. s Ast.expr -> bool = function
   | Ast.EConst (_, ann) -> ann_has_tvar ann
+  | Ast.EError (_, ann) -> ann_has_tvar ann
   | Ast.EVar (_, ann) -> ann_has_tvar ann
   | Ast.ECtor ((_, ctor_ann), args, ann) ->
       ann_has_tvar ctor_ann || ann_has_tvar ann || List.exists expr_has_tvar args
