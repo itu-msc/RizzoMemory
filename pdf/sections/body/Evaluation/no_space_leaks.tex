@@ -26,8 +26,3 @@ Steps taken: 198480, Average step time: 154 us, Signals left in heap: 21
 \end{verbatim}
 
 From the output of Valgrind, we see no obvious memory leaks, with all memory lost reports being `0 bytes in 0 blocks'. We do however see that there is some still reachable memory, which is expected as the signal heap, registered outputs and top-level values are not being freed at the end of the program.
-
-\todo{see if there is more to say}
-
-\dots
-

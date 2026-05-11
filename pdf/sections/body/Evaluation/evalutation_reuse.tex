@@ -1,6 +1,85 @@
-\todo{The goal this section to show (using a Rizzo program) that we can correctly reuse the memory for values inside signals. OR that reuse does work.}
+% \todo{The goal this section to show (using a Rizzo program) that we can correctly reuse the memory for values inside signals. OR that reuse does work.}
 
 % To obtain additional debug information about the memory management in Rizzo, we instrument the runtime with logging of various extra information using the \texttt{\_\_RZ\_DEBUG\_MALLOC} compilation flag. This flag enables logging of all calls to \texttt{malloc}, \texttt{free}, and \texttt{realloc} in the runtime, which allows us to track the allocation and deallocation of memory in more detail.
 
-\todo{Let's do something like a \texttt{list\_map} \dots}
+As mentioned in \todo{add reference}, then there are not many cases where we can reuse Signals in Rizzo. However reuse on other objects is more common. To show reuse in action, we can use the following Rizzo program, which reads integers from the console and stores them in a list. The program then outputs the list of integers to the console.
+
+\begin{figure}
+    \begin{lstlisting}
+        fun entry _ =
+            let x = ["1", "2", "3"] in
+            let y = mk_sig_of_channel console in
+            let state = scan_l (fun acc n ->
+                list_reverse (match (parse_int n) with
+                | None -> acc
+                | Some(v) -> list_append acc [n])
+            ) x y in
+            let out = console_out_signal_l state in
+            start_event_loop ()
+    \end{lstlisting}
+    \caption{A Rizzo program that reads integers from the console and stores them in a list. The program then outputs the list of integers to the console.}
+\end{figure}
+
+The \texttt{list\_append} function recursively deconstructs the first list by separating the head cell from the tail. After this separation, the original cell is no longer referenced by the remaining input list, which makes it eligible for reuse. The generated code below illustrates the relevant part of \texttt{list\_append}: \texttt{lst1} is reset before the recursive call on the tail, allowing its storage to be reused when constructing the resulting list cell from the original head and the recursive result.
+
+\begin{lstlisting}
+    fun list_append(lst1, lst2) =
+        match lst1 with
+        | #0
+            dec lst1;
+            inc lst2;
+            ret lst2
+        | #1
+            let ctor_field67 = proj_0 lst1 in
+            inc ctor_field67;
+            let ctor_field68 = proj_1 lst1 in
+            inc ctor_field68;
+            let var105 = reset lst1 in
+            let var76 = list_append(ctor_field68, lst2) in
+            let var96 = reuse var105 in Ctor1(ctor_field67, var76) in
+            ret var96
+        | default 
+            dec lst1;
+            let var97 = match_fail("Non-exhaustive pattern match") in
+            ret var97
+\end{lstlisting}
+
+We then run the program with the \texttt{\_\_RZ\_DEBUG\_MALLOC} flag enabled and the input "4", "5", and "6" to the console. The program will then show debug information for each allocation, deallocation, and reuse of memory. To make it more convenient to analyse the debug output, we can filter the output for lines that contain "reuse" and extract the addresses of the reused memory. We can then group these addresses and count how many times each address was reused. The script to do this is shown in Figure \ref{fig:reuse_run_script}.
+
+\begin{figure}
+    \begin{verbatim}
+bun run exec .\examples\reuse.rizz --debug-malloc
+"4`n5`n6" | .\output.exe |
+    Select-String reuse |
+    ForEach-Object {
+    if ($_.Line -match '^reuse:\s+([0-9A-F]+)\b') 
+    { $matches[1] }
+    } |
+    Group-Object |
+    Sort-Object Count -Descending |
+    Tee-Object -Variable groups |
+    Format-Table Count, Name -AutoSize
+
+"TOTAL={0}" -f (($groups | Measure-Object Count -Sum).Sum)
+\end{verbatim}
+    \caption{The output of the program filtered for reuse events, showing the addresses of the reused memory and how many times each address was reused.}
+    \label{fig:reuse_run_script}
+\end{figure}
+
+Running the program we see that we have a total of 12 reuse events. We see that 3 different addresses are reused 3 times, indicating the initial allocation of 3 list cells that are then reused for each new append to the list. The address reused 2 times would be the first input and the address reused once would be the second input. This shows that a general operation like list append can benefit from reuse, and that the same memory can be reused multiple times. The output of running the script of Figure \ref{fig:reuse_run_script} is shown in Figure \ref{fig:reuse_result}.
+
+\begin{figure}
+\begin{verbatim}
+Count Name
+----- ----
+    3 000002064D9FE900
+    3 000002064D9FE960
+    3 000002064D9FE990
+    2 000002064D9FEB10
+    1 000002064D9FE9F0
+TOTAL=12
+\end{verbatim}
+    \caption{The debug output showing the addresses of the reused memory and how many times each address was reused.}
+    \label{fig:reuse_result}
+\end{figure}
 

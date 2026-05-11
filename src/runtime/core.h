@@ -437,12 +437,15 @@ static inline void rz_debug_print_box(rz_box_t box) {
                 case RZ_SIGNAL: { rz_debug_print_signal(box); } break;
                 case RZ_OBJECT: {
                     rz_object_fields_t* fields = (rz_object_fields_t*)box.as.obj;
-                    printf("ctor(%d, ref: %d)", fields->_base.header.tag, fields->_base.header.refcount);
+                    printf("ctor(%d, ref: %d) ", fields->_base.header.tag, fields->_base.header.refcount);
                     if(fields->_base.header.num_fields > 0) {
                         printf("{ ");
                         for (size_t i = 0; i < fields->_base.header.num_fields; i++)
                         {
-                            rz_debug_print_box(fields->fields[i]); printf(", ");
+                            rz_debug_print_box(fields->fields[i]); 
+                            if (i < fields->_base.header.num_fields - 1) {
+                                printf(", ");
+                            }
                         }
                         printf("}");
                     }
