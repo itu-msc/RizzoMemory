@@ -26,13 +26,10 @@ and the \textit{step semantics} which describe the process of applying the updat
 %Goal: Goal is to explain the update semantics. Explain the now vs. earlier heap.
 For the purpose of memory management, we will focus our attention on the update semantics but first we take a detour to understand the conceptual structure of the heap.
 In the typical way, the heap holds onto all dynamically allocated data such as tuples, signals, function closures, etc.
-Among these, signals are special because they must be traversed as part of the reactive semantics. Rizzo therefore distinguishes between the \textit{heap}, storing all dynamically allocated data, and the \textit{signal heap}, a subset of the heap containing only signals. This signal heap is further divided in two parts: the \texttt{now heap} holding only signals that belong to the current time step; and the \texttt{earlier heap} which hold all the stale signals to be updated.
-
-However, in Rizzo the sub-heap storing only signals is especially important since it must be iterated as part of the reactive semantics. 
-We call this sub-heap the `signal heap' and it is further sub-divided in two parts: \texttt{now heap} holding only signals that belong to the current time step; and the \texttt{earlier heap} which hold all the stale signals to be updated.
+Among these, signals are special because they must be traversed as part of the reactive semantics. Rizzo therefore distinguishes between the \textit{heap}, storing all dynamically allocated data, and the \textit{signal heap}, a subset of the heap containing only signals. This signal heap is further divided in two parts: the \texttt{now heap}, storing only signals that belong to the current time step; and the \texttt{earlier heap} which holds all the stale signals to be updated.
 
 %Goal: explain update semantics
-At runtime when some channel $\mathbf{C}$ produces a value, the step semantics describe that all signals must be moved to the \texttt{earlier heap}, consequently marking their data stale.
+At runtime when some channel $\mathbf{C}$ produces a value, the step semantics describe that all signals must be moved to the \texttt{earlier heap}, marking their data as stale.
 Then as described by the update semantics, each signal is moved one-by-one from the \texttt{earlier heap} to the \texttt{now heap}. To move a signal we first check if its tail is dependent on $\mathbf{C}$ and if so, the tail is \textit{advanced} to obtain a new signal whose data is copied into the original signal and the original signal is moved to the the \texttt{now heap}. Otherwise, the signal is moved to the \texttt{now heap} unchanged.
 %We avoid talking about the updated flag - that is an implementation detail. Belongs to advance
 
@@ -91,10 +88,30 @@ This ensures later values, and the data they reference, are released as early as
 We base these requirements on the result of running the program in Appendix~\ref{appendix:advance_func} through the reference counting algorithm of Section~\ref{section:refcount} to achieve the pseudo-code from Appendix~\ref{appendix:advance_ir}.
 
 With this interface in place, reference counting in the update semantics proceeds as: if a signal does not produce a new value, then there is nothing to do. If it does produce a value, the original head is decremented before advancing the tail, because it is stale and it may hold onto references, which could block reuse. The head and tail of the intermediate signal are incremented before being copied back into the original signal.
-
 Once the entire heap has been updated, the value that triggered the update process is decremented to release it.
 
-\todo{is this a better spot to show the heap? We could show example of general heap to show how the signal heap is just a subset}
+% \todo{is this a better spot to show the heap? We could show example of general heap to show how the signal heap is just a subset}
+
+Figure~\ref{figure:semantics:heap_vis} visualises the Rizzo heap as a sequence of mappings from location $l_i$ to value and reference counter $C_i$. The heap stores regular constructor values alongside signal values. 
+The signal heap is linked together by the \texttt{prev} and \texttt{next} fields.
+In Figure~\ref{figure:semantics:heap_vis}, the heap base is $l_2$, whose \texttt{prev} field is empty and whose \texttt{next} field forms the signal heap $l_2, l_n, l_m$.
+\todo{Make the above part flow better. I think its a fine spot to bring this up. We have introduced all the necessary information/concepts but it reads weird.}
+
+\begin{figure}[h]
+    \centering
+    \[\begin{array}{rcl}
+        l_0 &\to& \textbf{ctor}_0(),\ C_0 \\
+        l_1 &\to& \textbf{ctor}_0(42, 12),\ C_1 \\
+        l_2 &\to& \textbf{signal}(l_0, l_1),\ \texttt{prev}=\cdot,\ \texttt{next}=l_n,\ C_2 \\
+        l_3 &\to& \textbf{ctor}_0(),\ C_3 \\
+        l_4 &\to& \textbf{ctor}_1(5),\ C_4 \\
+        l_5 &\to& \textbf{ctor}_0(l_3, l_4),\ C_5 \\
+        \vdots & & \vdots \\
+        l_{n-1} &\to& \textbf{ctor}_6(l_{n-2}, l_{n-3}),\ C_{n-1} \\
+        l_n &\to& \textbf{signal}(\texttt{"Hello, World!"}, l_{n-1}),\ \texttt{prev}=l_5,\ \texttt{next}=l_m,\ C_n
+    \end{array}\]
+    \caption{The Rizzo heap storing both constructor- and signal values. The signal heap is linked together by the \texttt{prev} and \texttt{next} fields}\label{figure:semantics:heap_vis}
+\end{figure}
 
 
 % For RizzoLang we need to adhere to the \texttt{advance} and \texttt{update} semantics of Rizzo as defined in \citetitle{rizzo_modal_2025} \cite{rizzo_modal_2025}, but we also need to define the semantics of reference counting for our implementation. In this section we first describe the evaluation strategy of Rizzo, then the reactive semantics for signals, and finally how reference counting interacts with the heap structure.
