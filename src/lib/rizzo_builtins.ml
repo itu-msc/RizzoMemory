@@ -23,12 +23,15 @@ open Ast.Factory
 let output_builtins = [
   mk "console_out_signal" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TSignal (TParam "'a"), []), TUnit)) ();
   mk "console_out_signal_l" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater(TSignal (TParam "'a")), []), TUnit)) ();
+  mk "port_out_signal" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Owned]) (TFun (Cons1(TInt, [TSignal TString]), TUnit)) ();
   mk "quit_at" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater (TParam "'a"), []), TUnit)) ();
 ]
 
 let builtins = [
   mk "start_event_loop" ~ownership:(Some [Refcount_core.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
   mk "clock" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TInt, []), TSignal TInt)) ();
+  mk "random_int" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TInt, []), TInt)) ();
+  mk "port_input" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TInt, []), TSignal TString)) ();
   mk "parse_int" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TString, []), TApp (TName "Option", [TInt]))) ();
   mk "not" ~ownership:(Some [Refcount_core.Borrowed]) (TFun (Cons1(TBool, []), TBool)) ();
   mk "mod" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Borrowed]) (TFun (Cons1(TInt, [TInt]), TInt)) ();

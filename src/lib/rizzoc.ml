@@ -172,7 +172,7 @@ let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
     @ (if heap_info then ["-D__RZ_HEAP_INFO"] else [])
     @ (if debug_info || debug_malloc || heap_info then ["-g"] else [])
     @ ["-I"; runtime_include; input_file; "-o"; output_file]
-    @ (if is_windows then [] else ["-lm"])
+    @ (if is_windows then ["-lws2_32"] else ["-lm"])
   in
   { compiler; arguments }
 

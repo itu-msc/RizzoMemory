@@ -42,6 +42,31 @@ let test_clock_has_expected_type () =
         (Ast.eq_typ result_t (TSignal TInt))
   | _ -> Alcotest.fail "unexpected typed AST shape for clock builtin"
 
+let test_random_and_port_builtins_have_expected_types () =
+  let typed =
+    parse_and_typecheck
+      ("let random_value = random_int 10\n"
+      ^ "let port_values = port_input 9000\n"
+      ^ "let _port_out = port_out_signal 9001 port_values\n")
+  in
+  match typed with
+  | [ TopLet (_, EApp (EVar ("random_int", Ann_typed (_, random_t)), [_], Ann_typed (_, random_result_t)), _);
+      TopLet (_, EApp (EVar ("port_input", Ann_typed (_, port_input_t)), [_], Ann_typed (_, port_input_result_t)), _);
+      TopLet (_, EApp (EVar ("port_out_signal", Ann_typed (_, port_out_t)), [_; _], Ann_typed (_, port_out_result_t)), _) ] ->
+      Alcotest.(check bool) "random_int builtin type"
+        true
+        (Ast.eq_typ random_t (TFun (Cons1 (TInt, []), TInt)));
+      Alcotest.(check bool) "random_int result type" true (Ast.eq_typ random_result_t TInt);
+      Alcotest.(check bool) "port_input builtin type"
+        true
+        (Ast.eq_typ port_input_t (TFun (Cons1 (TInt, []), TSignal TString)));
+      Alcotest.(check bool) "port_input result type" true (Ast.eq_typ port_input_result_t (TSignal TString));
+      Alcotest.(check bool) "port_out_signal builtin type"
+        true
+        (Ast.eq_typ port_out_t (TFun (Cons1 (TInt, [TSignal TString]), TUnit)));
+      Alcotest.(check bool) "port_out_signal result type" true (Ast.eq_typ port_out_result_t TUnit)
+  | _ -> Alcotest.fail "unexpected typed AST shape for random/port builtins"
+
 let test_new_builtins_have_expected_types () =
   let typed =
     parse_and_typecheck
@@ -157,6 +182,7 @@ let builtin_tests = [
   "console is a string channel", `Quick, test_console_is_string_channel;
   "parse_int returns option int", `Quick, test_parse_int_has_expected_type;
   "clock returns signal int", `Quick, test_clock_has_expected_type;
+  "random and port builtins have expected types", `Quick, test_random_and_port_builtins_have_expected_types;
   "new builtins have expected types", `Quick, test_new_builtins_have_expected_types;
   "list constructors and builtins have expected types", `Quick, test_list_constructors_and_projection_builtins_have_expected_types;
   "list support builtins have expected types", `Quick, test_list_supporting_builtins_have_expected_types;

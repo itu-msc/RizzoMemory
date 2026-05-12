@@ -5,6 +5,9 @@
 #include <math.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #else
 #include <time.h>
@@ -24,7 +27,6 @@ typedef struct rz_timer
 } rz_timer_t;
 
 static rz_timer_t *rz_timer_list = NULL;
-static rz_channel_t rz_next_timer_channel = RZ_CHANNEL_TIMER_BASE;
 
 static inline double rz_timer_now_seconds(void)
 {
@@ -51,14 +53,13 @@ static inline void rz_timer_reset(void)
         timer = next;
     }
     rz_timer_list = NULL;
-    rz_next_timer_channel = RZ_CHANNEL_TIMER_BASE;
 }
 
 static inline rz_channel_t rz_timer_register(int64_t interval_ms)
 {
     rz_timer_t *timer = (rz_timer_t *)rz_malloc(sizeof(rz_timer_t));
     double now_seconds = rz_timer_now_seconds();
-    timer->channel = rz_next_timer_channel++;
+    timer->channel = rz_channel_alloc();
     timer->interval_seconds = (double)interval_ms / 1000.0;
     timer->start_seconds = now_seconds;
     timer->next_fire_seconds = now_seconds + timer->interval_seconds;

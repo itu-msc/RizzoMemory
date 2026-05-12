@@ -10,7 +10,7 @@
         "ext:install": "npm run build && npm run ext:install:nobuild",
         "ext:install:deps": "cd vscode-rizzo-lsp && npm install",
         "release:package:toolchain": "node ./scripts/package-toolchain.mjs",
-        "transpile": "gcc -I./src/runtime output.c -o output || clang -I./src/runtime output.c -o output",
+        "transpile": "gcc -I./src/runtime output.c -o output -lm || clang -I./src/runtime output.c -o output.exe -lws2_32",
         "rizzo": "npm run transpile && ./output",
         "rizz": "npm run rizzo"
     }
