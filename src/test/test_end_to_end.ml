@@ -298,6 +298,75 @@ let test_simple_console_identity () =
     | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
     | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
 
+let test_keyboard_signal_receives_key_press () =
+  let program =
+    {|
+      fun entry x =
+        let keys = mk_sig (wait keyboard) in
+        let _out = console_out_signal ("" :: keys) in
+        let _quit = quit_at (filter_l (fun key -> key == "q") keys) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~delay_s:1.0 ~program ~input:"q" () in
+  Alcotest.(check bool) "keyboard output appears" true (List.mem "q" outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_terminal_builtins_emit_escape_sequences_and_continue () =
+  let program =
+    {|
+      fun entry x =
+        let _clear = clear_screen () in
+        let _hide = hide_cursor () in
+        let _move = move_cursor 1 1 in
+        let _show = show_cursor () in
+        let _out = console_out_signal ("ok" :: never) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"trigger" () in
+  Alcotest.(check bool) "program output appears after terminal controls" true
+    (List.exists (fun line -> contains_substring ~text:line ~substring:"ok") outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_merge_events_combines_signal_updates () =
+  let program =
+    {|
+      fun label event =
+        match event with
+        | Left (_fast) -> "fast"
+        | Right (_slow) -> "slow"
+        | Both (_fast, _slow) -> "both"
+
+      fun entry x =
+        let fast = clock 20 in
+        let slow = clock 40 in
+        let events = merge_events label "start" fast slow in
+        let _out = console_out_signal events in
+        let _quit = quit_at (tail slow) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~delay_s:1.0 ~program ~input:"" () in
+  Alcotest.(check bool) "initial merge event appears" true (List.mem "start" outputs);
+  Alcotest.(check bool) "clock merge event appears" true
+    (List.exists
+       (fun line -> line = "fast" || line = "slow" || line = "both")
+       outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
 let test_runtime_mod_and_string_helpers () =
   let program =
     {|
@@ -524,6 +593,9 @@ let end_to_end_tests = [
   "random_int outputs value in range", `Quick, test_random_int_outputs_value_in_range;
   "random_int rejects non-positive bound", `Quick, test_random_int_rejects_non_positive_bound;
   "port output loops into port input", `Quick, test_port_output_loops_into_port_input;
+  "Keyboard signal receives key press", `Quick, test_keyboard_signal_receives_key_press;
+  "terminal builtins emit escape sequences and continue", `Quick, test_terminal_builtins_emit_escape_sequences_and_continue;
+  "merge_events combines signal updates", `Quick, test_merge_events_combines_signal_updates;
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
   "Issue filterL variant outputs quit after non-match", `Quick, test_issue_filterl_variant_outputs_quit_after_non_match;
   "Issue map_l variant outputs Hello world", `Quick, test_issue_map_l_variant_outputs_hello_world;

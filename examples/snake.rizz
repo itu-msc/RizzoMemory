@@ -1,103 +1,49 @@
-
 let board_width = 20
 let board_height = 20
 let board_cells = board_width * board_height
+let tick_ms = 250
+let clear_home = "\u{1B}[2J\u{1B}[H"
+
+type SnakeEvent =
+| Start
+| Tick (String)
+| Command (String)
 
 fun repeat_text text count : String -> Int -> String =
-    let is_done = count <= 0 in
-    match is_done with
-    | true -> ""
-    | false -> text + repeat_text text (count - 1)
+    if count <= 0 then "" else text + repeat_text text (count - 1)
 
 fun make_border unit : Unit -> String =
     "+" + repeat_text "-" board_width + "+"
 
 fun point_eq left right : (Int * Int) -> (Int * Int) -> Bool =
-    let pair = (left, right) in
-    match pair with
-    | ((x1, y1), (x2, y2)) ->
-        let same_x = x1 == x2 in
-        match same_x with
-        | true -> y1 == y2
-        | false -> false
+    match (left, right) with
+    | ((x1, y1), (x2, y2)) -> if x1 == x2 then y1 == y2 else false
 
-fun join_segments parts : List String -> String =
-    match parts with
-    | [] -> ""
-    | part :: rest ->
-        let rest_empty = list_is_empty rest in
-        match rest_empty with
-        | true -> part
-        | false -> part + ";" + join_segments rest
+fun snake_head snake : List (Int * Int) -> (Int * Int) =
+    match snake with
+    | head :: _rest -> head
+    | [] -> (0, 0)
 
-fun first_segment parts : List String -> String =
-    match parts with
-    | [] -> ""
-    | part :: rest -> part
+fun snake_body snake : List (Int * Int) -> List (Int * Int) =
+    match snake with
+    | _head :: rest -> rest
+    | [] -> []
 
-fun rest_segments parts : List String -> String =
-    match parts with
-    | [] -> ""
-    | part :: rest -> join_segments rest
+fun snake_without_tail snake : List (Int * Int) -> List (Int * Int) =
+    match snake with
+    | [] -> []
+    | head :: rest ->
+        if list_is_empty rest then []
+        else list_append [head] (snake_without_tail rest)
 
-fun without_last_segment parts : List String -> String =
-    match parts with
-    | [] -> ""
-    | part :: rest ->
-        let rest_empty = list_is_empty rest in
-        match rest_empty with
-        | true -> ""
-        | false ->
-            let rest_has_one = list_length rest == 1 in
-            match rest_has_one with
-            | true -> part
-            | false -> part + ";" + without_last_segment rest
-
-fun point_to_token point : (Int * Int) -> String =
-    match point with
-    | (x, y) -> string_of_int x + "_" + string_of_int y
-
-fun token_to_point token : String -> (Int * Int) =
-    let parts = string_split token "_" in
-    match parts with
-    | x_text :: rest ->
-        let rest_empty = list_is_empty rest in
-        match rest_empty with
-        | true -> (0, 0)
-        | false ->
-            let y_text = list_head rest in
-            let parsed_x = parse_int x_text in
-            match parsed_x with
-            | Some (x) ->
-                let parsed_y = parse_int y_text in
-                match parsed_y with
-                | Some (y) -> (x, y)
-                | _ -> (0, 0)
-            | _ -> (0, 0)
-    | _ -> (0, 0)
-
-fun snake_head snake : String -> (Int * Int) =
-    token_to_point (first_segment (string_split snake ";"))
-
-fun snake_body snake : String -> String =
-    rest_segments (string_split snake ";")
-
-fun snake_without_tail snake : String -> String =
-    without_last_segment (string_split snake ";")
-
-fun prepend_token token snake : String -> String -> String =
-    let snake_empty = snake == "" in
-    match snake_empty with
-    | true -> token
-    | false -> token + ";" + snake
-
-fun snake_contains point snake : (Int * Int) -> String -> Bool =
-    let token = point_to_token point in
-    string_contains (";" + snake + ";") (";" + token + ";")
+fun snake_contains point snake : (Int * Int) -> List (Int * Int) -> Bool =
+    match snake with
+    | [] -> false
+    | head :: rest ->
+        if point_eq point head then true else snake_contains point rest
 
 fun move_point direction point : String -> (Int * Int) -> (Int * Int) =
-    let step = (direction, point) in
-    match step with
+    match (direction, point) with
     | ("up", (x, y)) -> (x, y - 1)
     | ("down", (x, y)) -> (x, y + 1)
     | ("left", (x, y)) -> (x - 1, y)
@@ -107,18 +53,10 @@ fun move_point direction point : String -> (Int * Int) -> (Int * Int) =
 fun is_inside point : (Int * Int) -> Bool =
     match point with
     | (x, y) ->
-        let x_negative = x < 0 in
-        match x_negative with
-        | true -> false
-        | false ->
-            let y_negative = y < 0 in
-            match y_negative with
-            | true -> false
-            | false ->
-                let x_too_large = x >= board_width in
-                match x_too_large with
-                | true -> false
-                | false -> y < board_height
+        if x < 0 then false
+        else if y < 0 then false
+        else if x >= board_width then false
+        else y < board_height
 
 fun opposite_direction direction : String -> String =
     match direction with
@@ -132,163 +70,130 @@ fun normalize_command input : String -> String =
     match input with
     | "w" -> "up"
     | "W" -> "up"
-    | "up" -> "up"
+    | "ArrowUp" -> "up"
     | "a" -> "left"
     | "A" -> "left"
-    | "left" -> "left"
+    | "ArrowLeft" -> "left"
     | "s" -> "down"
     | "S" -> "down"
-    | "down" -> "down"
+    | "ArrowDown" -> "down"
     | "d" -> "right"
     | "D" -> "right"
-    | "right" -> "right"
+    | "ArrowRight" -> "right"
     | "q" -> "quit"
     | "Q" -> "quit"
-    | "quit" -> "quit"
+    | "Escape" -> "quit"
     | _ -> ""
 
-fun choose_direction current_direction input : String -> String -> String =
-    let command = normalize_command input in
-    let command_empty = command == "" in
-    match command_empty with
-    | true -> current_direction
-    | false ->
-        let command_quit = command == "quit" in
-        match command_quit with
-        | true -> current_direction
-        | false ->
-            let opposite = opposite_direction current_direction in
-            let reversing = command == opposite in
-            match reversing with
-            | true -> current_direction
-            | false -> command
+fun is_direction command : String -> Bool =
+    if command == "up" then true
+    else if command == "down" then true
+    else if command == "left" then true
+    else command == "right"
+
+fun choose_direction current_direction command : String -> String -> String =
+    if is_direction command then
+        if command == opposite_direction current_direction then current_direction else command
+    else current_direction
+
+fun queue_direction current_direction queued_direction command : String -> String -> String -> String =
+    if is_direction command then
+        if command == opposite_direction current_direction then queued_direction else command
+    else queued_direction
 
 fun point_of_index index : Int -> (Int * Int) =
     (mod index board_width, div index board_width)
 
-fun find_food snake start remaining : String -> Int -> Int -> (Int * Int) =
-    let no_remaining = remaining <= 0 in
-    match no_remaining with
-    | true -> (0, 0)
-    | false ->
+fun find_food snake start remaining : List (Int * Int) -> Int -> Int -> (Int * Int) =
+    if remaining <= 0 then (0, 0)
+    else
         let candidate = point_of_index (mod start board_cells) in
-        let occupied = snake_contains candidate snake in
-        match occupied with
-        | true -> find_food snake (start + 1) (remaining - 1)
-        | false -> candidate
+        if snake_contains candidate snake
+        then find_food snake (start + 1) (remaining - 1)
+        else candidate
 
-fun render_cell x y snake food : Int -> Int -> String -> (Int * Int) -> String =
+fun render_cell x y snake food : Int -> Int -> List (Int * Int) -> (Int * Int) -> String =
     let point = (x, y) in
-    let head = snake_head snake in
-    let body = snake_body snake in
-    let on_head = point_eq point head in
-    match on_head with
-    | true -> "@"
-    | false ->
-        let on_body = snake_contains point body in
-        match on_body with
-        | true -> "o"
-        | false ->
-            let on_food = point_eq point food in
-            match on_food with
-            | true -> "*"
-            | false -> " "
+    if point_eq point (snake_head snake) then "@"
+    else if snake_contains point (snake_body snake) then "o"
+    else if point_eq point food then "*"
+    else " "
 
-fun render_row_cells x y snake food : Int -> Int -> String -> (Int * Int) -> String =
-    let row_done = x >= board_width in
-    match row_done with
-    | true -> ""
-    | false -> render_cell x y snake food + render_row_cells (x + 1) y snake food
+fun render_row_cells x y snake food : Int -> Int -> List (Int * Int) -> (Int * Int) -> String =
+    if x >= board_width then ""
+    else render_cell x y snake food + render_row_cells (x + 1) y snake food
 
-fun render_rows y snake food : Int -> String -> (Int * Int) -> String =
-    let board_done = y >= board_height in
-    match board_done with
-    | true -> ""
-    | false -> "|" + render_row_cells 0 y snake food + "|\n" + render_rows (y + 1) snake food
+fun render_rows y snake food : Int -> List (Int * Int) -> (Int * Int) -> String =
+    if y >= board_height then ""
+    else "|" + render_row_cells 0 y snake food + "|\n" + render_rows (y + 1) snake food
 
-fun render_state state : (String * ((Int * Int) * (String * (Int * String)))) -> String =
+fun render_state state : (List (Int * Int) * ((Int * Int) * (String * (String * (Int * String))))) -> String =
     match state with
-    | (snake, (food, (direction, (score, status)))) ->
+    | (snake, (food, (direction, (_queued_direction, (score, status))))) ->
         let border = make_border () in
         let board = border + "\n" + render_rows 0 snake food + border in
         let hud = "Score: " + string_of_int score + "  Direction: " + direction + "\n" in
-        let help = "Controls: w/a/s/d or up/left/down/right. Enter q to quit.\n" in
-        let still_running = status == "" in
-        match still_running with
-        | true -> hud + help + board
-        | false -> hud + help + board + "\n" + status
+        let help = "Controls: w/a/s/d, arrow keys, q, or Escape.\n" in
+        clear_home + (if status == "" then hud + help + board else hud + help + board + "\n" + status)
 
-fun is_finished state : (String * ((Int * Int) * (String * (Int * String)))) -> Bool =
+fun is_finished state : (List (Int * Int) * ((Int * Int) * (String * (String * (Int * String))))) -> Bool =
     match state with
-    | (_snake, (_food, (_direction, (_score, status)))) ->
-        let still_running = status == "" in
-        match still_running with
-        | true -> false
-        | false -> true
+    | (_snake, (_food, (_direction, (_queued_direction, (_score, status))))) -> not (status == "")
 
-fun update_state state input : (String * ((Int * Int) * (String * (Int * String)))) -> String -> (String * ((Int * Int) * (String * (Int * String)))) =
+fun move_snake state command : (List (Int * Int) * ((Int * Int) * (String * (String * (Int * String))))) -> String -> (List (Int * Int) * ((Int * Int) * (String * (String * (Int * String))))) =
     match state with
-    | (snake, (food, (direction, (score, status)))) ->
-        let still_running = status == "" in
-        match still_running with
-        | true ->
-            let command = normalize_command input in
-            let should_quit = command == "quit" in
-            match should_quit with
-            | true ->
-                (snake, (food, (direction, (score, "Thanks for playing."))))
-            | false ->
-                let head = snake_head snake in
-                let next_direction = choose_direction direction input in
-                let next_head = move_point next_direction head in
-                let next_body =
-                    let ate_now = point_eq next_head food in
-                    match ate_now with
-                    | true -> snake
-                    | false -> snake_without_tail snake
+    | (snake, (food, (direction, (queued_direction, (score, status))))) ->
+        if not (status == "") then state
+        else
+            let next_direction = queue_direction direction queued_direction command in
+            let head = snake_head snake in
+            let next_head = move_point next_direction head in
+            let ate_food = point_eq next_head food in
+            let next_body = if ate_food then snake else snake_without_tail snake in
+            if not (is_inside next_head) then
+                (snake, (food, (direction, (queued_direction, (score, "Game over: you hit the wall.")))))
+            else if snake_contains next_head next_body then
+                (snake, (food, (direction, (queued_direction, (score, "Game over: you ran into yourself.")))))
+            else
+                let next_snake = next_head :: next_body in
+                let next_score = if ate_food then score + 1 else score in
+                let next_food =
+                    if ate_food
+                    then find_food next_snake (random_int board_cells) board_cells
+                    else food
                 in
-                let hit_wall =
-                    let inside = is_inside next_head in
-                    match inside with
-                    | true -> false
-                    | false -> true
-                in
-                let hit_self = snake_contains next_head next_body in
-                match hit_wall with
-                | true ->
-                    (snake, (food, (next_direction, (score, "Game over: you hit the wall."))))
-                | false ->
-                    match hit_self with
-                    | true ->
-                        (snake, (food, (next_direction, (score, "Game over: you ran into yourself."))))
-                    | false ->
-                        let ate_food = point_eq next_head food in
-                        let next_snake = prepend_token (point_to_token next_head) next_body in
-                        let next_score =
-                            let gained_score = ate_food in
-                            match gained_score with
-                            | true -> score + 1
-                            | false -> score
-                        in
-                        let next_food =
-                            let needs_food = ate_food in
-                            match needs_food with
-                            | true -> find_food next_snake (score * 7 + board_width + board_height) board_cells
-                            | false -> food
-                        in
-                        (next_snake, (next_food, (next_direction, (next_score, ""))))
-        | false -> state
+                (next_snake, (next_food, (next_direction, (next_direction, (next_score, "")))))
+
+fun update_state state event : (List (Int * Int) * ((Int * Int) * (String * (String * (Int * String))))) -> SnakeEvent -> (List (Int * Int) * ((Int * Int) * (String * (String * (Int * String))))) =
+    match state with
+    | (snake, (food, (direction, (queued_direction, (score, status))))) ->
+        match event with
+        | Start -> state
+        | Command (command) ->
+            (snake, (food, (direction, (queue_direction direction queued_direction command, (score, status)))))
+        | Tick (command) -> move_snake state command
+
+fun to_snake_event event : Sync (Int, String) -> SnakeEvent =
+    match event with
+    | Left (_tick) -> Tick ("")
+    | Right (command) -> Command (command)
+    | Both (_tick, command) -> Tick (command)
 
 fun entry x =
-    let console_sig = "" :: mk_sig (wait console) in
-    let initial_snake = "3_3;2_3;1_3" in
-    let initial_food = find_food initial_snake 5 board_cells in
-    let initial_state = (initial_snake, (initial_food, ("right", (0, "")))) in
-    let game_clock = clock 300 in
-    let input_sig = map (snd) (sample game_clock console_sig) in
-    let game_states = scan update_state initial_state input_sig in
+    let _clear = clear_screen () in
+    let _hide_cursor = hide_cursor () in
+    let key_sig = "" :: mk_sig (wait keyboard) in
+    let command_sig = map normalize_command key_sig in
+    let initial_snake = [(3, 3), (2, 3), (1, 3)] in
+    let initial_food = find_food initial_snake (random_int board_cells) board_cells in
+    let initial_state = (initial_snake, (initial_food, ("right", ("right", (0, ""))))) in
+    let game_clock = clock tick_ms in
+    let events = merge_events to_snake_event Start game_clock command_sig in
+    let game_states = scan update_state initial_state events in
     let rendered_states = map render_state game_states in
     let _out = console_out_signal rendered_states in
-    let _quit = quit_at (filter is_finished game_states) in
-    let _x = console_out_signal game_clock in
-    start_event_loop ()
+    let _quit_key = quit_at (filter (fun command -> command == "quit") command_sig) in
+    let _quit_game = quit_at (filter is_finished game_states) in
+    let result = start_event_loop () in
+    let _show_cursor = show_cursor () in
+    result

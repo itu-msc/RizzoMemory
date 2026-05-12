@@ -45,6 +45,7 @@ static void rz_port_output_list_add(rz_port_output_list_t **list, rz_object_t *s
 static void rz_print_registered_outputs();
 static void rz_print_registered_output_head(rz_signal_t *sig, bool force);
 static void rz_send_registered_port_output_head(rz_port_output_t *output, bool force);
+static void rz_drain_keyboard_events();
 
 rz_signal_list_t *rz_global_output_signals = NULL;
 rz_port_output_list_t *rz_global_port_output_signals = NULL;
@@ -59,6 +60,7 @@ static void rz_init_rizzo()
     rz_should_quit = false;
     rz_timer_reset();
     rz_tcp_reset();
+    rz_keyboard_queue_reset();
     rz_random_state = 0;
 }
 
@@ -98,6 +100,15 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
 #endif
 }
 
+static void rz_drain_keyboard_events()
+{
+    char key_buffer[RZ_KEYBOARD_EVENT_SIZE];
+    while (!rz_should_quit && rz_keyboard_take_event(key_buffer, sizeof(key_buffer)))
+    {
+        rz_step(RZ_CHANNEL_KEYBOARD_IN, rz_make_string_len(key_buffer, strlen(key_buffer)));
+    }
+}
+
 /* Starts the Rizzo event loop:
    - Listens to input on channels (currently only console input)
    - Then produces a time step by calling `rz_step` (which updates the heap) */
@@ -116,6 +127,7 @@ static rz_box_t rz_start_event_loop()
 
     while (!rz_should_quit)
     {
+        rz_drain_keyboard_events();
         double now = rz_timer_now_seconds();
         uint32_t timeout_ms = UINT32_MAX;
         bool has_timers = rz_timer_next_timeout_ms(now, &timeout_ms);
@@ -138,6 +150,7 @@ static rz_box_t rz_start_event_loop()
         {
             rz_step(tcp_channel, tcp_value);
         }
+        rz_drain_keyboard_events();
         if (status == RZ_OK)
         {
             rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_string_len(buffer, strlen(buffer)));

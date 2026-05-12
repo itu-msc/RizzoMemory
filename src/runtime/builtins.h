@@ -295,6 +295,50 @@ static inline rz_box_t rz_builtin_console_out_signal_l(size_t num_args, rz_box_t
 	return RZ_UNIT;
 }
 
+static inline rz_box_t rz_builtin_clear_screen(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("clear_screen", 1, num_args);
+	rz_builtin_expect_unit("clear_screen", 0, args[0]);
+	printf("\033[2J\033[H");
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_hide_cursor(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("hide_cursor", 1, num_args);
+	rz_builtin_expect_unit("hide_cursor", 0, args[0]);
+	printf("\033[?25l");
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_show_cursor(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("show_cursor", 1, num_args);
+	rz_builtin_expect_unit("show_cursor", 0, args[0]);
+	printf("\033[?25h");
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_move_cursor(size_t num_args, rz_box_t *args)
+{
+	int64_t row;
+	int64_t column;
+	rz_builtin_expect_arity("move_cursor", 2, num_args);
+	row = rz_builtin_expect_int("move_cursor", 0, args[0]);
+	column = rz_builtin_expect_int("move_cursor", 1, args[1]);
+	if (row <= 0 || column <= 0)
+	{
+		fprintf(stderr, "Runtime error: builtin 'move_cursor' expected positive row and column, got %" PRId64 ", %" PRId64 "\n", row, column);
+		exit(1);
+	}
+	printf("\033[%" PRId64 ";%" PRId64 "H", row, column);
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
 static inline rz_box_t rz_builtin_string_contains(size_t num_args, rz_box_t *args)
 {
 	size_t text_len;

@@ -158,3 +158,15 @@ fun trigger f s1 s2 =
 
 fun trigger_l f s1 s2 =
     (fun s1' -> trigger f s1' s2) |> s1
+
+fun merge_events_from f xs ys changed : (Sync ('a, 'b) -> 'c) -> Signal 'a -> Signal 'b -> Sync (Signal 'a, Signal 'b) -> Signal 'c =
+    match changed with
+    | Left (xs_) ->
+        f (Left (head xs_)) :: (merge_events_from f xs_ ys |> sync (tail xs_) (tail ys))
+    | Right (ys_) ->
+        f (Right (head ys_)) :: (merge_events_from f xs ys_ |> sync (tail xs) (tail ys_))
+    | Both (xs_, ys_) ->
+        f (Both (head xs_, head ys_)) :: (merge_events_from f xs_ ys_ |> sync (tail xs_) (tail ys_))
+
+fun merge_events f initial xs ys : (Sync ('a, 'b) -> 'c) -> 'c -> Signal 'a -> Signal 'b -> Signal 'c =
+    initial :: (merge_events_from f xs ys |> sync (tail xs) (tail ys))

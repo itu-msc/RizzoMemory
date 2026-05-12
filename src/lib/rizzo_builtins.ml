@@ -25,6 +25,10 @@ let output_builtins = [
   mk "console_out_signal_l" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater(TSignal (TParam "'a")), []), TUnit)) ();
   mk "port_out_signal" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Owned]) (TFun (Cons1(TInt, [TSignal TString]), TUnit)) ();
   mk "quit_at" ~ownership:(Some [Refcount_core.Owned]) (TFun (Cons1(TLater (TParam "'a"), []), TUnit)) ();
+  mk "clear_screen" ~ownership:(Some [Refcount_core.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
+  mk "hide_cursor" ~ownership:(Some [Refcount_core.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
+  mk "show_cursor" ~ownership:(Some [Refcount_core.Borrowed]) (TFun(Cons1(TUnit, []), TUnit)) ();
+  mk "move_cursor" ~ownership:(Some [Refcount_core.Borrowed; Refcount_core.Borrowed]) (TFun(Cons1(TInt, [TInt]), TUnit)) ();
 ]
 
 let builtins = [
@@ -69,7 +73,7 @@ let builtins = [
   mk "snd" ~proj_idx: (Some 1) (typ_fun1 (typ_tuple (typ_param "'a") (typ_param "'b")) (typ_param "'b")) ();
 
   mk "console" (TChan TString) ();
-
+  mk "keyboard" (TChan TString) ();
 ] @ output_builtins
 
 let builtins_map = List.map (fun b -> b.name, b) builtins |> M.of_list

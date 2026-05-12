@@ -18,6 +18,13 @@ let test_console_is_string_channel () =
       Alcotest.(check bool) "console is Chan String" true (Ast.eq_typ console_t (TChan TString))
   | _ -> Alcotest.fail "unexpected typed AST shape for console builtin"
 
+let test_keyboard_is_string_channel () =
+  let typed = parse_and_typecheck "let use_keyboard = keyboard\n" in
+  match typed with
+  | [TopLet (_, EVar ("keyboard", Ann_typed (_, keyboard_t)), _)] ->
+      Alcotest.(check bool) "keyboard is Chan String" true (Ast.eq_typ keyboard_t (TChan TString))
+  | _ -> Alcotest.fail "unexpected typed AST shape for keyboard builtin"
+
 let test_parse_int_has_expected_type () =
   let typed = parse_and_typecheck "let maybe_num = parse_int(\"42\")\n" in
   match typed with
@@ -66,6 +73,29 @@ let test_random_and_port_builtins_have_expected_types () =
         (Ast.eq_typ port_out_t (TFun (Cons1 (TInt, [TSignal TString]), TUnit)));
       Alcotest.(check bool) "port_out_signal result type" true (Ast.eq_typ port_out_result_t TUnit)
   | _ -> Alcotest.fail "unexpected typed AST shape for random/port builtins"
+
+let test_terminal_builtins_have_expected_types () =
+  let typed =
+    parse_and_typecheck
+      ("let _clear = clear_screen ()\n"
+      ^ "let _hide = hide_cursor ()\n"
+      ^ "let _move = move_cursor 1 2\n"
+      ^ "let _show = show_cursor ()\n")
+  in
+  match typed with
+  | [ TopLet (_, EApp (EVar ("clear_screen", Ann_typed (_, clear_t)), [_], Ann_typed (_, clear_result_t)), _);
+      TopLet (_, EApp (EVar ("hide_cursor", Ann_typed (_, hide_t)), [_], Ann_typed (_, hide_result_t)), _);
+      TopLet (_, EApp (EVar ("move_cursor", Ann_typed (_, move_t)), [_; _], Ann_typed (_, move_result_t)), _);
+      TopLet (_, EApp (EVar ("show_cursor", Ann_typed (_, show_t)), [_], Ann_typed (_, show_result_t)), _) ] ->
+      Alcotest.(check bool) "clear_screen builtin type" true (Ast.eq_typ clear_t (TFun (Cons1 (TUnit, []), TUnit)));
+      Alcotest.(check bool) "clear_screen result type" true (Ast.eq_typ clear_result_t TUnit);
+      Alcotest.(check bool) "hide_cursor builtin type" true (Ast.eq_typ hide_t (TFun (Cons1 (TUnit, []), TUnit)));
+      Alcotest.(check bool) "hide_cursor result type" true (Ast.eq_typ hide_result_t TUnit);
+      Alcotest.(check bool) "move_cursor builtin type" true (Ast.eq_typ move_t (TFun (Cons1 (TInt, [TInt]), TUnit)));
+      Alcotest.(check bool) "move_cursor result type" true (Ast.eq_typ move_result_t TUnit);
+      Alcotest.(check bool) "show_cursor builtin type" true (Ast.eq_typ show_t (TFun (Cons1 (TUnit, []), TUnit)));
+      Alcotest.(check bool) "show_cursor result type" true (Ast.eq_typ show_result_t TUnit)
+  | _ -> Alcotest.fail "unexpected typed AST shape for terminal builtins"
 
 let test_new_builtins_have_expected_types () =
   let typed =
@@ -180,9 +210,11 @@ let test_contextual_function_literals_allow_curried_shapes () =
 
 let builtin_tests = [
   "console is a string channel", `Quick, test_console_is_string_channel;
+  "keyboard is a string channel", `Quick, test_keyboard_is_string_channel;
   "parse_int returns option int", `Quick, test_parse_int_has_expected_type;
   "clock returns signal int", `Quick, test_clock_has_expected_type;
   "random and port builtins have expected types", `Quick, test_random_and_port_builtins_have_expected_types;
+  "terminal builtins have expected types", `Quick, test_terminal_builtins_have_expected_types;
   "new builtins have expected types", `Quick, test_new_builtins_have_expected_types;
   "list constructors and builtins have expected types", `Quick, test_list_constructors_and_projection_builtins_have_expected_types;
   "list support builtins have expected types", `Quick, test_list_supporting_builtins_have_expected_types;
