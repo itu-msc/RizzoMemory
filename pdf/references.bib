@@ -206,3 +206,20 @@ series = {PLDI '93}
   title = {About Valgrind},
   url = {https://valgrind.org/info}
 }
+
+@article{frame_limited_reuse,
+	title = {Reference counting with frame limited reuse},
+	volume = {6},
+	url = {https://dl.acm.org/doi/10.1145/3547634},
+	doi = {10.1145/3547634},
+	abstract = {The recently introduced \_Perceus\_ algorithm can automatically insert   reference count instructions such that the resulting (cycle-free) program is   \_garbage free\_: objects are freed at the very moment they can no longer be   referenced. An important extension is reuse analysis. This optimization pairs   objects of known size with fresh allocations of the same size and tries to   reuse the object in-place at runtime if it happens to be unique. Unfortunately,   current implementations of reuse analysis are fragile with respect to small   program transformations, or can cause an arbitrary increase in the peak heap   usage. We present a novel \_drop-guided\_ reuse algorithm that is simpler and   more robust than previous approaches. Moreover, we generalize the linear   resource calculus to precisely characterize garbage-free and frame-limited   evaluations. On each function call, a frame-limited evaluation may hold on to   memory longer if the size is bounded by a constant factor. Using this framework   we show that our drop-guided reuse \_is\_ frame-limited and find that an   implementation of our new reuse approach in Koka can provide significant   speedups.},
+	pages = {103:357--103:380},
+	issue = {{ICFP}},
+	journaltitle = {Implementation and Benchmarks for "Reference Counting with Frame Limited Reuse"},
+	shortjournal = {Proc. {ACM} Program. Lang.},
+	author = {Lorenzen, Anton and Leijen, Daan},
+	urldate = {2026-03-05},
+	date = {2022-08-31},
+	file = {Full Text PDF:/home/chobbie/Zotero/storage/59FRSKVD/Lorenzen and Leijen - 2022 - Reference counting with frame limited reuse.pdf:application/pdf},
+}
+

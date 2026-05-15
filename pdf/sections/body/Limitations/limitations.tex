@@ -2,10 +2,15 @@
 
 \subsection{Reuse of Rizzo beans}
 
-\todo{Re-iterate that reuse in signal combinators is limited (we have already shown the map and why reusing would be unsafe), maybe show stop?. Anyway, we want to highlight the problem that too many instructions are inserted in signal combinators}
+As we described in Section~\ref{section:refcount:beans:counting}, the reactive semantics limit reuse in signal combinators to non-recursive combinators such as $stop$. In recursive combinators, the \textbf{reset} instructions are still inserted even though they will never succeed and these then force the insertion of additional \textbf{inc} instructions. 
+The reason is that the reference counting algorithms always insert \textbf{reset}/\textbf{reuse} pairs whenever they encounter a suitable constructor expression, even if the memory will be needed again later.
+A natural way to fix this would be to not insert \textbf{reset}/\textbf{reuse} in branches where the tail bound by the match is used in a recursive call. Preventing inserts at the level of branches would still allow reuse in combinators like $stop$ that have non-recursive and recursive branches. 
 
-\todo{The order inc/dec reset/reuse insertion. In the map combinator, in the reset/reuse algorithm we insert a $reset \; s$ which forces us to then insert a $inc \; s$ instruction. This is less than ideal and the perceus paper (either 1 or 2) they observed something similar and proposed to flip the order.}
-
+We are not the first to observe that the eager \textbf{reset}/\textbf{reuse} insertion can cause problems. 
+\citeauthor*{frame_limited_reuse}~\cite{frame_limited_reuse} 
+present a program similar to our $map$ combinator, but their concern is instead that the resulting code can hold onto memory for too long.
+Their solution is to reverse the order in which \textbf{reset}/\textbf{reuse} instructions and \textbf{inc}/\textbf{dec} are inserted, so that \textbf{reset} instructions are only inserted when they can replace a \textbf{dec}.
+This would also solve our issue of redundant and always failing \textbf{reset} instructions. 
 
 \subsection{Later values are computed more than once per time step}
 

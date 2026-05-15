@@ -331,4 +331,5 @@ Again, the data of $L_4$ is written into $L_2$ and $L_4$ is decremented, discard
 
 The example shows that if the $map$ combinator were to reuse its input (in this case variable $c$ and by extension $L_1$), then the only reference to the console would be overwritten, and it would no longer be possible to advance $L_2$.
 Therefore, when the algorithm decides to deny reuse in signal combinators such as $map$, it is making a correct and safe choice.
-However, this decision is not optimal. Assuming $map$ takes an owned reference to its parameter $s$ it is sufficient to just pass the reference to $\textbf{ctor}_2(s)$ which saves the \textbf{inc} and \textbf{reset} instructions. We return to this limitation in Section~\ref{sec:limitations}.
+However, this choice also results in unnecessary \textbf{inc} and \textbf{reset} instructions since if we assume $map$ takes an owned reference to its parameter $s$, it is sufficient to consume the owned reference by simply passing it to $\textbf{ctor}_2(s)$.
+We return to this limitation in Section~\ref{sec:limitations}.
