@@ -65,16 +65,19 @@ To achieve the correct AST shape, we apply the transformation pipeline shown in 
 
 The compiler performs consecutive lambda elimination, lambda lifting, copy propagation, alpha-renaming, pattern lowering, dead let elimination, and A-normalization. Consecutive lambda elimination is not strictly required but reduces the number of lambdas to be lifted. 
 
-The lowering of patterns into let-bindings may not directly contribute to any invariant, however it is required since there is no pattern matching in the IR.\@ The result of translating a match such as \lstinline|match mysig with x :: xs -> e| is shown in Listing~\ref{listing:refcount:elim_pattern}. The match expression must be kept around as it is the only point where \textbf{reset}/\textbf{reuse} pairs can be inserted, we will discuss this further in Section~\ref{section:refcount:beans}.
+The lowering of patterns into let-bindings may not directly contribute to any invariant, however it is required since there is no pattern matching in the IR.
+The result of translating a match such as \lstinline|match s with x :: xs -> e| is shown in Listing~\ref{listing:refcount:elim_pattern}. 
+When translating signal patterns, we delay the binding of the tail until its first use in $e$, since binding it too early may lead to \textbf{reset} instructions placed such that they prevent reuse.
+The match expression must be kept around as it is the only point where \textbf{reset}/\textbf{reuse} pairs can be inserted, we will discuss this further in Section~\ref{section:refcount:beans}.
 
 \begin{figure*}
 \begin{lstlisting}[
   caption={Output of lowering a pattern match on a signal value},
   label={listing:refcount:elim_pattern}]
-match mysig with
+match s with
 | _ -> 
-  let x = head mysig in 
-  let xs = tail mysig in e
+  let x = head s in 
+  let xs = tail s in e
 \end{lstlisting}
 \end{figure*}
 
@@ -108,14 +111,14 @@ In the third branch $s$ is a $\mathsf{Both}(x,y)$ with two fields. The algorithm
 
 \begin{lstlisting}[caption={A fold on sync values. The program is shown using the IR but with a type annotation for readability.}, label={listing:refcount:reuse_example}]
 sync_fold f s : (Option 'a -> Option 'b -> 'c) -> Sync ('a,'b) -> 'c = 
-    case s of
-    (let x = proj_0 s in let s' = reset s in
-     let x_just = reuse s' in Ctor1(x) in 
-     let nothing = Ctor0() in ret (f x_just) nothing)
-    (...)
-    (let x = proj_0 s in let y = proj_1 s in
-     let x_just = Ctor1(x) in let y_just = Ctor1(y) in 
-     ret (f x_just) y_just)
+    match s with
+    | #0 let x = proj_0 s in let s' = reset s in
+      let x_just = reuse s' in Ctor1(x) in 
+      let nothing = Ctor0() in ret (f x_just) nothing
+    | #1 (...)
+    | #2 let x = proj_0 s in let y = proj_1 s in
+      let x_just = Ctor1(x) in let y_just = Ctor1(y) in 
+      ret (f x_just) y_just
 \end{lstlisting}
 
 
@@ -128,18 +131,18 @@ We see that the algorithm has added instructions for reusing the input signal.
 
 
 \begin{lstlisting}[
-  caption={The map combinator from Section~\ref{section:frp:rizzo} after transformations into IR form},
+  caption={The map combinator from Section~\ref{section:frp:rizzo} after transformations into IR form. The output has been simplified for readability, removing the thunk wrapper that would exist around \texttt{map'}.},
   label={listing:refcount:reuse_map}
 ]
-fun map f s : ('a -> 'b) -> Signal 'a -> Signal 'b =
-  case s of  
-  (let x = proj_0 s in let xs = Ctor2(s) in
-   let s' = reset s in let hd = f x in 
-   let map' = pap map(f) in 
-   let delayed_map = Ctor0(map') in
-   let tl = Ctor6(delayed_map, xs) in
-   let res = reuse s' in Signal(hd, tail) in
-   ret res)
+fun map f s =
+  match s with
+  | #0 let x = proj_0 s in let xs = Ctor2(s) in
+    let s' = reset s in let hd = f x in 
+    let map' = pap map(f) in 
+    let delayed_map = Ctor0(map') in
+    let tl = Ctor6(delayed_map, xs) in
+    let res = reuse s' in Signal(hd, tail) in
+    ret res
 \end{lstlisting}
  
 However, all is not good with this $map$, since the $xs$ (the constructor $\mathsf{tail} \; s$) needs the original input $s$ to live, meaning it would be unsafe to overwrite and reuse the memory of $s$ inside $map$. We will return to this in Section~\ref{section:refcount:beans:counting} when discussing \textbf{inc}/\textbf{dec} instructions. 
@@ -200,24 +203,24 @@ Notice, that because $xs$ is a $\mathsf{tail} \; s$ value it needs $s$ to live f
 This increment sets the reference count of $s$ to two, making it so $s$ can never be unique at the time of $\textbf{reset} \; s$.
 
 \begin{lstlisting}[
-  caption={The map combinator with \textbf{inc}/\textbf{dec} instructions. The inferred ownership annotations for the arguments of map are shown on the first line.},
+  caption={The map combinator with \textbf{inc}/\textbf{dec} instructions. The inferred ownership annotations for the arguments of map are shown on the first line. The output has been simplified for readability.},
   label={listing:refcount:incdec_map}
 ]
 f: Owned, s: Owned
-fun map f s : ('a -> 'b) -> Signal 'a -> Signal 'b =
-  case s of  
-  (let x = proj_0 s in        count(x) = 1
-   inc x;                     count(x) = 2
-   inc s;                     count(s) = 2
-   let xs = Ctor2(s) in
-   let s' = reset s in        count(s) = 1, s' = NULL
-   inc f;                     count(f) = 2
-   let hd = f x in
-   let map' = pap map(f) in
-   let delayed_map = Ctor0(map') in
-   let tl = Ctor6(delayed_map, xs) in    
-   let res = reuse s' in Signal(hd, tail) in
-   ret res)
+fun map f s =
+  match s with  
+  | #0 let x = proj_0 s in     count(x) = 1
+    inc x;                     count(x) = 2
+    inc s;                     count(s) = 2
+    let xs = Ctor2(s) in
+    let s' = reset s in        count(s) = 1, s' = NULL
+    inc f;                     count(f) = 2
+    let hd = f x in
+    let map' = pap map(f) in
+    let delayed_map = Ctor0(map') in
+    let tl = Ctor6(delayed_map, xs) in    
+    let res = reuse s' in Signal(hd, tail) in
+    ret res
 \end{lstlisting}
 
 

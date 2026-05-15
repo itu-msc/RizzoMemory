@@ -109,26 +109,22 @@ ret z
 
 Compared to the previous example, this makes the ownership discipline more precise: one occurrence of $y$ is only observed, while the other is actually consumed. The compiler can therefore avoid treating both arguments as fully owned.
 
-The more interesting optimisation in \citetitle{ullrich_counting_2021} is the combination of \textbf{reset} and \textbf{reuse}. In Rizzo this matters when a combinator stops using an input signal and immediately constructs a replacement signal. Consider the function below:
+The more interesting optimisation is enabled by the combination of \textbf{reset} and \textbf{reuse}. In Rizzo this matters when a combinator stops using an input signal and immediately constructs a replacement signal. Consider the function below:
 
 \begin{verbatim}
-fun stop f s : ('a -> Bool) -> Signal 'a -> Signal 'a =
-  match s with
-  | x :: xs ->
-    if f x
+fun stop f (x :: xs) : ('a -> Bool) -> Signal 'a -> Signal 'a =
+    if f x 
     then x :: never
-    else x :: (jump (fun a -> Some (a :: xs)) |> xs)
+    else x :: (stop f |> xs)
 \end{verbatim}
 
-In the `then' branch, the old signal $s$ is dead immediately after the match. This makes it possible to reset the old signal cell and reuse its storage for the new signal $x :: \mathsf{never}$.
-This avoids allocating a fresh signal object and immediately disconnects the old intermediate signal from the heap.
+In the `then' branch, the input signal $(x :: xs)$ is not used. This makes it possible reuse the memory cell to store the new signal $x :: \mathsf{never}$, avoiding an allocation. 
 
 Not every signal combinator admits this optimisation. For a function such as $map$, the input signal must remain alive because its tail is needed to produce future values:
 
 \begin{verbatim}
-fun map f s = 
-    match s with
-    | x :: xs -> f x :: (map f |> xs)
+fun map f (x :: xs) = 
+    f x :: (map f |> xs)
 \end{verbatim}
 
 Here the delayed computation still depends on $xs$, so reusing the storage of $s$ would destroy data that is needed later. This illustrates why reuse opportunities for signals in Rizzo are limited: they mainly arise in combinators that terminate, switch, or otherwise stop forwarding the original signal.
