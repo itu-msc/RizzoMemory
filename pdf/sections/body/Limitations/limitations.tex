@@ -9,5 +9,12 @@
 
 \subsection{Later values are computed more than once per time step}
 
-\todo{Later values are just functions, and thus if more than one depend on that Later, then the Later will be evaluated more than once. This can cause the heap to grow by N - 1 where N is the number of dependencies on the Later value. For Later signals this can be resolved by giving the Later an empty head and using the tail constructor to get the tail. In the evaluation of the signal heaps behaviour, we mention that the signals $[4]$ and $[6]$ are caused by a Later value being evaluated 2 times, once for each dependence on the Later. An example of how to fix this issue would be by using the tail constructor, to cache the result of the Later evaluation, but there is one for Later signals. We can add a dummy head to the signal and take the tail of that signal as a workaround:}
-\verb|tail ("" :: mk_sig_of_channel console)|
+Later values are just functions, and thus, if more than one signal depend on the same Later value, then the Later value will be evaluated more than once. This is not ideal, as the Later value may be expensive to compute and will grow the heap linearly with the number of dependencies on the Later value.
+In the evaluation of the signal heaps behaviour, we mention that the signals $[4]$ and $[6]$ are caused by a Later value being evaluated 2 times, once for each dependence on the same Later value.
+A workaround that currently works for \texttt{Later values} is by temporarily making the later into a signal. We can do this by giving the Later value a dummy head and using the tail constructor to get the now cached Later value back:
+
+\begin{verbatim}
+    tail ("" :: mk_sig_of_channel console)
+\end{verbatim}
+
+A proper fix could require us to change the Later type to contain 2 additional fields. One field for the cached value and one for a flag to indicate which time step the cached value is for. The evaluation of the Later value would then first check if the cached value is valid for the current time step and return it if it is, and otherwise compute the Later value, store it in the cache, and return it.
