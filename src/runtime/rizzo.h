@@ -11,6 +11,7 @@
 #include "heap.h"
 #include "later.h"
 #include "channel.h"
+#include "tcp.h"
 #include "timer.h"
 
 static bool rz_should_quit = false;
@@ -24,20 +25,43 @@ typedef struct rz_signal_list
     size_t count, capacity;
     rz_signal_t *signals[];
 } rz_signal_list_t;
+
+typedef struct rz_port_output
+{
+    rz_signal_t *signal;
+    rz_socket_t socket;
+} rz_port_output_t;
+
+typedef struct rz_port_output_list
+{
+    size_t count, capacity;
+    rz_port_output_t outputs[];
+} rz_port_output_list_t;
+
 static rz_signal_list_t *rz_signal_list_create();
 static void rz_signal_list_add(rz_signal_list_t **list, rz_object_t *signal);
+static rz_port_output_list_t *rz_port_output_list_create();
+static void rz_port_output_list_add(rz_port_output_list_t **list, rz_object_t *signal, rz_socket_t socket);
 static void rz_print_registered_outputs();
 static void rz_print_registered_output_head(rz_signal_t *sig, bool force);
+static void rz_send_registered_port_output_head(rz_port_output_t *output, bool force);
+static void rz_drain_keyboard_events();
 
 rz_signal_list_t *rz_global_output_signals = NULL;
+rz_port_output_list_t *rz_global_port_output_signals = NULL;
 
 /* initializes the Rizzo runtime. */
 static void rz_init_rizzo()
 {
+    rz_channel_reset_dynamic();
     rz_heap_init();
     rz_global_output_signals = rz_signal_list_create();
+    rz_global_port_output_signals = rz_port_output_list_create();
     rz_should_quit = false;
     rz_timer_reset();
+    rz_tcp_reset();
+    rz_keyboard_queue_reset();
+    rz_random_state = 0;
 }
 
 #if defined(__RZ_DEBUG_INFO) || defined(__RZ_HEAP_INFO)
@@ -76,6 +100,15 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
 #endif
 }
 
+static void rz_drain_keyboard_events()
+{
+    char key_buffer[RZ_KEYBOARD_EVENT_SIZE];
+    while (!rz_should_quit && rz_keyboard_take_event(key_buffer, sizeof(key_buffer)))
+    {
+        rz_step(RZ_CHANNEL_KEYBOARD_IN, rz_make_string_len(key_buffer, strlen(key_buffer)));
+    }
+}
+
 /* Starts the Rizzo event loop:
    - Listens to input on channels (currently only console input)
    - Then produces a time step by calling `rz_step` (which updates the heap) */
@@ -84,6 +117,8 @@ static rz_box_t rz_start_event_loop()
     char buffer[__RZ_INPUT_BUFFER_SIZE];
     rz_channel_t timer_channel;
     rz_box_t timer_value;
+    rz_channel_t tcp_channel;
+    rz_box_t tcp_value;
 
 #ifdef __RZ_DEBUG_INFO
     printf("After initialization, Sig index %" PRIu64 ", ", rz_debug_signal_next_index);
@@ -92,24 +127,37 @@ static rz_box_t rz_start_event_loop()
 
     while (!rz_should_quit)
     {
+        rz_drain_keyboard_events();
         double now = rz_timer_now_seconds();
         uint32_t timeout_ms = UINT32_MAX;
         bool has_timers = rz_timer_next_timeout_ms(now, &timeout_ms);
+        bool has_tcp_inputs = rz_tcp_has_registered_inputs();
+        if (has_tcp_inputs && timeout_ms > 10)
+        {
+            timeout_ms = 10;
+        }
         rz_os_result_t status = has_timers
                                     ? rz_readline_timeout(buffer, sizeof(buffer), timeout_ms)
-                                    : rz_readline(buffer, sizeof(buffer));
+                                    : (has_tcp_inputs
+                                        ? rz_readline_timeout(buffer, sizeof(buffer), timeout_ms)
+                                        : rz_readline(buffer, sizeof(buffer)));
         now = rz_timer_now_seconds();
         while (rz_timer_take_due(now, &timer_channel, &timer_value))
         {
             rz_step(timer_channel, timer_value);
         }
+        while (rz_tcp_take_input(&tcp_channel, &tcp_value))
+        {
+            rz_step(tcp_channel, tcp_value);
+        }
+        rz_drain_keyboard_events();
         if (status == RZ_OK)
         {
             rz_step(RZ_CHANNEL_CONSOLE_IN, rz_make_string_len(buffer, strlen(buffer)));
         }
         else if (status == RZ_NO_INPUT)
         {
-            if (!rz_timer_has_registered_channels())
+            if (!rz_timer_has_registered_channels() && !rz_tcp_has_registered_inputs())
             {
                 break;
             }
@@ -147,6 +195,27 @@ static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args
     /* we've just read a signal, which has a head value in the current time tick - output that */
     rz_print_registered_output_head((rz_signal_t *)rz_unbox_ptr(sig), true);
     rz_signal_list_add(&rz_global_output_signals, rz_unbox_ptr(sig));
+    return RZ_UNIT;
+}
+
+static inline rz_box_t rz_register_port_output_signal(size_t num_args, rz_box_t *args)
+{
+    (void)num_args;
+    rz_box_t port = args[0];
+    rz_box_t sig = args[1];
+    if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL)
+    {
+        rz_debug_print_box(sig);
+        fprintf(stderr, "Runtime error: rz_register_port_output_signal got a non-signal value (%d)\n", sig.kind);
+        exit(1);
+    }
+    rz_socket_t socket = rz_tcp_connect_localhost(rz_unbox_int(port));
+    rz_port_output_t output = {
+        .signal = (rz_signal_t *)rz_unbox_ptr(sig),
+        .socket = socket,
+    };
+    rz_send_registered_port_output_head(&output, true);
+    rz_port_output_list_add(&rz_global_port_output_signals, rz_unbox_ptr(sig), socket);
     return RZ_UNIT;
 }
 
@@ -192,6 +261,23 @@ static inline void rz_print_registered_outputs()
     {
         rz_print_registered_output_head(rz_global_output_signals->signals[i], false);
     }
+    for (size_t i = 0; i < rz_global_port_output_signals->count; i++)
+    {
+        rz_send_registered_port_output_head(&rz_global_port_output_signals->outputs[i], false);
+    }
+}
+
+static inline void rz_send_registered_port_output_head(rz_port_output_t *output, bool force)
+{
+    if (rz_unbox_int(output->signal->updated) || force)
+    {
+        if (!rz_box_is_string(output->signal->head))
+        {
+            fprintf(stderr, "Runtime error: port_out_signal expected Signal String\n");
+            exit(1);
+        }
+        rz_tcp_send_line(output->socket, output->signal->head);
+    }
 }
 
 static rz_signal_list_t *rz_signal_list_create()
@@ -214,4 +300,28 @@ static void rz_signal_list_add(rz_signal_list_t **list_ref, rz_object_t *signal)
         *list_ref = list;
     }
     list->signals[list->count++] = (rz_signal_t *)signal;
+}
+
+static rz_port_output_list_t *rz_port_output_list_create()
+{
+    size_t initial_capacity = 10;
+    rz_port_output_list_t *list = (rz_port_output_list_t *)malloc(sizeof(rz_port_output_list_t) + initial_capacity * sizeof(rz_port_output_t));
+    list->count = 0;
+    list->capacity = initial_capacity;
+    return list;
+}
+
+static void rz_port_output_list_add(rz_port_output_list_t **list_ref, rz_object_t *signal, rz_socket_t socket)
+{
+    rz_port_output_list_t *list = *list_ref;
+    if (list->count == list->capacity)
+    {
+        size_t new_capacity = list->capacity * 2;
+        list = (rz_port_output_list_t *)realloc(list, sizeof(rz_port_output_list_t) + new_capacity * sizeof(rz_port_output_t));
+        list->capacity = new_capacity;
+        *list_ref = list;
+    }
+    list->outputs[list->count].signal = (rz_signal_t *)signal;
+    list->outputs[list->count].socket = socket;
+    list->count++;
 }

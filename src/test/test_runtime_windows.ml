@@ -53,11 +53,13 @@ static int fail_at(int line) {
 
 int main(void) {
     char buffer[8];
+    char key_buffer[32];
     rz_os_result_t result = RZ_TIMEOUT;
     bool done = false;
     KEY_EVENT_RECORD key_event;
     size_t index;
 
+    rz_keyboard_queue_reset();
     rz_console_line_reset();
     ZeroMemory(&key_event, sizeof(key_event));
     key_event.bKeyDown = TRUE;
@@ -69,12 +71,30 @@ int main(void) {
     if (rz_console_line_state.length != 1 || rz_console_line_state.buffer[0] != 'a') {
         return fail_at(__LINE__);
     }
+    if (!rz_keyboard_take_event(key_buffer, sizeof(key_buffer)) || strcmp(key_buffer, "a") != 0) {
+        return fail_at(__LINE__);
+    }
 
     ZeroMemory(&key_event, sizeof(key_event));
     key_event.bKeyDown = TRUE;
     key_event.uChar.AsciiChar = '\r';
     done = rz_console_handle_key_event(&key_event, buffer, sizeof(buffer), &result);
     if (!done || result != RZ_OK || strcmp(buffer, "a") != 0) {
+        return fail_at(__LINE__);
+    }
+    if (!rz_keyboard_take_event(key_buffer, sizeof(key_buffer)) || strcmp(key_buffer, "Enter") != 0) {
+        return fail_at(__LINE__);
+    }
+
+    ZeroMemory(&key_event, sizeof(key_event));
+    key_event.bKeyDown = TRUE;
+    key_event.uChar.AsciiChar = '\0';
+    key_event.wVirtualKeyCode = VK_UP;
+    done = rz_console_handle_key_event(&key_event, buffer, sizeof(buffer), &result);
+    if (done) {
+        return fail_at(__LINE__);
+    }
+    if (!rz_keyboard_take_event(key_buffer, sizeof(key_buffer)) || strcmp(key_buffer, "ArrowUp") != 0) {
         return fail_at(__LINE__);
     }
 

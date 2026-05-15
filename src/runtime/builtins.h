@@ -13,6 +13,7 @@
 static rz_box_t rz_start_event_loop();
 static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args);
 static inline rz_box_t rz_register_output_signal_deferred(size_t num_args, rz_box_t *args);
+static inline rz_box_t rz_register_port_output_signal(size_t num_args, rz_box_t *args);
 static inline rz_box_t rz_eq(rz_box_t a, rz_box_t b);
 
 enum
@@ -116,9 +117,9 @@ static inline rz_box_t rz_builtin_make_wait_later(rz_channel_t chan)
 	return rz_make_ptr(rz_ctor_var(RZ_TAG_LATER_WAIT, 1, rz_make_channel(chan)));
 }
 
-static inline rz_box_t rz_builtin_clock_step(size_t num_args, rz_box_t *args);
+static inline rz_box_t rz_builtin_channel_signal_step(size_t num_args, rz_box_t *args);
 
-static inline rz_box_t rz_builtin_make_clock_signal(rz_channel_t chan, rz_box_t head)
+static inline rz_box_t rz_builtin_make_channel_signal(rz_channel_t chan, rz_box_t head)
 {
 	rz_box_t delayed_step;
 	rz_box_t wait_later;
@@ -126,19 +127,19 @@ static inline rz_box_t rz_builtin_make_clock_signal(rz_channel_t chan, rz_box_t 
 	delayed_step = rz_make_ptr(rz_ctor_var(
 		RZ_TAG_DELAY,
 		1,
-		rz_lift_c_fun(rz_builtin_clock_step, 3, (rz_box_t[]){rz_make_channel(chan)}, 1)));
+		rz_lift_c_fun(rz_builtin_channel_signal_step, 3, (rz_box_t[]){rz_make_channel(chan)}, 1)));
 	wait_later = rz_builtin_make_wait_later(chan);
 	tail = rz_make_ptr(rz_ctor_var(RZ_TAG_LATER_APP, 2, delayed_step, wait_later));
 	return rz_make_ptr_sig(rz_signal_ctor(head, tail));
 }
 
-static inline rz_box_t rz_builtin_clock_step(size_t num_args, rz_box_t *args)
+static inline rz_box_t rz_builtin_channel_signal_step(size_t num_args, rz_box_t *args)
 {
 	rz_channel_t chan;
-	rz_builtin_expect_arity("clock_step", 3, num_args);
-	chan = rz_builtin_expect_int("clock_step", 0, args[0]);
-	rz_builtin_expect_unit("clock_step", 1, args[1]); 
-	return rz_builtin_make_clock_signal(chan, args[2]);
+	rz_builtin_expect_arity("channel_signal_step", 3, num_args);
+	chan = rz_builtin_expect_int("channel_signal_step", 0, args[0]);
+	rz_builtin_expect_unit("channel_signal_step", 1, args[1]); 
+	return rz_builtin_make_channel_signal(chan, args[2]);
 }
 
 static inline rz_box_t rz_builtin_start_event_loop(size_t num_args, rz_box_t *args)
@@ -155,6 +156,33 @@ static inline rz_box_t rz_builtin_string_of_int(size_t num_args, rz_box_t *args)
 	char buffer[21]; // enough to hold -2^63 and null terminator
 	snprintf(buffer, sizeof(buffer), "%" PRId64, value);
 	return rz_make_string_len(buffer, strlen(buffer));
+}
+
+static uint64_t rz_random_state = 0;
+
+static inline uint64_t rz_random_next_u64(void)
+{
+	if (rz_random_state == 0)
+	{
+		double now = rz_timer_now_seconds();
+		rz_random_state = ((uint64_t)(now * 1000000000.0)) ^ UINT64_C(0x9E3779B97F4A7C15);
+	}
+	rz_random_state ^= rz_random_state << 13;
+	rz_random_state ^= rz_random_state >> 7;
+	rz_random_state ^= rz_random_state << 17;
+	return rz_random_state;
+}
+
+static inline rz_box_t rz_builtin_random_int(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("random_int", 1, num_args);
+	int64_t upper_bound = rz_builtin_expect_int("random_int", 0, args[0]);
+	if (upper_bound <= 0)
+	{
+		fprintf(stderr, "Runtime error: builtin 'random_int' expected a positive upper bound, got %" PRId64 "\n", upper_bound);
+		exit(1);
+	}
+	return rz_make_int((int64_t)(rz_random_next_u64() % (uint64_t)upper_bound));
 }
 
 static inline rz_box_t rz_builtin_mod(size_t num_args, rz_box_t *args)
@@ -236,6 +264,13 @@ static inline rz_box_t rz_builtin_console_out_signal(size_t num_args, rz_box_t *
 	return rz_register_output_signal(num_args, args);
 }
 
+static inline rz_box_t rz_builtin_port_out_signal(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("port_out_signal", 2, num_args);
+	rz_builtin_expect_int("port_out_signal", 0, args[0]);
+	return rz_register_port_output_signal(num_args, args);
+}
+
 static inline rz_box_t rz_builtin_console_out_signal_l_step(size_t num_args, rz_box_t *args)
 {
 	rz_builtin_expect_arity("console_out_signal_l_step", 2, num_args);
@@ -257,6 +292,50 @@ static inline rz_box_t rz_builtin_console_out_signal_l(size_t num_args, rz_box_t
 	rz_box_t lifted_register = rz_lift_c_fun(rz_builtin_console_out_signal_l_step, 2, NULL, 0);
 	rz_box_t delayed_register = rz_make_ptr(rz_ctor_var(RZ_TAG_DELAY, 1, lifted_register));
 	rz_signal_ctor(rz_make_int(0), rz_make_ptr(rz_ctor(RZ_TAG_LATER_APP, 2, (rz_box_t[]){ delayed_register, later })));
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_clear_screen(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("clear_screen", 1, num_args);
+	rz_builtin_expect_unit("clear_screen", 0, args[0]);
+	printf("\033[2J\033[H");
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_hide_cursor(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("hide_cursor", 1, num_args);
+	rz_builtin_expect_unit("hide_cursor", 0, args[0]);
+	printf("\033[?25l");
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_show_cursor(size_t num_args, rz_box_t *args)
+{
+	rz_builtin_expect_arity("show_cursor", 1, num_args);
+	rz_builtin_expect_unit("show_cursor", 0, args[0]);
+	printf("\033[?25h");
+	fflush(stdout);
+	return RZ_UNIT;
+}
+
+static inline rz_box_t rz_builtin_move_cursor(size_t num_args, rz_box_t *args)
+{
+	int64_t row;
+	int64_t column;
+	rz_builtin_expect_arity("move_cursor", 2, num_args);
+	row = rz_builtin_expect_int("move_cursor", 0, args[0]);
+	column = rz_builtin_expect_int("move_cursor", 1, args[1]);
+	if (row <= 0 || column <= 0)
+	{
+		fprintf(stderr, "Runtime error: builtin 'move_cursor' expected positive row and column, got %" PRId64 ", %" PRId64 "\n", row, column);
+		exit(1);
+	}
+	printf("\033[%" PRId64 ";%" PRId64 "H", row, column);
+	fflush(stdout);
 	return RZ_UNIT;
 }
 
@@ -425,7 +504,17 @@ static inline rz_box_t rz_builtin_clock(size_t num_args, rz_box_t *args)
 	}
 	chan = rz_timer_register(interval_ms);
 	head = rz_make_int(0);
-	return rz_builtin_make_clock_signal(chan, head);
+	return rz_builtin_make_channel_signal(chan, head);
+}
+
+static inline rz_box_t rz_builtin_port_input(size_t num_args, rz_box_t *args)
+{
+	int64_t port;
+	rz_channel_t chan;
+	rz_builtin_expect_arity("port_input", 1, num_args);
+	port = rz_builtin_expect_int("port_input", 0, args[0]);
+	chan = rz_tcp_input_register(port);
+	return rz_builtin_make_channel_signal(chan, rz_make_string_len("", 0));
 }
 
 static inline rz_box_t rz_quit(size_t num_args, rz_box_t *args)

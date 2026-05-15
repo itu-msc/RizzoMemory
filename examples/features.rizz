@@ -17,10 +17,17 @@ fun appendSignalToNeverAndAdd1 s a = const (a |> s)
 
 fun is0 x = x == 0
 
+let nestedList = [[1, 2], [3, 4], [5]]
+let nestedStringList = [["Hello", "world"], ["Rizz", "is"], ["cool"]]
+
 fun entry x = 
     let my_console_sig = mk_sig (wait console) in
-    let my_console = console_out_signal ("" :: my_console_sig) in
-    let q = quit_at (my_console_sig) in
-    let nestedList = [[1, 2], [3, 4], [5]] in
-    let nestedStringList = [["Hello", "world"], ["Rizz", "is"], ["cool"]] in
+    let port_sig = port_input 7777 in
+    let my_console_sig = map_l (fun x -> "console: " + x) my_console_sig in
+    let port_sig = map (fun x -> "port: " + x) port_sig in
+    let port_with_random = map (fun x -> x + "; Random number:" + string_of_int (random_int 100)) port_sig in
+    let _ = port_out_signal 7777 ("" :: my_console_sig) in
+    let _ = console_out_signal port_with_random in
+    let quit_sig = filterL (fun x -> string_contains x "quit") (tail port_with_random) in
+    let q = quit_at (quit_sig) in
     start_event_loop ()

@@ -113,6 +113,147 @@ let contains_substring ~text ~substring =
   in
   substring_length = 0 || loop 0
 
+let compile_program_binary ~prefix ~program =
+  let output_file = Filename.temp_file prefix ".c" in
+  let binary_file = Filename.temp_file prefix ".exe" in
+  let original_cwd = Sys.getcwd () in
+  let cleanup () =
+    List.iter (fun path -> if Sys.file_exists path then Sys.remove path) [output_file; binary_file]
+  in
+  try
+    Rizzoc.compile_from_string program output_file;
+    Sys.chdir "../../../..";
+    let command =
+      Rizzoc.to_shell_command
+        (Rizzoc.generated_c_compiler_invocation ~input_file:output_file
+           ~output_file:binary_file ())
+    in
+    let status = Sys.command command in
+    Sys.chdir original_cwd;
+    if status <> 0
+    then (
+      cleanup ();
+      Alcotest.failf "C compile failed with status %d. Command: %s" status command);
+    binary_file, cleanup
+  with exn ->
+    Sys.chdir original_cwd;
+    cleanup ();
+    Alcotest.failf "Compilation failed with exception: %s" (Printexc.to_string exn)
+
+let read_available_lines ?(timeout_s = 2.0) in_chan =
+  let fd = Unix.descr_of_in_channel in_chan in
+  let deadline = Unix.gettimeofday () +. timeout_s in
+  let normalize_line line =
+    if String.ends_with ~suffix:"\r" line
+    then String.sub line 0 (String.length line - 1)
+    else line
+  in
+  let rec go acc =
+    let remaining = deadline -. Unix.gettimeofday () in
+    if remaining <= 0. then List.rev acc
+    else
+      let ready, _, _ = Unix.select [fd] [] [] remaining in
+      if ready = [] then List.rev acc
+      else
+        match input_line in_chan with
+        | line -> go (normalize_line line :: acc)
+        | exception End_of_file -> List.rev acc
+  in
+  go []
+
+let get_free_tcp_port () =
+  let sock = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Fun.protect
+    ~finally:(fun () -> Unix.close sock)
+    (fun () ->
+      Unix.setsockopt sock Unix.SO_REUSEADDR true;
+      Unix.bind sock (Unix.ADDR_INET (Unix.inet_addr_loopback, 0));
+      match Unix.getsockname sock with
+      | Unix.ADDR_INET (_, port) -> port
+      | _ -> Alcotest.fail "expected inet socket")
+
+let test_random_int_outputs_value_in_range () =
+  let program =
+    {|
+      fun entry x =
+        let n = random_int 10 in
+        let _o = console_out_signal (string_of_int n :: never) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"trigger" () in
+  let maybe_value =
+    List.find_map
+      (fun line ->
+        match int_of_string_opt line with
+        | Some n when n >= 0 && n < 10 -> Some n
+        | _ -> None)
+      outputs
+  in
+  Alcotest.(check bool) "random output in range" true (Option.is_some maybe_value);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_random_int_rejects_non_positive_bound () =
+  if Sys.win32 then ()
+  else
+    let program =
+      {|
+        fun entry x =
+          let n = random_int 0 in
+          let _o = console_out_signal (string_of_int n :: never) in
+          start_event_loop ()
+      |}
+    in
+    let binary_file, cleanup = compile_program_binary ~prefix:"random-invalid" ~program in
+    Fun.protect
+      ~finally:cleanup
+      (fun () ->
+        let in_chan, out_chan, err_chan =
+          Unix.open_process_args_full binary_file [| binary_file |] (Unix.environment ())
+        in
+        close_out out_chan;
+        let _outputs = read_available_lines ~timeout_s:0.1 in_chan in
+        let errors = read_available_lines err_chan in
+        let process_status = Unix.close_process_full (in_chan, out_chan, err_chan) in
+        Alcotest.(check bool) "error mentions positive upper bound" true
+          (List.exists (fun line -> contains_substring ~text:line ~substring:"positive upper bound") errors);
+        match process_status with
+        | Unix.WEXITED code -> Alcotest.(check bool) "process exits nonzero" true (code <> 0)
+        | Unix.WSIGNALED _ -> ()
+        | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_port_output_loops_into_port_input () =
+  let port = get_free_tcp_port () in
+  let program =
+    Printf.sprintf
+      {|
+        fun entry x =
+          let port_sig = port_input %d in
+          let displayed = map (fun x -> "port: " + x + "; Random number:" + string_of_int (random_int 100)) port_sig in
+          let _send = port_out_signal %d ("hello from tcp" :: never) in
+          let _out = console_out_signal displayed in
+          let _q = quit_at (tail port_sig) in
+          start_event_loop ()
+      |}
+      port
+      port
+  in
+  let outputs, process_status = run_console_program ~delay_s:1.0 ~program ~input:"" () in
+  Alcotest.(check bool) "tcp loopback output appears" true
+    (List.exists
+       (fun line ->
+         contains_substring ~text:line ~substring:"port: hello from tcp; Random number:")
+       outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
 let test_console_signal_input_string_is_freed () =
   let program =
     {|
@@ -151,6 +292,75 @@ let test_simple_console_identity () =
   let outputs, process_status = run_console_program ~program ~input:expected_output () in
   Alcotest.(check string) "initial output" "" (List.hd outputs);
   Alcotest.(check bool) "console output appears" true (List.mem expected_output outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_keyboard_signal_receives_key_press () =
+  let program =
+    {|
+      fun entry x =
+        let keys = mk_sig (wait keyboard) in
+        let _out = console_out_signal ("" :: keys) in
+        let _quit = quit_at (filter_l (fun key -> key == "q") keys) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~delay_s:1.0 ~program ~input:"q" () in
+  Alcotest.(check bool) "keyboard output appears" true (List.mem "q" outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_terminal_builtins_emit_escape_sequences_and_continue () =
+  let program =
+    {|
+      fun entry x =
+        let _clear = clear_screen () in
+        let _hide = hide_cursor () in
+        let _move = move_cursor 1 1 in
+        let _show = show_cursor () in
+        let _out = console_out_signal ("ok" :: never) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"trigger" () in
+  Alcotest.(check bool) "program output appears after terminal controls" true
+    (List.exists (fun line -> contains_substring ~text:line ~substring:"ok") outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_merge_events_combines_signal_updates () =
+  let program =
+    {|
+      fun label event =
+        match event with
+        | Left (_fast) -> "fast"
+        | Right (_slow) -> "slow"
+        | Both (_fast, _slow) -> "both"
+
+      fun entry x =
+        let fast = clock 20 in
+        let slow = clock 40 in
+        let events = merge_events label "start" fast slow in
+        let _out = console_out_signal events in
+        let _quit = quit_at (tail slow) in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~delay_s:1.0 ~program ~input:"" () in
+  Alcotest.(check bool) "initial merge event appears" true (List.mem "start" outputs);
+  Alcotest.(check bool) "clock merge event appears" true
+    (List.exists
+       (fun line -> line = "fast" || line = "slow" || line = "both")
+       outputs);
   Alcotest.(check int) "process exit code" 0
     (match process_status with
     | Unix.WEXITED code -> code
@@ -380,6 +590,12 @@ let test_list_pattern_match_outputs_head () =
 
 let end_to_end_tests = [
   "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity;
+  "random_int outputs value in range", `Quick, test_random_int_outputs_value_in_range;
+  "random_int rejects non-positive bound", `Quick, test_random_int_rejects_non_positive_bound;
+  "port output loops into port input", `Quick, test_port_output_loops_into_port_input;
+  "Keyboard signal receives key press", `Quick, test_keyboard_signal_receives_key_press;
+  "terminal builtins emit escape sequences and continue", `Quick, test_terminal_builtins_emit_escape_sequences_and_continue;
+  "merge_events combines signal updates", `Quick, test_merge_events_combines_signal_updates;
   "Issue filterL variant outputs quit", `Quick, test_issue_filterl_variant_outputs_quit;
   "Issue filterL variant outputs quit after non-match", `Quick, test_issue_filterl_variant_outputs_quit_after_non_match;
   "Issue map_l variant outputs Hello world", `Quick, test_issue_map_l_variant_outputs_hello_world;

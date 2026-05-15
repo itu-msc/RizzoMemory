@@ -3,6 +3,26 @@ open Refcount_core
 
 let standard_indent = 4
 
+let c_string_literal s =
+  let buffer = Buffer.create (String.length s + 2) in
+  Buffer.add_char buffer '"';
+  String.iter
+    (fun ch ->
+      match ch with
+      | '"' -> Buffer.add_string buffer "\\\""
+      | '\\' -> Buffer.add_string buffer "\\\\"
+      | '\n' -> Buffer.add_string buffer "\\n"
+      | '\r' -> Buffer.add_string buffer "\\r"
+      | '\t' -> Buffer.add_string buffer "\\t"
+      | c ->
+          let code = Char.code c in
+          if code < 32 || code > 126
+          then Buffer.add_string buffer (Printf.sprintf "\\%03o" code)
+          else Buffer.add_char buffer c)
+    s;
+  Buffer.add_char buffer '"';
+  Buffer.contents buffer
+
 let make_fun_decl ?ending:(e = " {\n") name  = 
   Printf.sprintf "rz_box_t %s(size_t _, rz_box_t* args)%s" name e 
   (* TODO: see if we can remove the num_args (the first param) from the method signature *)
@@ -74,10 +94,11 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
     write "#include \"rizzo.h\"\n";
     write "\n";
 
-    write (Printf.sprintf "static rz_box_t %s;\n\n" (mangle "console"));    
+    write (Printf.sprintf "static rz_box_t %s;\n" (mangle "console"));
+    write (Printf.sprintf "static rz_box_t %s;\n\n" (mangle "keyboard"));
 
     string_consts 
-    |> List.iter (fun ((str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %S;\n" name str_lit);
+    |> List.iter (fun ((str_lit, name)) -> write @@ Printf.sprintf "static char* %s = %s;\n" name (c_string_literal str_lit));
     write "\n";
 
     (* forward declare functions *)
@@ -93,6 +114,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
       write ("int main() {\n"
            ^ "    rz_init_rizzo();\n");
       write (Printf.sprintf "%s = rz_make_int(RZ_CHANNEL_CONSOLE_IN);\n" (mangle "console")) ~indent:standard_indent;
+      write (Printf.sprintf "%s = rz_make_int(RZ_CHANNEL_KEYBOARD_IN);\n" (mangle "keyboard")) ~indent:standard_indent;
       
       init_globals globals;
       
