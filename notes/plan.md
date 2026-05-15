@@ -26,40 +26,41 @@
   - [x] Add consecutive lambda elimination (lowers nested lambdas to a single function with multiple parameters, e.g. `fun x -> fun y -> e` becomes `fun (x, y) -> e`)
   - [ ] Implement the suggestion in section "Preserving tail calls" on page 8 of Ullrich & de Moura.
 - [x] Allow constant types and ensure they are not reference counted (e.g. `int`, `string`, `bool`)
-- [ ] Read and consider the findings from the paper "Reference Counting with Frame Limited Reuse"
+- [x] Read and consider the findings from the paper "Reference Counting with Frame Limited Reuse"
 
 ## Adapting immutable beans for Rizzo expressions(?)
 
 - [x] How do we represent necessary Rizzo constructors (delayed, later, signal, sum + tuples(?)) => as ctors
 - [x] Do we keep around the distinction between `fn_body` and `(r)expr`? => yes, limit how much we change the actual inc/dec code.
-- [ ] How do the semantics of Rizzo constructions change the inc/dec rules?
-- [ ] Push down tail instructions as far down the AST as possible, to allow more reuse opportunities.
+- [x] How do the semantics of Rizzo constructions change the inc/dec rules?
+- [x] Push down tail instructions as far down the AST as possible, to allow more reuse opportunities.
 - [x] Ensure that `delay` calls are lazy evaluated
 
 ## Perceus paper
 
-- [ ] Note down the performance goals of Perceus
+- [x] Note down the performance goals of Perceus
 - [ ] Implement a basic version of the Perceus optimizations
 
 ## Evaluate the memory management system
 
-- [ ] Decide: How we would like to evaluate, which activities does it include? Measurements? Etc.
-- [ ] Evaluate our adaptation of Ullrich & De Moura.
-- [ ] Evaluate our use of Perceus(?)
-- [ ] Heavy Valgrind test with many inputs and several channels, many iterations.
+- [x] Decide: How we would like to evaluate, which activities does it include? Measurements? Etc.
+- [x] Evaluate our adaptation of Ullrich & De Moura.
+- [x] Evaluate our use of Perceus(?)
+- [x] Heavy Valgrind test with many inputs and several channels, many iterations.
 
 ## Rizzo Syntax design
 
-- [ ] Design syntax for Rizzo
-- [ ] Make code examples
-- [ ] Add pattern matching in function parameters (if time permits)
+- [x] Design syntax for Rizzo
+- [x] Make code examples
+- [x] Add pattern matching in function parameters (if time permits)
   - Would help make functions able to take unit as an input, which is useful for writing functions that are only executed for their side effects (e.g. `print`).
-- [ ] Consider Recursion based on Rizzo language rules (if time permits)
+- [x] Consider Recursion based on Rizzo language rules (if time permits)
+  - We ignored it as it would be annoying to use :)
 
 ## Implement Rizzo Runtime (Transpiler)
 
 - [x] Implement an initial transpiler from Rizzo to C
-- [ ] Ensure the transpiler correctly handles the memory management system (reference counting, reuse, etc.)
+- [x] Ensure the transpiler correctly handles the memory management system (reference counting, reuse, etc.)
 - [ ] Add a pointer representation of signals (Important in the advance semantics)
   - [ ] `head` needs to be a function application
   - [ ] `tail` and `watch` needs to dereference the pointer to get the function of the real signals tail.
@@ -83,18 +84,18 @@
 - [x] Set up basic LSP server
 - [x] Add syntax highlighting
 - [x] Add error reporting
-- [ ] Add code completion
+- [x] Add code completion
 - [x] Add go-to-definition
 - [ ] Add other features as time permits
-- [ ] Substitute inferred (and weak) type parameters for better names
+- [x] Substitute inferred (and weak) type parameters for better names
 
 ## Write up Rizzo paper
 
-- [ ] Write introduction and motivation
-- [ ] Describe the syntax and semantics of Rizzo
-  - [ ] Describe the Ullrich & De Moura work (?)
-- [ ] Explain the implementation details
-  - [ ] Memory management
+- [x] Write introduction and motivation
+- [x] Describe the syntax and semantics of Rizzo
+  - [x] Describe the Ullrich & De Moura work (?)
+- [x] Explain the implementation details
+  - [x] Memory management
 
 ### paper structure
 

@@ -26,7 +26,7 @@ and the \textit{step semantics} which describe the process of applying the updat
 %Goal: Goal is to explain the update semantics. Explain the now vs. earlier heap.
 For the purpose of memory management, we will focus our attention on the update semantics but first we take a detour to understand the conceptual structure of the heap.
 In the typical way, the heap holds onto all dynamically allocated data such as tuples, signals, function closures, etc.
-Among these, signals are special because they must be traversed as part of the reactive semantics. Rizzo therefore distinguishes between the \textit{heap}, storing all dynamically allocated data, and the \textit{signal heap}, a subset of the heap containing only signals. This signal heap is further divided in two parts: the \texttt{now heap}, storing only signals that belong to the current time step; and the \texttt{earlier heap} which holds all the stale signals to be updated.
+Among these, signals are special because they must be traversed as part of the reactive semantics. Rizzo therefore distinguishes between the \textit{heap}, storing all dynamically allocated data, and the \textit{signal heap}, a subset of the heap containing only signals. This signal heap is further divided in two parts: the \texttt{now heap}, storing only signals that belong to the current time step; and the \texttt{earlier heap} which holds all the stale signals that need to be updated.
 
 %Goal: explain update semantics
 At runtime when some channel $\mathbf{C}$ produces a value, the step semantics describe that all signals must be moved to the \texttt{earlier heap}, marking their data as stale.
@@ -73,9 +73,9 @@ In particular, values of the \texttt{Sync}, \texttt{Later}, and \texttt{Delayed}
 %GOAL: EXCEPT signals, for those we extend the semantics with a specialised signal constructor, because ...
 The exception is the \texttt{Signal} type. Although signals, like other constructors, are just containers of values, they must be treated differently because both their creation and erasure modify the signal heap.
 We therefore introduce a specialised \textbf{signal} value with five fields: the canonical \textit{head} and \textit{tail}, and three fields used by the runtime. These runtime fields consist of a flag $U$ required by the advance semantics and two pointers $prev$ and $next$ that link the signal into the signal heap.
-The \textbf{signal} constructor is evaluated like any other $\textbf{ctor}_i$ with an additional step that inserts the resulting \textbf{signal} value into the linked-list structure of the signal heap.
+The \textbf{signal} constructor is evaluated like any other $\textbf{ctor}_i$, except for an additional step that inserts the resulting \textbf{signal} value into the linked-list structure of the signal heap.
 % When applying the \textbf{signal} constructor with a set of arguments, each argument is evaluated and stored into a fresh memory location, just as with other constructors, but the resulting \textbf{signal} value is also inserted into the signal heap.
-When a signal is later erased, its fields are decremented and the signal is removed from the signal heap.
+When a signal is later erased, its fields are decremented and the signal is removed from the signal heap. Similarly, when a signal is reset, it is removed from the signal heap, and its fields are decremented. Making reuse possible by overwriting the fields and reinserting the signal into the signal heap like a new signal.
 
 %GOAL: the delay constructor should have call-by-name semantics.
 There is one additional adjustment required for \texttt{Delayed} values. In particular, the constructor $\mathsf{delay} \; e$ should behave as call-by-name, but this is not enforced by operational semantics since such values are treated as $\textbf{ctor}_i$ values. Instead the AST is rewritten so that expressions of the form $\mathsf{delay} \; e$ become $\mathsf{delay} \; (\lambda x.e$).
