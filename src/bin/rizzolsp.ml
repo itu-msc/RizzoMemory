@@ -322,168 +322,158 @@ let handle_did_close params =
   publish_diagnostics ~uri [];
   Some ()
 
+let initialize_result : Yojson.Safe.t =
+  `Assoc [
+    ("capabilities", `Assoc [
+      ("textDocumentSync", `Int 1);
+      ("documentSymbolProvider", `Bool true);
+      ("definitionProvider", `Bool true);
+      ("renameProvider", `Assoc [
+        ("prepareProvider", `Bool true)
+      ]);
+      ("hoverProvider", `Bool true);
+      ("completionProvider", `Assoc [
+        ("resolveProvider", `Bool false);
+        ("triggerCharacters", `List completion_trigger_characters)
+      ]);
+      ("semanticTokensProvider", `Assoc [
+        ("legend", `Assoc [
+          ("tokenTypes", `List [`String "function"; `String "variable"; `String "type"]);
+          ("tokenModifiers", `List [`String "declaration"])
+        ]);
+        ("full", `Bool true)
+      ])
+    ]);
+    ("serverInfo", `Assoc [
+      ("name", `String "rizzolsp");
+      ("version", `String Rizzoc.Build_version.current)
+    ])
+  ]
+
+let document_text_request params =
+  let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
+  let* uri = text_document |> member "uri" |> to_option to_string in
+  let* text = text_for_uri uri in
+  let filename = path_of_uri uri in
+  Some (uri, filename, text)
+
+let position_request params =
+  let* position_json = params |> member "position" |> to_option (fun x -> x) in
+  let* line = position_json |> member "line" |> to_option to_int in
+  let* character = position_json |> member "character" |> to_option to_int in
+  Some { LS.line; character }
+
+let document_position_request params =
+  let* uri, filename, text = document_text_request params in
+  let* position = position_request params in
+  Some (uri, filename, text, position)
+
+let request_document_symbols params =
+  let* uri, filename, text = document_text_request params in
+  let symbols = LS.document_symbols ~uri ~filename:(Some filename) ~text in
+  Some (`List (List.map json_of_document_symbol symbols))
+
+let request_definition params =
+  let* uri, filename, text, position = document_position_request params in
+  let definition =
+    LS.definition_at_position
+      ~uri
+      ~filename:(Some filename)
+      ~text
+      ~position
+  in
+  Some (
+    match definition with
+    | Some defn -> json_of_location ~uri:(uri_of_path defn.LS.filename) defn.range
+    | None -> `Null)
+
+let request_prepare_rename params =
+  let* uri, filename, text, position = document_position_request params in
+  let rename =
+    LS.rename_at_position
+      ~uri
+      ~filename:(Some filename)
+      ~text
+      ~position
+  in
+  Some (match rename with Some info -> json_of_range info.LS.range | None -> `Null)
+
+type rename_request_result =
+  | RenameResponse of Yojson.Safe.t
+  | RenameError of string
+
+let request_rename params =
+  let* uri, filename, text, position = document_position_request params in
+  let* new_name = params |> member "newName" |> to_option to_string in
+  let* rename =
+    LS.rename_at_position
+      ~uri
+      ~filename:(Some filename)
+      ~text
+      ~position
+  in
+  if LS.valid_rename_name ~kind:rename.LS.kind new_name then
+    Some (RenameResponse (json_of_workspace_edit ~new_text:new_name rename))
+  else
+    Some (RenameError "New name is not a valid identifier for this symbol.")
+
+let request_hover params =
+  let* uri, filename, text, position = document_position_request params in
+  let hover =
+    LS.hover_at_position
+      ~uri
+      ~filename:(Some filename)
+      ~text
+      ~position
+  in
+  Some (match hover with Some h -> json_of_hover h | None -> `Null)
+
+let request_completion params =
+  let* uri, filename, text, position = document_position_request params in
+  let completion =
+    LS.completions_at_position
+      ~uri
+      ~filename:(Some filename)
+      ~text
+      ~position
+  in
+  Some (json_of_completion_list completion)
+
+let request_semantic_tokens params =
+  let* uri, filename, text = document_text_request params in
+  let tokens = LS.semantic_tokens ~uri ~filename:(Some filename) ~text in
+  Some (json_of_semantic_tokens tokens)
+
+let respond_with_optional ~id ~fallback result =
+  response ~id ~result:(match result with Some value -> value | None -> fallback)
+
 let process_request ~method_name ~id ~params =
   match method_name with
   | "initialize" ->
       let _ = params in
-      response
-        ~id
-        ~result:(`Assoc [
-          ("capabilities", `Assoc [
-            ("textDocumentSync", `Int 1);
-            ("documentSymbolProvider", `Bool true);
-            ("definitionProvider", `Bool true);
-            ("renameProvider", `Assoc [
-              ("prepareProvider", `Bool true)
-            ]);
-            ("hoverProvider", `Bool true);
-            ("completionProvider", `Assoc [
-              ("resolveProvider", `Bool false);
-              ("triggerCharacters", `List completion_trigger_characters)
-            ]);
-            ("semanticTokensProvider", `Assoc [
-              ("legend", `Assoc [
-                ("tokenTypes", `List [`String "function"; `String "variable"; `String "type"]);
-                ("tokenModifiers", `List [`String "declaration"])
-              ]);
-              ("full", `Bool true)
-            ])
-          ]);
-          ("serverInfo", `Assoc [
-            ("name", `String "rizzolsp");
-            ("version", `String Rizzoc.Build_version.current)
-          ])
-        ])
+      response ~id ~result:initialize_result
   | "textDocument/documentSymbol" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let filename = path_of_uri uri in
-        let symbols = LS.document_symbols ~uri ~filename:(Some filename) ~text in
-        Some (`List (List.map json_of_document_symbol symbols))
-      in
-      response ~id ~result:(match result with Some value -> value | None -> `List [])
+      respond_with_optional ~id ~fallback:(`List []) (request_document_symbols params)
   | "textDocument/definition" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let* position_json = params |> member "position" |> to_option (fun x -> x) in
-        let* line = position_json |> member "line" |> to_option to_int in
-        let* character = position_json |> member "character" |> to_option to_int in
-        let filename = path_of_uri uri in
-        let definition =
-          LS.definition_at_position
-            ~uri
-            ~filename:(Some filename)
-            ~text
-            ~position:{ LS.line; character }
-        in
-        Some (
-          match definition with
-          | Some defn -> json_of_location ~uri:(uri_of_path defn.LS.filename) defn.range
-          | None -> `Null)
-      in
-      response ~id ~result:(match result with Some value -> value | None -> `Null)
+      respond_with_optional ~id ~fallback:`Null (request_definition params)
   | "textDocument/prepareRename" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let* position_json = params |> member "position" |> to_option (fun x -> x) in
-        let* line = position_json |> member "line" |> to_option to_int in
-        let* character = position_json |> member "character" |> to_option to_int in
-        let filename = path_of_uri uri in
-        let rename =
-          LS.rename_at_position
-            ~uri
-            ~filename:(Some filename)
-            ~text
-            ~position:{ LS.line; character }
-        in
-        Some (match rename with Some info -> json_of_range info.LS.range | None -> `Null)
-      in
-      response ~id ~result:(match result with Some value -> value | None -> `Null)
+      respond_with_optional ~id ~fallback:`Null (request_prepare_rename params)
   | "textDocument/rename" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let* new_name = params |> member "newName" |> to_option to_string in
-        let* position_json = params |> member "position" |> to_option (fun x -> x) in
-        let* line = position_json |> member "line" |> to_option to_int in
-        let* character = position_json |> member "character" |> to_option to_int in
-        let filename = path_of_uri uri in
-        let* rename =
-          LS.rename_at_position
-            ~uri
-            ~filename:(Some filename)
-            ~text
-            ~position:{ LS.line; character }
-        in
-        if LS.valid_rename_name ~kind:rename.LS.kind new_name then
-          Some (`Ok (json_of_workspace_edit ~new_text:new_name rename))
-        else
-          Some (`Error "New name is not a valid identifier for this symbol.")
-      in
-      (match result with
-       | Some (`Ok value) -> response ~id ~result:value
-       | Some (`Error message) -> error_response ~id ~code:(-32602) ~message
+      (match request_rename params with
+       | Some (RenameResponse value) -> response ~id ~result:value
+       | Some (RenameError message) -> error_response ~id ~code:(-32602) ~message
        | None -> response ~id ~result:`Null)
   | "textDocument/hover" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let* position_json = params |> member "position" |> to_option (fun x -> x) in
-        let* line = position_json |> member "line" |> to_option to_int in
-        let* character = position_json |> member "character" |> to_option to_int in
-        let filename = path_of_uri uri in
-        let hover =
-          LS.hover_at_position
-            ~uri
-            ~filename:(Some filename)
-            ~text
-            ~position:{ LS.line; character }
-        in
-        Some (match hover with Some h -> json_of_hover h | None -> `Null)
-      in
-      response ~id ~result:(match result with Some value -> value | None -> `Null)
+      respond_with_optional ~id ~fallback:`Null (request_hover params)
   | "textDocument/completion" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let* position_json = params |> member "position" |> to_option (fun x -> x) in
-        let* line = position_json |> member "line" |> to_option to_int in
-        let* character = position_json |> member "character" |> to_option to_int in
-        let filename = path_of_uri uri in
-        let completion =
-          LS.completions_at_position
-            ~uri
-            ~filename:(Some filename)
-            ~text
-            ~position:{ LS.line; character }
-        in
-        Some (json_of_completion_list completion)
-      in
       response
         ~id
         ~result:
-          (match result with
+          (match request_completion params with
            | Some value -> value
            | None -> json_of_completion_list LS.completion_empty_list)
   | "textDocument/semanticTokens/full" ->
-      let result =
-        let* text_document = params |> member "textDocument" |> to_option (fun x -> x) in
-        let* uri = text_document |> member "uri" |> to_option to_string in
-        let* text = text_for_uri uri in
-        let filename = path_of_uri uri in
-        let tokens = LS.semantic_tokens ~uri ~filename:(Some filename) ~text in
-        Some (json_of_semantic_tokens tokens)
-      in
-      response ~id ~result:(match result with Some value -> value | None -> `Assoc [("data", `List [])])
+      respond_with_optional ~id ~fallback:(`Assoc [("data", `List [])]) (request_semantic_tokens params)
   | "shutdown" -> response ~id ~result:`Null
   | _ -> error_response ~id ~code:(-32601) ~message:("Method not found: " ^ method_name)
 

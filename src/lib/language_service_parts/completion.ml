@@ -170,6 +170,193 @@ let completion_items_of_env
     is_incomplete = false;
   }
 
+let completion_symbols_of_top_level : type s.
+    doc_index:doc_index -> s Ast.program -> completion_symbol StringMap.t -> completion_symbol StringMap.t =
+  fun ~doc_index program base_env ->
+    List.fold_left
+      (fun env (top : s Ast.top_expr) ->
+        match top with
+        | Ast.TopLet (top_name, rhs, _) ->
+            let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
+            let documentation = documentation_for_name doc_index top_name in
+            completion_add_prefer_high_priority
+              (name_text top_name)
+              (completion_symbol_of_name ?documentation ~source:CompletionTopLevel ~kind top_name)
+              env
+        | Ast.TopTypeDef _ -> env)
+      base_env
+      program
+
+let base_completion_env
+    ~(doc_index : doc_index)
+    ~(type_definitions : Type_env.typedefinition_env)
+    (program : Ast.typed Ast.program) : completion_symbol StringMap.t =
+  let with_constructors =
+    StringMap.fold
+      completion_add_prefer_high_priority
+      (constructor_completion_symbols_of_typedefinitions ~type_definitions)
+      builtin_completion_symbols
+  in
+  completion_symbols_of_top_level ~doc_index program with_constructors
+
+let rec completion_env_in_expr : type s.
+    position:position -> completion_symbol StringMap.t -> s Ast.expr -> completion_symbol StringMap.t option =
+  fun ~position env expr ->
+    let expr_range = range_of_ann (Ast.expr_get_ann expr) in
+    if not (range_contains_position expr_range position) then
+      None
+    else
+      match expr with
+      | Ast.EConst _ | Ast.EError _ | Ast.EVar _ -> Some env
+      | Ast.ECtor (ctor_name, args, _) ->
+          if range_contains_position (range_of_name ctor_name) position then
+            Some env
+          else
+            (match List.find_map (completion_env_in_expr ~position env) args with
+             | Some _ as found -> found
+             | None -> Some env)
+      | Ast.ELet (bound_name, e1, e2, _) ->
+          let bound_range = range_of_name bound_name in
+          if range_contains_position bound_range position then
+            Some env
+          else
+            (match completion_env_in_expr ~position env e1 with
+             | Some _ as found -> found
+             | None ->
+                 let env' =
+                   completion_add_shadowing
+                     (name_text bound_name)
+                     (completion_symbol_of_name ~source:CompletionLocal ~kind:SemanticVariable bound_name)
+                     env
+                 in
+                 (match completion_env_in_expr ~position env' e2 with
+                  | Some _ as found -> found
+                  | None -> Some env'))
+      | Ast.EFun (params, body, _) ->
+          if List.exists (fun param -> Option.is_some (pattern_hover_at_position ~position param)) params then
+            Some env
+          else
+            let env' =
+              List.fold_left
+                (fun acc param ->
+                  pattern_bound_decls param
+                  |> List.fold_left
+                       (fun acc (name, binding_range) ->
+                         completion_add_shadowing
+                           name
+                           {
+                             kind = SemanticVariable;
+                             range = binding_range;
+                             detail = None;
+                             documentation = None;
+                             source = CompletionLocal;
+                           }
+                           acc)
+                       acc)
+                env
+                params
+            in
+            (match completion_env_in_expr ~position env' body with
+             | Some _ as found -> found
+             | None -> Some env')
+      | Ast.EApp (fn, args, _) ->
+          (match completion_env_in_expr ~position env fn with
+           | Some _ as found -> found
+           | None ->
+               (match List.find_map (completion_env_in_expr ~position env) args with
+                | Some _ as found -> found
+                | None -> Some env))
+      | Ast.EUnary (_, e, _) ->
+          (match completion_env_in_expr ~position env e with
+           | Some _ as found -> found
+           | None -> Some env)
+      | Ast.EBinary (_, e1, e2, _) | Ast.ETuple (e1, e2, _) ->
+          (match completion_env_in_expr ~position env e1 with
+           | Some _ as found -> found
+           | None ->
+               (match completion_env_in_expr ~position env e2 with
+                | Some _ as found -> found
+                | None -> Some env))
+      | Ast.ECase (scrutinee, branches, _) ->
+          (match completion_env_in_expr ~position env scrutinee with
+           | Some _ as found -> found
+           | None ->
+               (match List.find_map (completion_env_in_branch ~position env) branches with
+                | Some _ as found -> found
+                | None -> Some env))
+      | Ast.EIfe (c, t, e, _) ->
+          (match completion_env_in_expr ~position env c with
+           | Some _ as found -> found
+           | None ->
+               (match completion_env_in_expr ~position env t with
+                | Some _ as found -> found
+                | None ->
+                    (match completion_env_in_expr ~position env e with
+                     | Some _ as found -> found
+                     | None -> Some env)))
+      | Ast.EAnno (e, _, _) ->
+          (match completion_env_in_expr ~position env e with
+           | Some _ as found -> found
+           | None -> Some env)
+
+and completion_env_in_branch : type s.
+    position:position ->
+    completion_symbol StringMap.t ->
+    s Ast.pattern * s Ast.expr * s Ast.ann ->
+    completion_symbol StringMap.t option =
+  fun ~position env (pattern, branch_expr, branch_ann) ->
+    let branch_range = range_of_ann branch_ann in
+    if not (range_contains_position branch_range position) then
+      None
+    else
+      let bound = pattern_bound_symbols pattern in
+      let cursor_on_pattern_binding =
+        List.exists
+          (fun ((_, symbol) : string * completion_symbol) -> range_contains_position symbol.range position)
+          bound
+      in
+      let cursor_on_pattern_constructor =
+        List.exists
+          (fun ctor_range -> range_contains_position ctor_range position)
+          (pattern_constructor_ranges pattern)
+      in
+      if cursor_on_pattern_binding || cursor_on_pattern_constructor then
+        Some env
+      else
+        let env' =
+          List.fold_left
+            (fun acc ((name, symbol) : string * completion_symbol) ->
+              completion_add_shadowing name symbol acc)
+            env
+            bound
+        in
+        (match completion_env_in_expr ~position env' branch_expr with
+         | Some _ as found -> found
+         | None -> Some env')
+
+let rec completion_env_in_tops : type s.
+    active_filename:string ->
+    position:position ->
+    base_env:completion_symbol StringMap.t ->
+    s Ast.program ->
+    completion_symbol StringMap.t option =
+  fun ~active_filename ~position ~base_env tops ->
+    match tops with
+    | [] -> None
+    | Ast.TopLet (top_name, rhs, top_ann) :: rest ->
+        if not (ann_in_file ~filename:active_filename top_ann) then
+          completion_env_in_tops ~active_filename ~position ~base_env rest
+        else if range_contains_position (range_of_ann top_ann) position then
+          if range_contains_position (range_of_name top_name) position then
+            Some base_env
+          else
+            (match completion_env_in_expr ~position base_env rhs with
+             | Some _ as found -> found
+             | None -> Some base_env)
+        else
+          completion_env_in_tops ~active_filename ~position ~base_env rest
+    | Ast.TopTypeDef _ :: rest -> completion_env_in_tops ~active_filename ~position ~base_env rest
+
 let completions_at_position
     ~(uri : string)
     ~(filename : string option)
@@ -180,176 +367,9 @@ let completions_at_position
   | Error _ -> completion_empty_list
   | Ok { typed_program = program; type_definitions; _ } ->
       let doc_index = doc_index_for_document ~filename:active_filename text in
-      let base_env =
-        let with_constructors =
-          StringMap.fold
-            completion_add_prefer_high_priority
-            (constructor_completion_symbols_of_typedefinitions ~type_definitions)
-            builtin_completion_symbols
-        in
-        List.fold_left
-          (fun env (top : Ast.typed Ast.top_expr) ->
-            match top with
-            | Ast.TopLet (top_name, rhs, _) ->
-                let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
-                let documentation = documentation_for_name doc_index top_name in
-                completion_add_prefer_high_priority
-                  (name_text top_name)
-                  (completion_symbol_of_name ?documentation ~source:CompletionTopLevel ~kind top_name)
-                  env
-            | Ast.TopTypeDef _ -> env)
-          with_constructors
-          program
-      in
-      let rec env_in_expr
-          (env : completion_symbol StringMap.t)
-          (expr : Ast.typed Ast.expr) : completion_symbol StringMap.t option =
-        let expr_range = range_of_ann (Ast.expr_get_ann expr) in
-        if not (range_contains_position expr_range position) then
-          None
-        else
-          match expr with
-          | Ast.EConst _ | Ast.EError _ | Ast.EVar _ -> Some env
-          | Ast.ECtor (ctor_name, args, _) ->
-              if range_contains_position (range_of_name ctor_name) position then
-                Some env
-              else
-                (match List.find_map (env_in_expr env) args with
-                 | Some _ as found -> found
-                 | None -> Some env)
-          | Ast.ELet (bound_name, e1, e2, _) ->
-              let bound_range = range_of_name bound_name in
-              if range_contains_position bound_range position then
-                Some env
-              else
-                (match env_in_expr env e1 with
-                 | Some _ as found -> found
-                 | None ->
-                     let env' =
-                       completion_add_shadowing
-                         (name_text bound_name)
-                         (completion_symbol_of_name ~source:CompletionLocal ~kind:SemanticVariable bound_name)
-                         env
-                     in
-                     (match env_in_expr env' e2 with
-                      | Some _ as found -> found
-                      | None -> Some env'))
-          | Ast.EFun (params, body, _) ->
-              if List.exists (fun param -> Option.is_some (pattern_hover_at_position ~position param)) params then
-                Some env
-              else
-                let env' =
-                  List.fold_left
-                    (fun acc param ->
-                      pattern_bound_decls param
-                      |> List.fold_left
-                           (fun acc (name, binding_range) ->
-                             completion_add_shadowing
-                               name
-                               {
-                                 kind = SemanticVariable;
-                                 range = binding_range;
-                                 detail = None;
-                                 documentation = None;
-                                 source = CompletionLocal;
-                               }
-                               acc)
-                           acc)
-                    env
-                    params
-                in
-                (match env_in_expr env' body with
-                 | Some _ as found -> found
-                 | None -> Some env')
-          | Ast.EApp (fn, args, _) ->
-              (match env_in_expr env fn with
-               | Some _ as found -> found
-               | None ->
-                   (match List.find_map (env_in_expr env) args with
-                    | Some _ as found -> found
-                    | None -> Some env))
-          | Ast.EUnary (_, e, _) ->
-              (match env_in_expr env e with
-               | Some _ as found -> found
-               | None -> Some env)
-          | Ast.EBinary (_, e1, e2, _) | Ast.ETuple (e1, e2, _) ->
-              (match env_in_expr env e1 with
-               | Some _ as found -> found
-               | None ->
-                   (match env_in_expr env e2 with
-                    | Some _ as found -> found
-                    | None -> Some env))
-          | Ast.ECase (scrutinee, branches, _) ->
-              (match env_in_expr env scrutinee with
-               | Some _ as found -> found
-               | None ->
-                   let in_branch (pattern, branch_expr, branch_ann) =
-                     let branch_range = range_of_ann branch_ann in
-                     if not (range_contains_position branch_range position) then
-                       None
-                     else
-                       let bound = pattern_bound_symbols pattern in
-                       let bound : (string * completion_symbol) list = bound in
-                       let cursor_on_pattern_binding =
-                         List.exists
-                           (fun ((_, symbol) : string * completion_symbol) -> range_contains_position symbol.range position)
-                           bound
-                       in
-                       let cursor_on_pattern_constructor =
-                         List.exists
-                           (fun ctor_range -> range_contains_position ctor_range position)
-                           (pattern_constructor_ranges pattern)
-                       in
-                       if cursor_on_pattern_binding || cursor_on_pattern_constructor then
-                         Some env
-                       else
-                         let env' =
-                           List.fold_left
-                             (fun acc ((name, symbol) : string * completion_symbol) ->
-                               completion_add_shadowing name symbol acc)
-                             env
-                             bound
-                         in
-                         (match env_in_expr env' branch_expr with
-                          | Some _ as found -> found
-                          | None -> Some env')
-                   in
-                   (match List.find_map in_branch branches with
-                    | Some _ as found -> found
-                    | None -> Some env))
-          | Ast.EIfe (c, t, e, _) ->
-              (match env_in_expr env c with
-               | Some _ as found -> found
-               | None ->
-                   (match env_in_expr env t with
-                    | Some _ as found -> found
-                    | None ->
-                        (match env_in_expr env e with
-                         | Some _ as found -> found
-                         | None -> Some env)))
-          | Ast.EAnno (e, _, _) ->
-              (match env_in_expr env e with
-               | Some _ as found -> found
-               | None -> Some env)
-      in
-      let rec env_in_tops = function
-        | [] -> None
-        | Ast.TopLet (top_name, rhs, top_ann) :: rest ->
-            if not (ann_in_file ~filename:active_filename top_ann) then
-              env_in_tops rest
-            else if range_contains_position (range_of_ann top_ann) position then
-              if range_contains_position (range_of_name top_name) position then
-                Some base_env
-              else
-                (match env_in_expr base_env rhs with
-                 | Some _ as found -> found
-                 | None -> Some base_env)
-            else
-              env_in_tops rest
-        | Ast.TopTypeDef _ :: rest -> env_in_tops rest
-      in
+      let base_env = base_completion_env ~doc_index ~type_definitions program in
       let env =
-        match env_in_tops program with
+        match completion_env_in_tops ~active_filename ~position ~base_env program with
         | Some scope_env -> scope_env
         | None -> base_env
       in

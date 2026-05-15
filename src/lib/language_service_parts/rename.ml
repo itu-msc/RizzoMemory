@@ -113,53 +113,51 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
               (match resolve_in_expr env e1 with
                | Some _ as found -> found
                | None ->
-                   let env' = StringMap.add (name_text bound_name) binding_target env in
-                   resolve_in_expr env' e2)
+                  let env' = StringMap.add (name_text bound_name) binding_target env in
+                  resolve_in_expr env' e2)
         | Ast.EFun (params, body, _) ->
             let declared_here =
               params
               |> List.find_map (fun param ->
-                     pattern_bound_decls param
-                     |> List.find_map (fun (name, param_range) ->
-                            if range_contains_position param_range position then
-                              let param_target =
-                                rename_value_target ~filename:active_filename ~kind:RenameValue name param_range
-                              in
-                              Some (param_target, param_range)
-                            else
-                              None))
+                  pattern_bound_decls param
+                  |> List.find_map (fun (name, param_range) ->
+                      if range_contains_position param_range position then
+                        let param_target =
+                          rename_value_target ~filename:active_filename ~kind:RenameValue name param_range
+                        in
+                        Some (param_target, param_range)
+                      else
+                        None))
             in
             (match declared_here with
              | Some _ as found -> found
              | None ->
-                 let constructor_here =
-                   params
-                   |> List.find_map (fun param ->
-                          pattern_constructor_occurrences param
-                          |> List.find_map (fun (ctor_name, ctor_range) ->
-                                 if range_contains_position ctor_range position then
-                                   lookup_constructor ctor_name ctor_range
-                                 else
-                                   None))
+                let constructor_here =
+                  params
+                  |> List.find_map (fun param ->
+                      pattern_constructor_occurrences param
+                      |> List.find_map (fun (ctor_name, ctor_range) ->
+                          if range_contains_position ctor_range position then
+                            lookup_constructor ctor_name ctor_range
+                          else
+                            None))
                  in
                  (match constructor_here with
                   | Some _ as found -> found
                   | None ->
                       let env' =
-                        List.fold_left
-                          (fun acc param ->
-                            pattern_bound_decls param
-                            |> List.fold_left
-                                 (fun acc (name, param_range) ->
-                                   StringMap.add
-                                     name
-                                     (rename_value_target ~filename:active_filename ~kind:RenameValue name param_range)
-                                     acc)
-                                 acc)
-                          env
-                          params
+                        List.fold_left (fun acc param -> 
+                            pattern_bound_decls param 
+                            |> List.fold_left (fun acc (name, param_range) ->
+                                StringMap.add
+                                  name
+                                  (rename_value_target ~filename:active_filename ~kind:RenameValue name param_range)
+                                  acc
+                                ) acc
+                          ) env params
                       in
-                      resolve_in_expr env' body))
+                      resolve_in_expr env' body
+                 ))
         | Ast.EApp (fn, args, _) ->
             (match resolve_in_expr env fn with
              | Some _ as found -> found
@@ -184,13 +182,13 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
                      let bound_here =
                        bound
                        |> List.find_map (fun (name, binding_range) ->
-                              let binding_target =
-                                rename_value_target ~filename:active_filename ~kind:RenameValue name binding_range
-                              in
-                              if range_contains_position binding_range position then
-                                Some (binding_target, binding_range)
-                              else
-                                None)
+                            let binding_target =
+                              rename_value_target ~filename:active_filename ~kind:RenameValue name binding_range
+                            in
+                            if range_contains_position binding_range position then
+                              Some (binding_target, binding_range)
+                            else
+                              None)
                      in
                      match bound_here with
                      | Some _ as found -> found
@@ -198,10 +196,10 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
                          let constructor_here =
                            constructors
                            |> List.find_map (fun (name, ctor_range) ->
-                                  if range_contains_position ctor_range position then
-                                    lookup_constructor name ctor_range
-                                  else
-                                    None)
+                                if range_contains_position ctor_range position then
+                                  lookup_constructor name ctor_range
+                                else
+                                  None)
                          in
                          (match constructor_here with
                           | Some _ as found -> found
@@ -241,11 +239,11 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
               let found_ctor =
                 ctors
                 |> List.find_map (fun (ctor_name, _, _) ->
-                       let ctor_range = range_of_name ctor_name in
-                       if range_contains_position ctor_range position then
-                         lookup_constructor (name_text ctor_name) ctor_range
-                       else
-                         None)
+                    let ctor_range = range_of_name ctor_name in
+                    if range_contains_position ctor_range position then
+                      lookup_constructor (name_text ctor_name) ctor_range
+                    else
+                      None)
               in
               (match found_ctor with
                | Some _ as found -> found
@@ -311,20 +309,20 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
                       let acc =
                         pattern_constructor_occurrences param
                         |> List.fold_left
-                             (fun acc (name, ctor_range) ->
-                               match StringMap.find_opt name constructor_env with
-                               | Some candidate_target -> add_if_matching acc ctor_range candidate_target
-                               | None -> acc)
-                             acc
+                            (fun acc (name, ctor_range) ->
+                              match StringMap.find_opt name constructor_env with
+                              | Some candidate_target -> add_if_matching acc ctor_range candidate_target
+                              | None -> acc)
+                            acc
                       in
                       pattern_bound_decls param
                       |> List.fold_left
-                           (fun acc (name, binding_range) ->
-                             let binding_target =
-                               rename_value_target ~filename:active_filename ~kind:RenameValue name binding_range
-                             in
-                             add_if_matching acc binding_range binding_target)
-                           acc)
+                          (fun acc (name, binding_range) ->
+                            let binding_target =
+                              rename_value_target ~filename:active_filename ~kind:RenameValue name binding_range
+                            in
+                            add_if_matching acc binding_range binding_target)
+                          acc)
                     acc
                     params
                 in

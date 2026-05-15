@@ -14,24 +14,24 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
       let top_level_function_types =
         program
         |> List.fold_left
-             (fun env (top : Ast.typed Ast.top_expr) ->
-               match top with
-               | Ast.TopLet (top_name, rhs, _) when symbol_kind_of_expr rhs = Function ->
-                   StringMap.add (name_text top_name) (typ_of_ann_opt (snd top_name)) env
-               | Ast.TopLet _ | Ast.TopTypeDef _ -> env)
-             StringMap.empty
+            (fun env (top : Ast.typed Ast.top_expr) ->
+              match top with
+              | Ast.TopLet (top_name, rhs, _) when symbol_kind_of_expr rhs = Function ->
+                  StringMap.add (name_text top_name) (typ_of_ann_opt (snd top_name)) env
+              | Ast.TopLet _ | Ast.TopTypeDef _ -> env)
+            StringMap.empty
       in
       let top_level_docs =
         program
         |> List.fold_left
-             (fun env (top : Ast.typed Ast.top_expr) ->
-               match top with
-               | Ast.TopLet (top_name, _, _) ->
-                   (match documentation_for_name doc_index top_name with
-                    | Some doc -> StringMap.add (name_text top_name) doc env
-                    | None -> env)
-               | Ast.TopTypeDef _ -> env)
-             StringMap.empty
+            (fun env (top : Ast.typed Ast.top_expr) ->
+              match top with
+              | Ast.TopLet (top_name, _, _) ->
+                  (match documentation_for_name doc_index top_name with
+                  | Some doc -> StringMap.add (name_text top_name) doc env
+                  | None -> env)
+              | Ast.TopTypeDef _ -> env)
+            StringMap.empty
       in
       let top_level_hover =
         List.find_map
