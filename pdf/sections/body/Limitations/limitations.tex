@@ -12,14 +12,21 @@ present a program similar to our $map$ combinator, but their concern is instead 
 Their solution is to reverse the order in which \textbf{reset}/\textbf{reuse} instructions and \textbf{inc}/\textbf{dec} are inserted, so that \textbf{reset} instructions are only inserted when they can replace a \textbf{dec}.
 This would also solve our issue of redundant and always failing \textbf{reset} instructions. 
 
-\subsection{Later values are computed more than once per time step}
+\subsection{The Later applications forgotten to time}\label{sec:later_applications_forget}
 
-Later values are just functions, and thus, if more than one signal depend on the same Later value, then the Later value will be evaluated more than once. This is not ideal, as the Later value may be expensive to compute and will grow the heap linearly with the number of dependencies on the Later value.
-In the evaluation of the signal heaps behaviour, we mention that the signals $[4]$ and $[6]$ are caused by a Later value being evaluated 2 times, once for each dependence on the same Later value.
-A workaround that currently works for \texttt{Later values} is by temporarily making the later into a signal. We can do this by giving the Later value a dummy head and using the tail constructor to get the now cached Later value back:
+\texttt{Later applications} (\texttt{LaterApp}) call arbitrary functions and are thus not restricted by the semantics of the runtime to always return the same value. This means, if multiple signals depend on the same Later application in a single time step, that application will be evaluated once for each dependency rather than sharing the result. This is inefficient both in terms of time and memory, as the Later application may be expensive to compute and will grow the heap linearly with the number of dependencies on the Later value.
+
+In Section~\ref{section:eval:heap_behaviour}, the signals $4$ and $6$ arise from exactly this situation: the same later application is evaluated twice, once for each dependency. Ideally, the signal $4$ would have been cached and returned for the second dependency, which would have prevented the creation of signal $6$ and the associated memory allocation. 
+
+A current workaround is to temporarily turn the affected later computation into a signal, so that the result is cached in the signal heap:
 
 \begin{verbatim}
-    tail ("" :: mk_sig_of_channel console)
+    tail ("" :: mk_sig (wait console))
 \end{verbatim}
 
-A proper fix could require us to change the Later type to contain 2 additional fields. One field for the cached value and one for a flag to indicate which time step the cached value is for. The evaluation of the Later value would then first check if the cached value is valid for the current time step and return it if it is, and otherwise compute the Later value, store it in the cache, and return it.
+For us to use the \texttt{tail} we need to turn the \texttt{Later (Signal String)} from \texttt{mk\_sig} into a \texttt{Signal String}. To do this, we take the \texttt{LaterApp} from \texttt{mk\_sig}, and apply it to the signal constructor (\texttt{::}) with a dummy head value (in this case the empty string). This instantiates a signal in the current time step, which we can use the \texttt{tail} constructor on to effectively cache the result of the later application. 
+The trade-off here is we abandoned the lazy creation of the signal, and instead create the signal on initialisation. This means that if the signal is never used, we have unnecessarily created a signal and allocated memory for it. However, if the signal is used multiple times, we save on the redundant later applications and the associated memory allocations, which can be a significant improvement in performance and memory usage.
+
+A proper fix could require us to change the LaterApp type to contain 2 additional fields. One field for the cached value and one for a flag to indicate which time step the cached value is valid for. The evaluation of the Later value would then first check if the cached value is valid for the current time step and return it if it is, and otherwise compute the Later value, store it in the cache, and return it.
+
+% A similar problem can be observed for the Delay types, which are also just functions. However, the Delay type is less likely to be used in a way that causes multiple dependencies on the same Delay value, as it is more common to use the Delay type for delaying a signal by one time step, which would not cause multiple dependencies on the same Delay value within the same time step. 
