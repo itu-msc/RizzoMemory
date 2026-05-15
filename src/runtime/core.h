@@ -206,6 +206,7 @@ static inline void rz_refcount_inc(rz_object_t* obj) {
 
 /* forward declare from heap.h */
 static void rz_signal_free(rz_object_t* obj);
+static rz_object_t* rz_reset_signal(rz_object_t* obj);
 static void rz_refcount_dec_box(rz_box_t box);
 static void rz_free_pap(rz_object_t* obj);
 static inline void rz_refcount_dec(rz_object_t* obj) {
@@ -241,6 +242,10 @@ static inline void rz_refcount_dec(rz_object_t* obj) {
 }
 
 static rz_object_t* rz_reset_object(rz_object_t* obj) {
+    if (obj && obj->header.obj_type == RZ_SIGNAL) {
+        return rz_reset_signal(obj);
+    }
+
     /* reset-shared */
     if(obj->header.refcount != 1) {
         rz_refcount_dec(obj);

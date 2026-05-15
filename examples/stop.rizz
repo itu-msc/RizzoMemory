@@ -1,0 +1,4 @@
+fun entry _ =
+    let s = stop (fun s -> not (s == "")) ("" :: mk_sig_of_channel console) in
+    let x = console_out_signal s in
+    start_event_loop ()

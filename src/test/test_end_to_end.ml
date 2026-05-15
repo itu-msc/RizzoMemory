@@ -279,9 +279,9 @@ let test_console_signal_input_string_is_freed () =
     | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
 
 let test_simple_console_identity () =
-  let program = 
+  let program =
     {|
-      fun entry x = 
+      fun entry x =
         let my_console_sig = mk_sig (wait console) in
         let my_console = console_out_signal ("" :: my_console_sig) in
         let q = quit_at (my_console_sig) in
@@ -292,6 +292,23 @@ let test_simple_console_identity () =
   let outputs, process_status = run_console_program ~program ~input:expected_output () in
   Alcotest.(check string) "initial output" "" (List.hd outputs);
   Alcotest.(check bool) "console output appears" true (List.mem expected_output outputs);
+  Alcotest.(check int) "process exit code" 0
+    (match process_status with
+    | Unix.WEXITED code -> code
+    | Unix.WSIGNALED signal -> Alcotest.failf "Process was terminated by signal %d" signal
+    | Unix.WSTOPPED signal -> Alcotest.failf "Process was stopped by signal %d" signal)
+
+let test_stop_signal_over_prepended_console_input_does_not_crash () =
+  let program =
+    {|
+      fun entry x =
+        let stopped = stop (fun s -> not (s == "")) ("" :: mk_sig_of_channel console) in
+        let _out = console_out_signal stopped in
+        start_event_loop ()
+    |}
+  in
+  let outputs, process_status = run_console_program ~program ~input:"hello" () in
+  Alcotest.(check string) "initial output" "" (List.hd outputs);
   Alcotest.(check int) "process exit code" 0
     (match process_status with
     | Unix.WEXITED code -> code
@@ -590,6 +607,7 @@ let test_list_pattern_match_outputs_head () =
 
 let end_to_end_tests = [
   "Inputing on the consile outputs the same thing", `Quick, test_simple_console_identity;
+  "stop over prepended console input does not crash", `Quick, test_stop_signal_over_prepended_console_input_does_not_crash;
   "random_int outputs value in range", `Quick, test_random_int_outputs_value_in_range;
   "random_int rejects non-positive bound", `Quick, test_random_int_rejects_non_positive_bound;
   "port output loops into port input", `Quick, test_port_output_loops_into_port_input;

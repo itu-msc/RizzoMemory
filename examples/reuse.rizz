@@ -3,7 +3,7 @@ fun entry _ =
     let x = ["1", "2", "3"] in
     let y = mk_sig_of_channel console in
     let state = scan_l (fun acc n ->
-        list_reverse (match (parse_int n) with
+        (match (parse_int n) with
         | None -> acc
         | Some(v) -> list_append acc [n])
     ) x y in

@@ -136,8 +136,12 @@ static rz_object_t* rz_reset_signal(rz_object_t* obj)
     rz_signal_t* sig = (rz_signal_t*)obj;
     rz_refcount_dec_box(sig->head);
     rz_refcount_dec_box(sig->tail);
+    sig->head = RZ_UNIT;
+    sig->tail = RZ_NEVER;
     sig->updated = rz_make_int(0);
     rz_remove_signal_node(sig);
+    sig->prev = rz_make_ptr(NULL);
+    sig->next = rz_make_ptr(NULL);
     return obj;
 }
 
@@ -149,8 +153,6 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
     }
 
     rz_signal_t *sig = (rz_signal_t *)obj;
-    rz_refcount_dec_box(sig->head);
-    rz_refcount_dec_box(sig->tail);
 
     /* Keep the currently processed source signal in place.
        Removing it would advance rz_heap_cursor to the next node, and reinserting
@@ -158,7 +160,11 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
     if (rz_heap_cursor == sig)
     {
         sig->updated.as.i64 = 0;
+#ifndef __RZ_DEBUG_INFO
         sig->_base.num_fields = 5;
+#else
+        sig->_base.num_fields = 6;
+#endif
         sig->_base.tag = 0;
         sig->_base.obj_type = RZ_SIGNAL;
         sig->head = head;
@@ -169,10 +175,12 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
         return obj;
     }
 
-    rz_remove_signal_node(sig);
-
     sig->updated.as.i64 = 0;
+#ifndef __RZ_DEBUG_INFO
     sig->_base.num_fields = 5;
+#else
+    sig->_base.num_fields = 6;
+#endif
     sig->_base.tag = 0;
     sig->_base.obj_type = RZ_SIGNAL;
     sig->head = head;
