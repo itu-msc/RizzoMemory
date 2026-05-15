@@ -677,11 +677,11 @@ let test_hover_and_completion_for_typed_top_level_function () =
    | None -> Alcotest.fail "expected hover for typed top-level function"
    | Some hover ->
        Alcotest.(check bool)
-         "hover mentions top-level function"
+         "hover shows type info"
          true
          (contains_substring
             ~text:hover.Language_service.contents
-            ~substring:"top-level function: first_signal"));
+            ~substring:"Type:\n```rizz"));
   match completion_item
           ~text
           ~position:{ Language_service.line = 1; character = 12 }
@@ -689,6 +689,105 @@ let test_hover_and_completion_for_typed_top_level_function () =
   with
   | None -> Alcotest.fail "expected annotated top-level function completion"
   | Some item -> Alcotest.(check int) "completion kind is function" 3 item.Language_service.kind
+
+let test_doc_comment_hover_on_top_level_function () =
+  let text =
+    "/// Adds one to the input.\n"
+    ^ "///\n"
+    ^ "/// Leaves ownership unchanged.\n"
+    ^ "fun documented_add x : Int -> Int = x + 1\n"
+    ^ "fun use y = documented_add y\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 3; character = 4 }
+  with
+  | None -> Alcotest.fail "expected hover for documented top-level function"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover includes doc text"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Adds one to the input.\n\nLeaves ownership unchanged.");
+      Alcotest.(check bool)
+        "hover keeps type info"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz")
+
+let test_doc_comment_hover_on_top_level_use () =
+  let text =
+    "/// Adds one to the input.\n"
+    ^ "fun documented_add x : Int -> Int = x + 1\n"
+    ^ "fun use y = documented_add y\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 2; character = 12 }
+  with
+  | None -> Alcotest.fail "expected hover for documented function use"
+  | Some hover ->
+      Alcotest.(check bool)
+        "usage hover includes doc text"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Adds one to the input.")
+
+let test_doc_comment_completion_documentation () =
+  let text =
+    "/// Adds one to the input.\n"
+    ^ "fun documented_add x : Int -> Int = x + 1\n"
+    ^ "fun use y = doc\n"
+  in
+  match completion_item
+          ~text
+          ~position:{ Language_service.line = 2; character = 15 }
+          ~name:"documented_add"
+  with
+  | None -> Alcotest.fail "expected completion for documented function"
+  | Some item ->
+      Alcotest.(check (option string))
+        "completion includes documentation"
+        (Some "Adds one to the input.")
+        item.Language_service.documentation
+
+let test_doc_comment_blank_line_breaks_attachment () =
+  let text =
+    "/// This should not attach.\n"
+    ^ "\n"
+    ^ "fun undocumented x : Int -> Int = x\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 2; character = 4 }
+  with
+  | None -> Alcotest.fail "expected hover for top-level function"
+  | Some hover ->
+      Alcotest.(check bool)
+        "blank line prevents doc attachment"
+        false
+        (contains_substring ~text:hover.Language_service.contents ~substring:"This should not attach.")
+
+let test_doc_comment_from_implicit_stdlib_hover () =
+  let text =
+    "fun entry xs : List Int -> List Int =\n"
+    ^ "  list_map (fun y -> y) xs\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 2 }
+  with
+  | None -> Alcotest.fail "expected hover for stdlib function"
+  | Some hover ->
+      Alcotest.(check bool)
+        "stdlib hover includes doc text"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Apply `f` to every item in the list.")
 
 let test_hover_on_top_type_definition_uses_definition_text () =
   let text =
@@ -742,9 +841,9 @@ let test_hover_on_function_parameter_uses_name_range () =
   | None -> Alcotest.fail "expected hover for function parameter"
   | Some hover ->
       Alcotest.(check bool)
-        "hover mentions parameter"
+        "hover shows parameter type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"parameter first");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
       Alcotest.(check int)
         "hover range starts at parameter name"
         9
@@ -769,9 +868,9 @@ let test_hover_on_function_parameter_pattern_uses_name_range () =
   | None -> Alcotest.fail "expected hover for function parameter pattern binding"
   | Some hover ->
       Alcotest.(check bool)
-        "hover mentions pattern binding"
+        "hover shows pattern binding type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"pattern binding x");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
       Alcotest.(check int)
         "hover range starts at pattern name"
         17
@@ -792,9 +891,9 @@ let test_hover_inside_string_literal_uses_full_range () =
   | None -> Alcotest.fail "expected hover inside string literal"
   | Some hover ->
       Alcotest.(check bool)
-        "hover reports string constant"
+        "hover shows string type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"constant Hello World!");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz\nString\n```");
       Alcotest.(check int)
         "hover range starts at opening quote"
         15
@@ -819,9 +918,9 @@ let test_hover_on_local_let_binding_uses_name_range () =
   | None -> Alcotest.fail "expected hover for local let binding"
   | Some hover ->
       Alcotest.(check bool)
-        "hover mentions let binding"
+        "hover shows let binding type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"let-binding t");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
       Alcotest.(check int)
         "hover range starts at binding name"
         6
@@ -854,9 +953,9 @@ let test_hover_on_match_pattern_binding_uses_name_range () =
   | None -> Alcotest.fail "expected hover for match pattern binding"
   | Some hover ->
       Alcotest.(check bool)
-        "hover mentions pattern binding"
+        "hover shows pattern binding type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"pattern binding x");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
       Alcotest.(check int)
         "hover range starts at pattern name"
         5
@@ -888,10 +987,6 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
   with
   | None -> Alcotest.fail "expected hover for wildcard pattern"
   | Some hover ->
-      Alcotest.(check bool)
-        "hover mentions wildcard pattern"
-        true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"wildcard pattern");
       Alcotest.(check int)
         "hover range starts at underscore"
         5
@@ -909,10 +1004,10 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
         false
         (contains_substring ~text:hover.Language_service.contents ~substring:"match expression")
 
-let test_hover_on_function_use_shows_usage_and_definition_types () =
+let test_hover_on_function_use_omits_equal_definition_type () =
   let text =
-    "fun id x = x\n"
-    ^ "let y = id 1\n"
+    "fun id x : Int -> Int = x\n"
+    ^ "let y = id\n"
   in
   match Language_service.hover_at_position
           ~uri:"file:///test.rizz"
@@ -927,7 +1022,31 @@ let test_hover_on_function_use_shows_usage_and_definition_types () =
         true
         (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
       Alcotest.(check bool)
-        "hover shows definition type"
+        "hover omits equal definition type"
+        false
+        (contains_substring
+           ~text:hover.Language_service.contents
+           ~substring:"Definition type:\n```rizz")
+
+let test_hover_on_function_use_shows_distinct_definition_type () =
+  let text =
+    "fun id x = x\n"
+    ^ "let y = id 1\n"
+  in
+  match Language_service.hover_at_position
+          ~uri:"file:///test.rizz"
+          ~filename:None
+          ~text
+          ~position:{ Language_service.line = 1; character = 8 }
+  with
+  | None -> Alcotest.fail "expected hover for instantiated function use"
+  | Some hover ->
+      Alcotest.(check bool)
+        "hover shows usage type"
+        true
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+      Alcotest.(check bool)
+        "hover shows distinct definition type"
         true
         (contains_substring
            ~text:hover.Language_service.contents
@@ -1055,8 +1174,13 @@ let tests = [
    "completion case branch scope", `Quick, test_completions_respect_case_branch_scope;
    "completion includes builtins and constructors", `Quick, test_completions_include_builtins_and_constructors;
    "completion prefix filtering", `Quick, test_completions_filter_by_prefix;
-    "completion function parameter patterns", `Quick, test_completion_in_function_parameter_pattern_sees_binding;
+   "completion function parameter patterns", `Quick, test_completion_in_function_parameter_pattern_sees_binding;
    "hover and completion for typed top-level function", `Quick, test_hover_and_completion_for_typed_top_level_function;
+  "doc comment hover on top-level function", `Quick, test_doc_comment_hover_on_top_level_function;
+  "doc comment hover on top-level use", `Quick, test_doc_comment_hover_on_top_level_use;
+  "doc comment completion documentation", `Quick, test_doc_comment_completion_documentation;
+  "doc comment blank line breaks attachment", `Quick, test_doc_comment_blank_line_breaks_attachment;
+  "doc comment from implicit stdlib hover", `Quick, test_doc_comment_from_implicit_stdlib_hover;
   "hover on type definition uses definition text", `Quick, test_hover_on_top_type_definition_uses_definition_text;
   "hover on function parameter uses name range", `Quick, test_hover_on_function_parameter_uses_name_range;
     "hover on function parameter pattern uses name range", `Quick, test_hover_on_function_parameter_pattern_uses_name_range;
@@ -1064,7 +1188,8 @@ let tests = [
    "hover on local let binding uses name range", `Quick, test_hover_on_local_let_binding_uses_name_range;
    "hover on match pattern binding uses name range", `Quick, test_hover_on_match_pattern_binding_uses_name_range;
    "hover on wildcard pattern uses range and type", `Quick, test_hover_on_wildcard_pattern_uses_pattern_range_and_type;
-   "hover on function use shows usage and definition types", `Quick, test_hover_on_function_use_shows_usage_and_definition_types;
+   "hover on function use omits equal definition type", `Quick, test_hover_on_function_use_omits_equal_definition_type;
+   "hover on function use shows distinct definition type", `Quick, test_hover_on_function_use_shows_distinct_definition_type;
    "document symbols", `Quick,
     (fun () ->
       let text = "let x = 1\nfun id y = y\nlet y = x\n" in
@@ -1106,7 +1231,7 @@ let tests = [
             "stdlib filename"
             true
             (contains_substring ~text:defn.Language_service.filename ~substring:"signal.rizz");
-          Alcotest.(check int) "stdlib line" 11 defn.Language_service.range.start_pos.line);
+          Alcotest.(check int) "stdlib line" 18 defn.Language_service.range.start_pos.line);
   "hover returns node info", `Quick,
     (fun () ->
       let text = "let x = 1\nlet y = x\n" in
@@ -1131,9 +1256,9 @@ let tests = [
       | None -> Alcotest.fail "expected top-level hover"
       | Some hover ->
           Alcotest.(check bool)
-            "hover mentions top-level binding"
+            "hover shows top-level type"
             true
-            (contains_substring ~text:hover.Language_service.contents ~substring:"top-level binding: x"));
+            (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz"));
   "rename top-level function", `Quick, test_rename_top_level_function_updates_declaration_and_use;
   "rename local binding shadowing", `Quick, test_rename_local_binding_respects_shadowing;
   "rename constructor occurrences", `Quick, test_rename_constructor_updates_declaration_expression_and_pattern;

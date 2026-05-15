@@ -1,3 +1,5 @@
+/// Fold a list from left to right.
+/// The function receives the accumulator first and the current item second.
 fun list_fold f acc lst : ('a -> 'b -> 'a) -> 'a -> List 'b -> 'a =
     match lst with
     | [] -> acc
@@ -21,6 +23,8 @@ fun list_reverse_acc acc lst : List 'a -> List 'a -> List 'a =
 fun list_reverse lst : List 'a -> List 'a =
     list_reverse_acc [] lst
 
+/// Apply `f` to every item in the list.
+/// Preserves the input order and length.
 fun list_map f lst : ('a -> 'b) -> List 'a -> List 'b =
     match lst with
     | [] -> []
@@ -34,6 +38,8 @@ fun list_map2 f xs ys : ('a -> 'b -> 'c) -> List 'a -> List 'b -> List 'c =
         | [] -> []
         | y :: ys_ -> f x y :: list_map2 f xs_ ys_
 
+/// Keep the items where `f` returns true.
+/// Preserves the original order of the kept items.
 fun list_filter f lst : ('a -> Bool) -> List 'a -> List 'a =
     match lst with
     | [] -> []
@@ -50,6 +56,8 @@ fun list_filter_map f lst : ('a -> (Option 'b)) -> List 'a -> List 'b =
         | None -> list_filter_map f xs
         | Some(y) -> y :: list_filter_map f xs
 
+/// Return the first item where `f` returns true.
+/// Returns `None` if no item matches.
 fun list_find f lst : ('a -> Bool) -> List 'a -> (Option 'a) =
     match lst with
     | [] -> None
@@ -89,6 +97,8 @@ fun list_last lst : List 'a -> (Option 'a) =
         | [] -> Some(x)
         | _ -> list_last xs
 
+/// Pair items from two lists by position.
+/// Stops when either input list runs out of items.
 fun list_zip xs ys : List 'a -> List 'b -> List ('a * 'b) =
     match xs with
     | [] -> []

@@ -1,26 +1,40 @@
+/// Create a constant signal with the same current value forever.
+/// The tail never produces another update.
 fun const x : 'a -> Signal 'a = x :: never
 
+/// Turn a repeated `Later` value into a signal.
+/// Each time the `Later` value arrives it becomes the next signal head.
 fun mk_sig later =
     (fun a -> a :: mk_sig later) |> later
 
+/// Build a signal from repeated reads of a channel.
 fun mk_sig_of_channel c =
     mk_sig (wait c)
 
+/// Build a channel-backed signal with an explicit initial value.
 fun init_signal c x =
     x :: mk_sig_of_channel c
 
+/// Apply `f` to every value produced by a signal.
 fun map f s =
     match s with
     | x :: xs -> f x :: (map f |> xs)
 
+/// `Later` form of `map`.
+/// Applies `map f` when the `Later` signal arrives.
 fun map_l f s =
     (map f) |> s
 
+/// Sample the current value of `ys` whenever `xs` updates.
+/// Produces pairs of the new `xs` value and the latest `ys` head.
 fun sample xs ys = map (fun x -> (x, head ys)) xs
 
+/// `Later` form of `sample` for a `Later` first signal.
 fun sample_l xs ys =
     (fun xs_ -> sample xs_ ys) |> xs
 
+/// Pair the latest values from two signals.
+/// Updates whenever either input signal updates.
 fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
     let cont = fun mysync -> match mysync with
         | Left (xs_)      -> zip xs_ ys
@@ -29,6 +43,8 @@ fun zip xs ys : Signal 'a -> Signal 'b -> Signal ('a * 'b) =
     in
     (head xs, head ys) :: (cont |> sync (tail xs) (tail ys))
 
+/// Combine the latest values from two signals with `f`.
+/// Updates whenever either input signal updates.
 fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =
     let cont = fun mysync -> match mysync with
         | Left (xs_)      -> map2 f xs_ ys
@@ -37,6 +53,7 @@ fun map2 f xs ys : ('a -> 'b -> 'c) -> Signal 'a -> Signal 'b -> Signal 'c =
     in
     f (head xs) (head ys) :: (cont |> sync (tail xs) (tail ys))
 
+/// Apply `f` to the current head of `xs` and a `Later` `ys` head.
 fun map2_l f xs later_ys =
     let cont = fun mysync -> match mysync with
         | Left (xs_)      -> map2_l f xs_ later_ys
@@ -45,12 +62,17 @@ fun map2_l f xs later_ys =
     in
     (fun ys -> f (head xs) (head ys)) |> later_ys
 
+/// Synchronize two signals and delegate continuation construction to `f`.
+/// Starts by treating both current signals as changed.
 fun sync_signals f s1 s2 : (Sync (Signal 'a, Signal 'b) -> Signal 'c) -> Signal 'a -> Signal 'b -> Signal 'c = 
     head (f (Both(s1,s2))) :: (f |> sync (tail s1) (tail s2)) 
 
+/// `Later` form of `sync_signals` for two `Later` signal tails.
 fun sync_signals_l f s1 s2 : (Sync (Signal 'a, Signal 'b) -> 'c) -> Later (Signal 'a) -> Later (Signal 'b) -> Later 'c =
     f |> sync s1 s2
 
+/// Continue with `s` until `Later` signal `d` arrives.
+/// Once `d` arrives, switch to it permanently.
 fun switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
     | x :: xs ->
         let cont= fun mysync -> match mysync with
@@ -61,6 +83,8 @@ fun switch s d : Signal 'a -> Later (Signal 'a) -> Signal 'a = match s with
         let tl  = sync xs d in
         x :: (cont |> sync xs d)
 
+/// Continue with `s` until a `Later` switch function arrives.
+/// The function receives the current value and returns the replacement signal.
 fun switch_s s d : Signal 'a -> Later ('a -> Signal 'a) -> Signal 'a =
     match s with
     | x :: xs ->
@@ -72,9 +96,12 @@ fun switch_s s d : Signal 'a -> Later ('a -> Signal 'a) -> Signal 'a =
         in
         x :: (cont |> sync xs d)
 
+/// Alias for `switch_s`.
 fun switchS s d =
     switch_s s d
 
+/// Switch using a signal of replacement functions.
+/// Each function is applied to the latest current value before continuing.
 fun switch_r s d =
     match s with 
     | x :: xs -> 
@@ -86,13 +113,19 @@ fun switch_r s d =
         in
         x :: (cont |> sync xs d)
 
+/// Accumulate signal values with `f`.
+/// Emits the updated accumulator after each input value.
 fun scan f b (x :: xs) : ('b -> 'a -> 'b) -> 'b -> Signal 'a -> Signal 'b = 
     let b_ = f b x in
     b_ :: (scan f b_ |> xs)
 
+/// `Later` form of `scan`.
+/// Starts scanning when the `Later` signal arrives.
 fun scan_l f b s =
     (scan f b) |> s
 
+/// Continue from an already chosen current value while interleaving two signals.
+/// On single-sided updates, forwards that side's new head; on simultaneous updates, combines both heads with `f`.
 fun interleave_from f current xs ys =
     let cont = fun mysync ->
         match mysync with
@@ -102,9 +135,13 @@ fun interleave_from f current xs ys =
     in
     current :: (cont |> sync (tail xs) (tail ys))
 
+/// Interleave updates from two signals.
+/// Single-sided updates emit that side's new head, while simultaneous updates emit `f` applied to both heads.
 fun interleave f xs ys =
     interleave_from f (f (head xs) (head ys)) xs ys
 
+/// Interleave a signal with a `Later` right-hand signal.
+/// The left signal is forwarded until the right-hand signal arrives.
 fun interleave_l f xs later_ys = 
     let cont = fun mysync -> 
         match mysync with
@@ -114,6 +151,8 @@ fun interleave_l f xs later_ys =
     in
     switch xs (cont |> sync (tail xs) later_ys)
 
+/// Interleave a `Later` left-hand signal with a signal.
+/// The right signal is forwarded until the left-hand signal arrives.
 fun interleave_l_right f lxs ys = 
     let cont = fun mysync -> 
         match mysync with
@@ -123,23 +162,34 @@ fun interleave_l_right f lxs ys =
     in
     switch ys (cont |> sync lxs (tail ys))
 
+/// Map values to optional outputs and keep only `Some` results.
+/// Returns a `Later` signal because the first kept value may arrive later.
 fun filter_map p s : ('a -> (Option 'b)) -> Signal 'a -> Later (Signal 'b) = match s with
     | x :: xs -> mk_sig (watch (p x :: (map p |> xs)))
 
+/// Keep only values where `p` returns true.
+/// Returns a `Later` signal because the first kept value may arrive later.
 fun filter p s : ('a -> Bool) -> Signal 'a -> Later (Signal 'a) = filter_map (fun x -> if p x then Some (x) else None) s
 
+/// `Later`-tail variant of `filter_map`.
+/// Starts by watching a `None` placeholder before the `Later` input produces values.
 fun filter_map_l p s =
     mk_sig (watch (None :: (map p |> s)))
 
+/// Alias for `filter_map_l`.
 fun filter_mapL p s =
     filter_map_l p s
 
+/// `Later`-tail variant of `filter`.
 fun filter_l p s =
     filter_map_l (fun x -> if p x then Some (x) else None) s
 
+/// Alias for `filter_l`.
 fun filterL p s =
     filter_l p s
 
+/// Continue with the input signal until `f` returns a replacement signal.
+/// When `f` returns `Some signal`, jump to that signal immediately.
 fun jump f (x :: xs) : ('a -> Option (Signal 'a)) -> Signal 'a -> Signal 'a =
     let cont = fun s ->
         match f (head s) with
@@ -148,17 +198,23 @@ fun jump f (x :: xs) : ('a -> Option (Signal 'a)) -> Signal 'a -> Signal 'a =
     in
     x :: (cont |> xs)
 
+/// Forward values until `f` returns true.
+/// The matching value is emitted and then the signal stops.
 fun stop f (x :: xs) : ('a -> Bool) -> Signal 'a -> Signal 'a =
     if f x 
     then x :: never
     else x :: (stop f |> xs)
 
+/// Trigger `f` whenever `s1` updates, using the latest value of `s2`.
 fun trigger f s1 s2 =
     map (fun p -> match p with | (a, b) -> f a b) (sample s1 s2)
 
+/// `Later` form of `trigger` for a `Later` first signal.
 fun trigger_l f s1 s2 =
     (fun s1' -> trigger f s1' s2) |> s1
 
+/// Continue merging events after one or both input signals have changed.
+/// Wraps changed values in `Left`, `Right`, or `Both` before applying `f`.
 fun merge_events_from f xs ys changed : (Sync ('a, 'b) -> 'c) -> Signal 'a -> Signal 'b -> Sync (Signal 'a, Signal 'b) -> Signal 'c =
     match changed with
     | Left (xs_) ->
@@ -168,5 +224,7 @@ fun merge_events_from f xs ys changed : (Sync ('a, 'b) -> 'c) -> Signal 'a -> Si
     | Both (xs_, ys_) ->
         f (Both (head xs_, head ys_)) :: (merge_events_from f xs_ ys_ |> sync (tail xs_) (tail ys_))
 
+/// Merge event updates from two signals.
+/// Emits `initial` first, then emits `f` applied to each later left, right, or simultaneous update.
 fun merge_events f initial xs ys : (Sync ('a, 'b) -> 'c) -> 'c -> Signal 'a -> Signal 'b -> Signal 'c =
     initial :: (merge_events_from f xs ys |> sync (tail xs) (tail ys))

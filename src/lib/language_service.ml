@@ -88,6 +88,7 @@ type completion_symbol = {
   kind: semantic_token_kind;
   range: range;
   detail: string option;
+  documentation: string option;
   source: completion_source;
 }
 
@@ -414,6 +415,159 @@ let file_name ~(uri : string) ~(filename : string option) : string =
   | Some path when String.length path > 0 -> path
   | _ -> if String.length uri = 0 then "<memory>.rizz" else uri
 
+type doc_index = string StringMap.t
+
+type cached_doc_index = {
+  fingerprint: int * int;
+  docs: doc_index;
+}
+
+let doc_index_cache : (string, cached_doc_index) Hashtbl.t = Hashtbl.create 16
+
+let doc_key ~(filename : string) ~(name : string) ~(line : int) : string =
+  filename ^ "\000" ^ name ^ "\000" ^ string_of_int line
+
+let doc_index_find ~(filename : string) ~(name : string) ~(line : int) (docs : doc_index) : string option =
+  StringMap.find_opt (doc_key ~filename ~name ~line) docs
+
+let starts_with_at ~(prefix : string) (text : string) ~(index : int) : bool =
+  let prefix_len = String.length prefix in
+  index >= 0
+  && String.length text >= index + prefix_len
+  && String.sub text index prefix_len = prefix
+
+let is_space = function
+  | ' ' | '\t' -> true
+  | _ -> false
+
+let skip_spaces (text : string) (index : int) : int =
+  let rec go index =
+    if index < String.length text && is_space text.[index] then go (index + 1) else index
+  in
+  go index
+
+let keyword_at (text : string) ~(index : int) ~(keyword : string) : bool =
+  let keyword_len = String.length keyword in
+  starts_with_at ~prefix:keyword text ~index
+  && String.length text > index + keyword_len
+  && is_space text.[index + keyword_len]
+
+let read_decl_name (text : string) (index : int) : string option =
+  let index = skip_spaces text index in
+  if index >= String.length text || not (is_identifier_char text.[index]) then
+    None
+  else
+    let rec stop index =
+      if index < String.length text && is_identifier_rest_char text.[index] then
+        stop (index + 1)
+      else
+        index
+    in
+    let end_index = stop (index + 1) in
+    Some (String.sub text index (end_index - index))
+
+let top_decl_name_of_line (line : string) : string option =
+  let line = String.trim line in
+  let line =
+    if keyword_at line ~index:0 ~keyword:"@effectful" then
+      let effectful_end = String.length "@effectful" in
+      String.sub line effectful_end (String.length line - effectful_end) |> String.trim
+    else
+      line
+  in
+  if keyword_at line ~index:0 ~keyword:"fun" then
+    read_decl_name line (String.length "fun")
+  else if keyword_at line ~index:0 ~keyword:"let" then
+    read_decl_name line (String.length "let")
+  else if keyword_at line ~index:0 ~keyword:"type" then
+    read_decl_name line (String.length "type")
+  else
+    None
+
+let doc_line_content (line : string) : string option =
+  let trimmed_left = drop_leading_whitespace line (leading_whitespace_width line) in
+  if starts_with ~prefix:"///" trimmed_left then
+    let content = String.sub trimmed_left 3 (String.length trimmed_left - 3) in
+    if String.length content > 0 && content.[0] = ' ' then
+      Some (String.sub content 1 (String.length content - 1))
+    else
+      Some content
+  else
+    None
+
+let doc_index_of_source_text ~(filename : string) (text : string) : doc_index =
+  let lines = lines_of_text text in
+  let rec go line_no pending docs =
+    if line_no >= Array.length lines then
+      docs
+    else
+      let line = lines.(line_no) in
+      match doc_line_content line with
+      | Some content -> go (line_no + 1) (Some (Option.value pending ~default:[] @ [content])) docs
+      | None ->
+          let docs =
+            match pending, top_decl_name_of_line line with
+            | Some doc_lines, Some name ->
+                let doc = String.concat "\n" doc_lines in
+                StringMap.add (doc_key ~filename ~name ~line:line_no) doc docs
+            | _ -> docs
+          in
+          go (line_no + 1) None docs
+  in
+  go 0 None StringMap.empty
+
+let doc_index_of_source_text_cached ~(filename : string) (text : string) : doc_index =
+  let fingerprint = (String.length text, Hashtbl.hash text) in
+  match Hashtbl.find_opt doc_index_cache filename with
+  | Some cached when cached.fingerprint = fingerprint -> cached.docs
+  | _ ->
+      let docs = doc_index_of_source_text ~filename text in
+      Hashtbl.replace doc_index_cache filename { fingerprint; docs };
+      docs
+
+let read_file_text_opt (filename : string) : string option =
+  try
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () ->
+        let len = in_channel_length ic in
+        Some (really_input_string ic len))
+  with
+  | Sys_error _ -> None
+
+let doc_index_add_source_unit (docs : doc_index) (source_unit : Source_units.source_unit) : doc_index =
+  let source_text =
+    match source_unit with
+    | Source_units.Source_text { filename; text } -> Some (filename, text)
+    | Source_units.Source_file filename -> Option.map (fun text -> (filename, text)) (read_file_text_opt filename)
+  in
+  match source_text with
+  | None -> docs
+  | Some (filename, text) ->
+      StringMap.union
+        (fun _ _ right -> Some right)
+        docs
+        (doc_index_of_source_text_cached ~filename text)
+
+let doc_index_for_document ~(filename : string) (text : string) : doc_index =
+  let source_units =
+    try Source_units.default_source_units ~exclude_paths:[filename] () with
+    | _ -> []
+  in
+  source_units @ [Source_units.source_text ~filename text]
+  |> List.fold_left doc_index_add_source_unit StringMap.empty
+
+let documentation_for_name (docs : doc_index) (name : _ Ast.name) : string option =
+  let range = range_of_name name in
+  let filename = ann_filename (snd name) in
+  doc_index_find ~filename ~name:(name_text name) ~line:range.start_pos.line docs
+
+let doc_info_block = function
+  | None -> ""
+  | Some doc when String.trim doc = "" -> ""
+  | Some doc -> "\n\n" ^ doc
+
 let rec expr_is_function : type s. s Ast.expr -> bool =
   function
   | Ast.EFun _ -> true
@@ -535,23 +689,28 @@ let definition_type_info_block_of_typ_opt (typ : Ast.typ option) : string =
       let type_text = Format.asprintf "%a" Ast.pp_typ t |> dedent_text in
       Format.asprintf "\n\nDefinition type:\n```rizz\n%s\n```" type_text
 
+let distinct_definition_type_block (usage_type : Ast.typ option) (definition_type : Ast.typ option) : string =
+  match usage_type, definition_type with
+  | Some usage_type, Some definition_type when Ast.eq_typ usage_type definition_type -> ""
+  | _, definition_type -> definition_type_info_block_of_typ_opt definition_type
+
 let top_level_type_definition_text : type s. s Ast.top_expr -> string =
   fun top ->
     let top_text = Format.asprintf "%a" Ast.pp_top_expr top |> dedent_text in
     Format.asprintf "\n\nType definition:\n```rizz\n%s\n```" top_text
 
-let hover_text_for_named_symbol : type s. label:string -> s Ast.name -> string =
-  fun ~label (name, ann) ->
-    label ^ " " ^ name ^ type_info_block_of_ann ann
+let hover_text_for_named_symbol : type s. ?documentation:string -> s Ast.name -> string =
+  fun ?documentation (_, ann) ->
+    doc_info_block documentation ^ type_info_block_of_ann ann
 
 let hover_text_for_named_symbol_with_definition_type : type s.
-    label:string -> definition_type:Ast.typ option -> s Ast.name -> string =
-  fun ~label ~definition_type (name, ann) ->
-    hover_text_for_named_symbol ~label (name, ann)
-    ^ definition_type_info_block_of_typ_opt definition_type
+    ?documentation:string -> definition_type:Ast.typ option -> s Ast.name -> string =
+  fun ?documentation ~definition_type (name, ann) ->
+    hover_text_for_named_symbol ?documentation (name, ann)
+    ^ distinct_definition_type_block (typ_of_ann_opt ann) definition_type
 
-let hover_text_for_pattern_ann : type s. label:string -> s Ast.ann -> string =
-  fun ~label ann -> label ^ type_info_block_of_ann ann
+let hover_text_for_pattern_ann : type s. s Ast.ann -> string =
+  fun ann -> type_info_block_of_ann ann
 
 let type_info_block : type s. s Ast.expr -> string =
   fun expr ->
@@ -564,33 +723,7 @@ let expression_info_block : type s. s Ast.expr -> string =
 
 let hover_text_for_expr : type s. s Ast.expr -> string =
   fun expr ->
-    let base =
-      match expr with
-      | Ast.EConst (c, _) ->
-          "constant "
-          ^
-          (match c with
-           | Ast.CUnit -> "()"
-           | Ast.CNever -> "never"
-           | Ast.CInt n -> string_of_int n
-           | Ast.CBool b -> if b then "true" else "false"
-           | Ast.CString s -> s)
-      | Ast.EError (msg, _) -> "parse error " ^ msg
-      | Ast.EVar (name, _) -> "variable " ^ name
-      | Ast.ECtor ((name, _), _, _) -> "constructor " ^ name
-      | Ast.ELet ((name, _), _, _, _) -> "let-binding " ^ name
-      | Ast.EFun (params, _, _) -> 
-        let params_str = Format.asprintf "%a" (Format.pp_print_list ~pp_sep:(fun out _ -> Format.fprintf out ", ") Ast.pp_pattern) params in
-        Printf.sprintf "function(%s)" params_str
-      | Ast.EApp _ -> "function application"
-      | Ast.EUnary _ -> "unary expression"
-      | Ast.EBinary _ -> "binary expression"
-      | Ast.ETuple _ -> "tuple expression"
-      | Ast.ECase _ -> "match expression"
-      | Ast.EIfe _ -> "if expression"
-      | Ast.EAnno _ -> "annotated expression"
-    in
-    base ^ type_info_block expr ^ expression_info_block expr
+    type_info_block expr ^ expression_info_block expr
 
 let rec pattern_bound_decls : type s. s Ast.pattern -> (string * range) list =
   fun pat ->
@@ -627,6 +760,7 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
               kind = SemanticVariable;
               range = range_of_ann ann;
               detail = detail_of_ann_opt ann;
+              documentation = None;
               source = CompletionLocal;
             } );
         ]
@@ -638,6 +772,7 @@ let rec pattern_bound_symbols : type s. s Ast.pattern -> (string * completion_sy
                 kind = SemanticVariable;
                 range = range_of_ann (snd p2);
                 detail = detail_of_ann_opt (snd p2);
+                documentation = None;
                 source = CompletionLocal;
               } );
           ]
@@ -675,13 +810,13 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
     | Ast.PWildcard ann ->
         let pat_range = range_of_ann ann in
         if range_contains_position pat_range position then
-          Some { range = pat_range; contents = hover_text_for_pattern_ann ~label:"wildcard pattern" ann }
+          Some { range = pat_range; contents = hover_text_for_pattern_ann ann }
         else
           None
     | Ast.PVar (name, ann) ->
         let pat_range = range_of_ann ann in
         if range_contains_position pat_range position then
-          Some { range = pat_range; contents = hover_text_for_named_symbol ~label:"pattern binding" (name, ann) }
+          Some { range = pat_range; contents = hover_text_for_named_symbol (name, ann) }
         else
           None
     | Ast.PConst (_, _) -> None
@@ -694,15 +829,15 @@ let rec pattern_hover_at_position : type s. position:position -> s Ast.pattern -
         (match pattern_hover_at_position ~position p1 with
          | Some _ as hover -> hover
          | None ->
-             let pat_range = range_of_name p2 in
-             if range_contains_position pat_range position then
-               Some { range = pat_range; contents = hover_text_for_named_symbol ~label:"pattern binding" p2 }
-             else
-               None)
+              let pat_range = range_of_name p2 in
+              if range_contains_position pat_range position then
+                Some { range = pat_range; contents = hover_text_for_named_symbol p2 }
+              else
+                None)
     | Ast.PCtor (ctor_name, args, _) ->
         let ctor_range = range_of_name ctor_name in
         if range_contains_position ctor_range position then
-          Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
+          Some { range = ctor_range; contents = hover_text_for_named_symbol ctor_name }
         else
           List.find_map (pattern_hover_at_position ~position) args
 
@@ -1385,6 +1520,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
+      let doc_index = doc_index_for_document ~filename:active_filename text in
       let top_level_function_types =
         program
         |> List.fold_left
@@ -1395,22 +1531,30 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                | Ast.TopLet _ | Ast.TopTypeDef _ -> env)
              StringMap.empty
       in
+      let top_level_docs =
+        program
+        |> List.fold_left
+             (fun env (top : Ast.typed Ast.top_expr) ->
+               match top with
+               | Ast.TopLet (top_name, _, _) ->
+                   (match documentation_for_name doc_index top_name with
+                    | Some doc -> StringMap.add (name_text top_name) doc env
+                    | None -> env)
+               | Ast.TopTypeDef _ -> env)
+             StringMap.empty
+      in
       let top_level_hover =
         List.find_map
           (fun (top : Ast.typed Ast.top_expr) ->
             match top with
-            | Ast.TopLet (top_name, rhs, top_ann) ->
+            | Ast.TopLet (top_name, _, top_ann) ->
                 if not (ann_in_file ~filename:active_filename top_ann) then
                   None
                 else
                   let name_range = range_of_name top_name in
                   if range_contains_position name_range position then
-                    let base =
-                      match symbol_kind_of_expr rhs with
-                      | Function -> "top-level function: " ^ name_text top_name
-                      | Variable -> "top-level binding: " ^ name_text top_name
-                    in
-                    Some { range = name_range; contents = base ^ type_info_block_of_ann top_ann }
+                    let documentation = documentation_for_name doc_index top_name in
+                    Some { range = name_range; contents = doc_info_block documentation ^ type_info_block_of_ann top_ann }
                   else
                     None
             | Ast.TopTypeDef (_, _, _, top_ann) as top_def ->
@@ -1419,7 +1563,12 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                 else
                   let top_range = range_of_ann top_ann in
                   if range_contains_position top_range position then
-                    Some { range = top_range; contents = top_level_type_definition_text top_def }
+                    let documentation =
+                      match top_def with
+                      | Ast.TopTypeDef (type_name, _, _, _) -> documentation_for_name doc_index type_name
+                      | Ast.TopLet _ -> None
+                    in
+                    Some { range = top_range; contents = doc_info_block documentation ^ top_level_type_definition_text top_def }
                   else
                     None)
           program
@@ -1443,12 +1592,18 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                         | Some definition_type -> definition_type
                         | None -> None
                     in
+                    let documentation =
+                      if StringSet.mem var_text local_names then
+                        None
+                      else
+                        StringMap.find_opt var_text top_level_docs
+                    in
                     Some
                       {
                         range = var_range;
                         contents =
                           hover_text_for_named_symbol_with_definition_type
-                            ~label:"variable"
+                            ?documentation
                             ~definition_type
                             var_name;
                       }
@@ -1457,13 +1612,13 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
               | Ast.ECtor (ctor_name, args, _) ->
                   let ctor_range = range_of_name ctor_name in
                   if range_contains_position ctor_range position then
-                    Some { range = ctor_range; contents = "constructor " ^ name_text ctor_name }
+                    Some { range = ctor_range; contents = hover_text_for_named_symbol ctor_name }
                   else
                     List.find_map (find_symbol_hover_in_expr local_names) args
               | Ast.ELet (bound_name, e1, e2, _) ->
                   let binding_range = range_of_name bound_name in
                   if range_contains_position binding_range position then
-                    Some { range = binding_range; contents = hover_text_for_named_symbol ~label:"let-binding" bound_name }
+                    Some { range = binding_range; contents = hover_text_for_named_symbol bound_name }
                   else
                     (match find_symbol_hover_in_expr local_names e1 with
                      | Some _ as hover -> hover
@@ -1476,7 +1631,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                     | Ast.PVar (name, ann) ->
                         let param_range = range_of_ann ann in
                         if range_contains_position param_range position then
-                          Some { range = param_range; contents = hover_text_for_named_symbol ~label:"parameter" (name, ann) }
+                          Some { range = param_range; contents = hover_text_for_named_symbol (name, ann) }
                         else
                           None
                     | param -> pattern_hover_at_position ~position param
@@ -1555,12 +1710,13 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
               |> Option.map (fun (expr, range) -> { range; contents = hover_text_for_expr expr })
 
 let completion_symbol_of_name : type s.
-    source:completion_source -> kind:semantic_token_kind -> s Ast.name -> completion_symbol =
-  fun ~source ~kind name ->
+    ?documentation:string -> source:completion_source -> kind:semantic_token_kind -> s Ast.name -> completion_symbol =
+  fun ?documentation ~source ~kind name ->
     {
       kind;
       range = range_of_name name;
       detail = detail_of_name name;
+      documentation;
       source;
     }
 
@@ -1620,6 +1776,7 @@ let builtin_completion_symbols : completion_symbol StringMap.t =
           kind;
           range = empty_range;
           detail = Some (string_of_typ typ);
+          documentation = None;
           source = CompletionBuiltin;
         }
         env)
@@ -1650,8 +1807,9 @@ let constructor_completion_symbol_of_definition
       {
         start_pos = { line = 0; character = 0 };
         end_pos = { line = 0; character = 0 };
-      };
+    };
     detail = Some (string_of_typ typ);
+    documentation = None;
     source = CompletionConstructor;
   }
 
@@ -1724,7 +1882,7 @@ let completion_items_of_env
              label = name;
              kind = completion_kind_of_semantic_kind symbol.kind;
              detail = symbol.detail;
-             documentation = None;
+             documentation = symbol.documentation;
            })
   in
   {
@@ -1742,6 +1900,7 @@ let completions_at_position
   | Error _ -> completion_empty_list
   | Ok { typed_program = program; type_definitions; _ } ->
       let _ = uri in
+      let doc_index = doc_index_for_document ~filename:active_filename text in
       let base_env =
         let with_constructors =
           StringMap.fold
@@ -1754,9 +1913,10 @@ let completions_at_position
             match top with
             | Ast.TopLet (top_name, rhs, _) ->
                 let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
+                let documentation = documentation_for_name doc_index top_name in
                 completion_add_prefer_high_priority
                   (name_text top_name)
-                  (completion_symbol_of_name ~source:CompletionTopLevel ~kind top_name)
+                  (completion_symbol_of_name ?documentation ~source:CompletionTopLevel ~kind top_name)
                   env
             | Ast.TopTypeDef _ -> env)
           with_constructors
@@ -1807,7 +1967,13 @@ let completions_at_position
                            (fun acc (name, binding_range) ->
                              completion_add_shadowing
                                name
-                               { kind = SemanticVariable; range = binding_range; detail = None; source = CompletionLocal }
+                               {
+                                 kind = SemanticVariable;
+                                 range = binding_range;
+                                 detail = None;
+                                 documentation = None;
+                                 source = CompletionLocal;
+                               }
                                acc)
                            acc)
                     env
