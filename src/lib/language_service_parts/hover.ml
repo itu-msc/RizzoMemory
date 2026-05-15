@@ -44,7 +44,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                   let name_range = range_of_name top_name in
                   if range_contains_position name_range position then
                     let documentation = documentation_for_name doc_index top_name in
-                    Some { range = name_range; contents = doc_info_block documentation ^ type_info_block_of_ann top_ann }
+                    Some { range = name_range; contents = type_info_block_of_ann top_ann ^ doc_info_block documentation }
                   else
                     None
             | Ast.TopTypeDef (_, _, _, top_ann) as top_def ->
@@ -58,7 +58,7 @@ let hover_at_position ~(uri : string) ~(filename : string option) ~(text : strin
                       | Ast.TopTypeDef (type_name, _, _, _) -> documentation_for_name doc_index type_name
                       | Ast.TopLet _ -> None
                     in
-                    Some { range = top_range; contents = doc_info_block documentation ^ top_level_type_definition_text top_def }
+                    Some { range = top_range; contents = top_level_type_definition_text top_def ^ doc_info_block documentation }
                   else
                     None)
           program

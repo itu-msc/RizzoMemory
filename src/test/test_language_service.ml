@@ -13,6 +13,19 @@ let contains_substring ~(text : string) ~(substring : string) : bool =
   in
   if sub_len = 0 then true else go 0
 
+let substring_index ~(text : string) ~(substring : string) : int option =
+  let text_len = String.length text in
+  let sub_len = String.length substring in
+  let rec go index =
+    if index + sub_len > text_len then
+      None
+    else if String.sub text index sub_len = substring then
+      Some index
+    else
+      go (index + 1)
+  in
+  if sub_len = 0 then Some 0 else go 0
+
 let leading_whitespace_width (line : string) : int =
   let rec go index =
     if index < String.length line then
@@ -681,7 +694,7 @@ let test_hover_and_completion_for_typed_top_level_function () =
          true
          (contains_substring
             ~text:hover.Language_service.contents
-            ~substring:"Type:\n```rizz"));
+            ~substring:"```rizz"));
   match completion_item
           ~text
           ~position:{ Language_service.line = 1; character = 12 }
@@ -713,7 +726,7 @@ let test_doc_comment_hover_on_top_level_function () =
       Alcotest.(check bool)
         "hover keeps type info"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz")
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz")
 
 let test_doc_comment_hover_on_top_level_use () =
   let text =
@@ -787,7 +800,17 @@ let test_doc_comment_from_implicit_stdlib_hover () =
       Alcotest.(check bool)
         "stdlib hover includes doc text"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Apply `f` to every item in the list.")
+        (contains_substring ~text:hover.Language_service.contents ~substring:"Apply `f` to every item in the list.");
+      (match
+         ( substring_index ~text:hover.Language_service.contents ~substring:"Definition type:",
+           substring_index ~text:hover.Language_service.contents ~substring:"Apply `f` to every item in the list." )
+       with
+       | Some definition_type_index, Some doc_index ->
+           Alcotest.(check bool)
+             "stdlib hover shows definition type before docs"
+             true
+             (definition_type_index < doc_index)
+       | _ -> Alcotest.fail "expected stdlib hover definition type and docs")
 
 let test_hover_on_top_type_definition_uses_definition_text () =
   let text =
@@ -843,7 +866,7 @@ let test_hover_on_function_parameter_uses_name_range () =
       Alcotest.(check bool)
         "hover shows parameter type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
       Alcotest.(check int)
         "hover range starts at parameter name"
         9
@@ -870,7 +893,7 @@ let test_hover_on_function_parameter_pattern_uses_name_range () =
       Alcotest.(check bool)
         "hover shows pattern binding type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
       Alcotest.(check int)
         "hover range starts at pattern name"
         17
@@ -893,7 +916,7 @@ let test_hover_inside_string_literal_uses_full_range () =
       Alcotest.(check bool)
         "hover shows string type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz\nString\n```");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz\nString\n```");
       Alcotest.(check int)
         "hover range starts at opening quote"
         15
@@ -920,7 +943,7 @@ let test_hover_on_local_let_binding_uses_name_range () =
       Alcotest.(check bool)
         "hover shows let binding type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
       Alcotest.(check int)
         "hover range starts at binding name"
         6
@@ -934,9 +957,9 @@ let test_hover_on_local_let_binding_uses_name_range () =
         false
         (contains_substring ~text:hover.Language_service.contents ~substring:"Expr:");
       Alcotest.(check bool)
-        "type section starts on its own paragraph"
+        "type section starts the hover"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"\n\nType:\n```")
+        (starts_with ~prefix:"```rizz" hover.Language_service.contents)
 
 let test_hover_on_match_pattern_binding_uses_name_range () =
   let text =
@@ -955,7 +978,7 @@ let test_hover_on_match_pattern_binding_uses_name_range () =
       Alcotest.(check bool)
         "hover shows pattern binding type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
       Alcotest.(check int)
         "hover range starts at pattern name"
         5
@@ -998,7 +1021,7 @@ let test_hover_on_wildcard_pattern_uses_pattern_range_and_type () =
       Alcotest.(check bool)
         "hover shows inferred wildcard type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz\nInt\n```");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz\nInt\n```");
       Alcotest.(check bool)
         "hover omits enclosing match expression"
         false
@@ -1020,7 +1043,7 @@ let test_hover_on_function_use_omits_equal_definition_type () =
       Alcotest.(check bool)
         "hover shows usage type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
       Alcotest.(check bool)
         "hover omits equal definition type"
         false
@@ -1044,7 +1067,7 @@ let test_hover_on_function_use_shows_distinct_definition_type () =
       Alcotest.(check bool)
         "hover shows usage type"
         true
-        (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz");
+        (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz");
       Alcotest.(check bool)
         "hover shows distinct definition type"
         true
@@ -1258,7 +1281,7 @@ let tests = [
           Alcotest.(check bool)
             "hover shows top-level type"
             true
-            (contains_substring ~text:hover.Language_service.contents ~substring:"Type:\n```rizz"));
+            (contains_substring ~text:hover.Language_service.contents ~substring:"```rizz"));
   "rename top-level function", `Quick, test_rename_top_level_function_updates_declaration_and_use;
   "rename local binding shadowing", `Quick, test_rename_local_binding_respects_shadowing;
   "rename constructor occurrences", `Quick, test_rename_constructor_updates_declaration_expression_and_pattern;

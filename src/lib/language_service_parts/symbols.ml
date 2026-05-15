@@ -109,7 +109,7 @@ let type_info_block_of_typ_opt (typ : Ast.typ option) : string =
   | None -> ""
   | Some t ->
       let type_text = Format.asprintf "%a" Ast.pp_typ t |> dedent_text in
-      Format.asprintf "\n\nType:\n```rizz\n%s\n```" type_text
+      Format.asprintf "```rizz\n%s\n```" type_text
 
 let type_info_block_of_ann : type s. s Ast.ann -> string =
   fun ann -> type_info_block_of_typ_opt (typ_of_ann_opt ann)
@@ -129,17 +129,18 @@ let distinct_definition_type_block (usage_type : Ast.typ option) (definition_typ
 let top_level_type_definition_text : type s. s Ast.top_expr -> string =
   fun top ->
     let top_text = Format.asprintf "%a" Ast.pp_top_expr top |> dedent_text in
-    Format.asprintf "\n\nType definition:\n```rizz\n%s\n```" top_text
+    Format.asprintf "```rizz\n%s\n```" top_text
 
 let hover_text_for_named_symbol : type s. ?documentation:string -> s Ast.name -> string =
   fun ?documentation (_, ann) ->
-    doc_info_block documentation ^ type_info_block_of_ann ann
+    type_info_block_of_ann ann ^ doc_info_block documentation
 
 let hover_text_for_named_symbol_with_definition_type : type s.
     ?documentation:string -> definition_type:Ast.typ option -> s Ast.name -> string =
-  fun ?documentation ~definition_type (name, ann) ->
-    hover_text_for_named_symbol ?documentation (name, ann)
+  fun ?documentation ~definition_type (_, ann) ->
+    type_info_block_of_ann ann
     ^ distinct_definition_type_block (typ_of_ann_opt ann) definition_type
+    ^ doc_info_block documentation
 
 let hover_text_for_pattern_ann : type s. s Ast.ann -> string =
   fun ann -> type_info_block_of_ann ann
