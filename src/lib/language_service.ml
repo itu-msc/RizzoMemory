@@ -108,11 +108,9 @@ type parsed_typed_result = {
 
 type scoped_symbol = {
   kind: semantic_token_kind;
-  range: range;
 }
 
 type definition_symbol = {
-  kind: semantic_token_kind;
   filename: string;
   range: range;
 }
@@ -159,16 +157,15 @@ let range_span_score (range : range) : int =
   let char_span = max 0 (range.end_pos.character - range.start_pos.character) in
   (line_span * 10_000) + char_span
 
+let empty_range : range =
+  {
+    start_pos = { line = 0; character = 0 };
+    end_pos = { line = 0; character = 0 };
+  }
+
 let first_opt = function
   | [] -> None
   | x :: _ -> Some x
-
-let is_menhir_parse_error (exn : exn) : bool =
-  match Printexc.to_string exn with
-  | "Rizzoc__Parser.MenhirBasics.Error"
-  | "Parser.MenhirBasics.Error"
-  | "MenhirBasics.Error" -> true
-  | _ -> false
 
 let starts_with ~(prefix : string) (s : string) : bool =
   let n = String.length prefix in
@@ -578,9 +575,8 @@ let symbol_kind_of_expr : type s. s Ast.expr -> symbol_kind =
   fun expr -> if expr_is_function expr then Function else Variable
 
 let top_level_declarations : type s.
-    text:string -> filename:string option -> s Ast.program -> (string * symbol_kind * string * range * range) list =
-  fun ~text ~filename program ->
-  let _ = text in
+    filename:string option -> s Ast.program -> (string * symbol_kind * string * range * range) list =
+  fun ~filename program ->
   let declaration_of_top : s Ast.top_expr -> (string * symbol_kind * string * range * range) option = fun top ->
     match top with
     | Ast.TopLet (top_name, rhs, ann) ->
@@ -868,6 +864,18 @@ let keyword_range_from_expr : type s. text:string -> name:string -> s Ast.expr -
     else
       None
 
+let unary_keyword_name = function
+  | Ast.UWait -> Some "wait"
+  | Ast.UWatch -> Some "watch"
+  | Ast.UTail -> Some "tail"
+  | Ast.UDelay -> Some "delay"
+  | Ast.UNot -> Some "not"
+  | _ -> None
+
+let binary_keyword_name = function
+  | Ast.BSync -> Some "sync"
+  | _ -> None
+
 let semantic_kind_of_symbol_kind = function
   | Function -> SemanticFunction
   | Variable -> SemanticVariable
@@ -913,7 +921,7 @@ let document_symbols ~(uri : string) ~(filename : string option) ~(text : string
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> []
   | Ok { typed_program = program; _ } ->
-      top_level_declarations ~text ~filename:(Some active_filename) program
+      top_level_declarations ~filename:(Some active_filename) program
       |> List.map (fun (name, kind, _decl_filename, top_range, selection_range) ->
              { name; kind; range = top_range; selection_range })
 
@@ -922,14 +930,14 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
-      let top_decls = top_level_declarations ~text ~filename:None program in
+      let top_decls = top_level_declarations ~filename:None program in
       let top_env =
         top_decls
         |> List.fold_left
-             (fun env (name, kind, decl_filename, _top_range, selection_range) ->
+             (fun env (name, _kind, decl_filename, _top_range, selection_range) ->
                StringMap.add
                  name
-                 { kind = semantic_kind_of_symbol_kind kind; filename = decl_filename; range = selection_range }
+                 { filename = decl_filename; range = selection_range }
                  env)
              StringMap.empty
       in
@@ -939,7 +947,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
              (fun env (name, decl_filename, declaration_range) ->
                StringMap.add
                  name
-                 { kind = SemanticType; filename = decl_filename; range = declaration_range }
+                 { filename = decl_filename; range = declaration_range }
                  env)
              StringMap.empty
       in
@@ -978,7 +986,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                    let env' =
                      StringMap.add
                        (name_text bound_name)
-                       { kind = SemanticVariable; filename = active_filename; range = binding_range }
+                       { filename = active_filename; range = binding_range }
                        env
                    in
                    find_in_expr env' e2)
@@ -1017,7 +1025,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                                  (fun acc (name, param_range) ->
                                    StringMap.add
                                      name
-                                     { kind = SemanticVariable; filename = active_filename; range = param_range }
+                                     { filename = active_filename; range = param_range }
                                      acc)
                                  acc)
                           env
@@ -1060,7 +1068,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
                              (fun acc (name, binding_range) ->
                                StringMap.add
                                  name
-                                 { kind = SemanticVariable; filename = active_filename; range = binding_range }
+                                 { filename = active_filename; range = binding_range }
                                  acc)
                              env
                              bound
@@ -1089,8 +1097,7 @@ let definition_at_position ~(uri : string) ~(filename : string option) ~(text : 
               if range_contains_position name_range position then
                 Some { name; filename = ann_filename ann; range = name_range }
               else
-                let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
-                let env' = StringMap.add name { kind; filename = ann_filename ann; range = name_range } top_env in
+                let env' = StringMap.add name { filename = ann_filename ann; range = name_range } top_env in
                 match find_in_expr env' rhs with
                 | Some _ as found -> found
                 | None -> find_in_tops rest
@@ -1150,7 +1157,7 @@ let rename_at_position ~(uri : string) ~(filename : string option) ~(text : stri
   | Error _ -> None
   | Ok { typed_program = program; _ } ->
       let top_env : rename_target StringMap.t =
-        top_level_declarations ~text ~filename:None program
+        top_level_declarations ~filename:None program
         |> List.fold_left
              (fun env (name, _symbol_kind, decl_filename, _top_range, selection_range) ->
                StringMap.add
@@ -1746,23 +1753,11 @@ let builtin_scoped_symbols : scoped_symbol StringMap.t =
         | Ast.TFun _ -> SemanticFunction
         | _ -> SemanticVariable
       in
-      let empty_range =
-        {
-          start_pos = { line = 0; character = 0 };
-          end_pos = { line = 0; character = 0 };
-        }
-      in
-      StringMap.add name { kind; range = empty_range } env)
+      StringMap.add name { kind } env)
     StringMap.empty
     Rizzo_builtins.public_builtins
 
 let builtin_completion_symbols : completion_symbol StringMap.t =
-  let empty_range =
-    {
-      start_pos = { line = 0; character = 0 };
-      end_pos = { line = 0; character = 0 };
-    }
-  in
   List.fold_left
     (fun env ({ name; typ; _ } : Rizzo_builtins.builtin_info) ->
       let kind =
@@ -1803,11 +1798,7 @@ let constructor_completion_symbol_of_definition
   in
   {
     kind = SemanticType;
-    range =
-      {
-        start_pos = { line = 0; character = 0 };
-        end_pos = { line = 0; character = 0 };
-    };
+    range = empty_range;
     detail = Some (string_of_typ typ);
     documentation = None;
     source = CompletionConstructor;
@@ -1899,7 +1890,6 @@ let completions_at_position
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> completion_empty_list
   | Ok { typed_program = program; type_definitions; _ } ->
-      let _ = uri in
       let doc_index = doc_index_for_document ~filename:active_filename text in
       let base_env =
         let with_constructors =
@@ -2081,8 +2071,8 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
   match parse_with_filename ~filename:active_filename text with
   | Error _ -> []
   | Ok { typed_program = program; _ } ->
-      let top_decls = top_level_declarations ~text ~filename:None program in
-      let visible_top_decls = top_level_declarations ~text ~filename:(Some active_filename) program in
+      let top_decls = top_level_declarations ~filename:None program in
+      let visible_top_decls = top_level_declarations ~filename:(Some active_filename) program in
       let tokens : semantic_token list ref = ref [] in
       let push_token ~(kind : semantic_token_kind) ~(range : range) =
         tokens := { range; kind; declaration = false } :: !tokens
@@ -2093,12 +2083,12 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
              (fun env (name, kind, _decl_filename, _top_range, selection_range) ->
                let semantic_kind = semantic_kind_of_symbol_kind kind in
                push_token ~kind:semantic_kind ~range:selection_range;
-               StringMap.add name { kind = semantic_kind; range = selection_range } env)
+               StringMap.add name { kind = semantic_kind } env)
              (top_decls
               |> List.fold_left
-                   (fun env (name, kind, _decl_filename, _top_range, selection_range) ->
+                   (fun env (name, kind, _decl_filename, _top_range, _selection_range) ->
                      let semantic_kind = semantic_kind_of_symbol_kind kind in
-                     StringMap.add name { kind = semantic_kind; range = selection_range } env)
+                     StringMap.add name { kind = semantic_kind } env)
                    builtin_scoped_symbols)
       in
       let rec walk_expr (env : scoped_symbol StringMap.t) (expr : Ast.typed Ast.expr) : unit =
@@ -2119,7 +2109,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
              walk_expr env e1;
              let binding_range = range_of_name bound_name in
              push_token ~kind:SemanticVariable ~range:binding_range;
-             let env' = StringMap.add (name_text bound_name) { kind = SemanticVariable; range = binding_range } env in
+             let env' = StringMap.add (name_text bound_name) { kind = SemanticVariable } env in
              walk_expr env' e2
          | Ast.EFun (params, body, _) ->
              List.iter
@@ -2134,7 +2124,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
                    |> List.fold_left
                         (fun env (name, binding_range) ->
                           push_token ~kind:SemanticVariable ~range:binding_range;
-                          StringMap.add name { kind = SemanticVariable; range = binding_range } env)
+                          StringMap.add name { kind = SemanticVariable } env)
                         env)
                  env
                  params
@@ -2143,39 +2133,21 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
          | Ast.EApp (fn, args, _) ->
              walk_expr env fn;
              List.iter (walk_expr env) args
-         | Ast.EUnary (Ast.UWait, e, _) ->
-           (match keyword_range_from_expr ~text ~name:"wait" expr with
-              | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+         | Ast.EUnary (op, e, _) ->
+             (match unary_keyword_name op with
+              | Some name ->
+                  (match keyword_range_from_expr ~text ~name expr with
+                   | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+                   | None -> ())
               | None -> ());
              walk_expr env e
-         | Ast.EUnary (Ast.UWatch, e, _) ->
-           (match keyword_range_from_expr ~text ~name:"watch" expr with
-              | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+         | Ast.EBinary (op, e1, e2, _) ->
+             (match binary_keyword_name op with
+              | Some name ->
+                  (match keyword_range_from_expr ~text ~name expr with
+                   | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
+                   | None -> ())
               | None -> ());
-             walk_expr env e
-        | Ast.EUnary (Ast.UTail, e, _) ->
-          (match keyword_range_from_expr ~text ~name:"tail" expr with
-            | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
-            | None -> ());
-           walk_expr env e
-          | Ast.EUnary (Ast.UDelay, e, _) ->
-            (match keyword_range_from_expr ~text ~name:"delay" expr with
-               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
-               | None -> ());
-              walk_expr env e
-          | Ast.EUnary (Ast.UNot, e, _) ->
-            (match keyword_range_from_expr ~text ~name:"not" expr with
-               | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
-               | None -> ());
-              walk_expr env e
-          | Ast.EUnary (_, e, _) -> walk_expr env e
-         | Ast.EBinary (Ast.BSync, e1, e2, _) ->
-           (match keyword_range_from_expr ~text ~name:"sync" expr with
-              | Some keyword_range -> push_token ~kind:SemanticFunction ~range:keyword_range
-              | None -> ());
-             walk_expr env e1;
-             walk_expr env e2
-         | Ast.EBinary (_, e1, e2, _) ->
              walk_expr env e1;
              walk_expr env e2
          | Ast.ETuple (e1, e2, _) ->
@@ -2192,7 +2164,7 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
                    List.fold_left
                      (fun acc (name, binding_range) ->
                        push_token ~kind:SemanticVariable ~range:binding_range;
-                       StringMap.add name { kind = SemanticVariable; range = binding_range } acc)
+                       StringMap.add name { kind = SemanticVariable } acc)
                      env
                      bound
                  in
@@ -2210,9 +2182,8 @@ let semantic_tokens ~(uri : string) ~(filename : string option) ~(text : string)
           | Ast.TopLet (top_name, rhs, ann) ->
               if ann_in_file ~filename:active_filename ann then
                 let name = name_text top_name in
-                let name_range = range_of_name top_name in
                 let kind = semantic_kind_of_symbol_kind (symbol_kind_of_expr rhs) in
-                let env' = StringMap.add name { kind; range = name_range } top_env in
+                let env' = StringMap.add name { kind } top_env in
                 walk_expr env' rhs
               else
                 ())
