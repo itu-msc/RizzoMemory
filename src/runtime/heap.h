@@ -83,13 +83,13 @@ static inline void rz_insert_signal_node(rz_signal_t *sig)
 }
 
 /* constructs a new signal AND inserts it into the global heap.
-STATEFUL: updates the global heap, mutates the heap cursor, and prev/next pointers.
+STATEFUL: updates the global heap and prev/next pointers using the heap cursor.
     s1
     s2 <- cursor
     s3
 
     after rz_signal_ctor
-    s1, s2, new_sig, s3
+    s1, new_sig, s2, s3
 */
 static rz_object_t *rz_signal_ctor(rz_box_t head, rz_box_t tail)
 {

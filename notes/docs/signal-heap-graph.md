@@ -1,370 +1,241 @@
-# Signal heap graph and scheduling notes
+# Signal dependency graph and scheduling notes
 
-Created on the 26/03-2026
+Created on the 26/03-2026. Revised after checking the current C runtime.
 
-This note collects the conclusions from the recent discussion about whether the current signal heap could be changed from a globally scanned linked list into a more explicit runtime dependency graph.
+This note revisits whether the current signal heap could be changed from a
+globally scanned linked list into a dependency graph. The simpler conclusion is
+that the useful graph is not a graph of clocks alone. It is a graph of active
+runtime dependencies:
 
-The short version is:
+- channel nodes are external input sources
+- signal nodes are the stable mutable signal cells already used by the runtime
+- edges point from the thing that can update to the signal that may update next
 
-- a graph-based scheduler is theoretically possible under the intended invariant that same-step dependencies are acyclic
-- a graph over clocks alone is not enough
-- the difficult part is not discovering dependencies, but preserving the current update semantics around stable signal identity, delayed activation, and dynamic rewiring
-- the safest direction is a hybrid runtime: keep stable signal cells and likely an all-signals structure for lifetime management, while adding explicit dependency indices for scheduling
+In other words, the intended shape is close to a DAG rooted at channels. When a
+channel steps, only the subgraph reachable from that channel needs to be
+considered for that time step.
 
-## What the current runtime is doing
+## What the current runtime does
 
-Today the signal heap is a doubly-linked list of live signals.
+The current C runtime stores all live signals in one doubly-linked list.
+The list does two jobs at once:
 
-That list is doing two jobs at once:
+- it keeps live signals reachable for update and deallocation
+- it gives a global update order for same-step dependencies
 
-- it is a storage structure that keeps signals reachable for update and deallocation
-- it is a scheduling structure that linearizes same-step dependencies into an update order
+When `rz_step(chan, v)` runs, it calls `rz_heap_update(chan, v)`. That function
+scans every live signal. For each signal it:
 
-During a step, the runtime scans the whole heap. For each signal it checks whether the tail has ticked and, if so, advances the tail, produces an intermediate signal, and copies the intermediate signal's head and tail back into the original signal cell.
+1. checks whether the signal tail has ticked
+2. if not, clears the signal's `updated` flag
+3. if so, advances the tail, obtains an intermediate signal, copies the
+   intermediate signal's head and tail back into the original signal cell, and
+   marks the original cell as updated
 
-This means the current implementation is not merely "a heap of signals". It is a global ordered traversal discipline.
+The important implementation detail is that `tail s` and `watch s` do not ask
+the channel directly. They check whether another signal has already been marked
+as updated in the current step. For `watch s`, the new head must also be a `Some`.
 
-## Assumptions we are making
+So the linked list is not merely storage. It is also the current scheduling
+discipline.
 
-The proposed graph-based direction depends on the following assumptions.
+## Corrected model
 
-### 1. Same-step dependencies are acyclic
-
-This is the main semantic assumption.
-
-If signals could form instantaneous cycles within a single step, then neither a topological scheduler nor a simple component-based parallel evaluation strategy would be sound.
-
-The intended invariant is that same-step dependencies form a DAG, even though the overall long-lived runtime object graph can evolve over time.
-
-### 2. Signal identity must stay stable across updates
-
-Signals in Rizzo are mutable runtime cells. References held elsewhere should keep pointing to the same signal cell after time advances.
-
-The current update semantics already rely on this: advancing a signal tail creates a fresh intermediate signal, but the original stable signal cell receives the new head and tail.
-
-This has a major consequence for any graph design:
-
-- graph nodes should represent stable signal cells, not temporary intermediate signals
-
-### 3. Signals created during step n must not be processed until step n + 1
-
-The current linked-list insertion behaviour enforces a phase separation: newly created signals are inserted relative to the current cursor so they do not participate again in the same traversal.
-
-Any new scheduler must preserve the same rule explicitly.
-
-### 4. The shape of dependencies is dynamic
-
-The outgoing dependencies of a signal are determined by its current tail.
-
-Since the tail changes after a successful advance, the graph is not static. It must support rewiring after updates.
-
-### 5. Disconnected components are expected to be common enough to matter
-
-The optimization argument becomes much stronger if typical programs contain several independent signal subgraphs, each driven by different channels or local chains of combinators.
-
-If this is not true in practice, the extra graph machinery may not pay for itself.
-
-## Issues we found
-
-## 1. A graph over clocks is not sufficient
-
-The supervisor notes ask whether we can compute clocks for later values and build the optimization around those clocks.
-
-This is useful, but not enough.
-
-The reason is that timing dependency and runtime dependency are not identical.
-
-Examples:
-
-- `wait c` depends on channel `c`
-- `tail s` depends on whether `s` updated in the current step
-- `watch s` depends on whether `s` updated and whether the new head of `s` is a `Some`
-
-So `watch` is not only a timing edge. It is also guarded by a data-shape condition.
-
-This means a pure clock graph would be too coarse to model the real update semantics.
-
-## 2. The dependencies are present, but buried in the tail object
-
-When a new signal is created, we usually do have access to the references it depends on, but not as one explicit parent pointer.
-
-The dependency information is inside the `Later` value stored in the signal tail.
-
-That means insertion into a graph is possible, but it requires traversing the tail and extracting dependencies such as:
-
-- channel dependencies from `wait`
-- signal dependencies from `tail s`
-- signal dependencies plus a guard from `watch s`
-- union of dependencies from `sync`
-- dependencies inherited through the argument side of `laterapp`
-
-So graph insertion is feasible, but no longer O(1) like the current linked-list splice.
-
-## 3. Intermediate signals make simple graph insertion wrong
-
-One of the most important implementation constraints is that `advance` creates an intermediate signal that is often used only to copy its head and tail back into the original signal.
-
-If a graph scheduler were to attach edges to every newly constructed signal object, it would frequently attach them to the wrong node.
-
-The correct owner of the dependencies is the stable signal cell that survives the step, not the temporary intermediate signal returned by `advance`.
-
-This means rewiring must happen after copy-back to the original signal.
-
-## 4. A static one-time graph build will not work
-
-Because a signal tail can change every time the signal is updated, the dependency graph must be updated incrementally at runtime.
-
-This affects both:
-
-- which predecessors can trigger the signal in future steps
-- which connected component the signal belongs to
-
-So the cost question is not just "what does it cost to calculate the clock?"
-
-The fuller question is:
-
-- what does it cost to discover dependencies and guards from a tail
-- what does it cost to remove the old subscriptions
-- what does it cost to add the new subscriptions
-- how often do updates cause meaningful rewiring
-
-## 5. Nested delays show that potential dependencies and active dependencies differ
-
-The example
+The best mental model is:
 
 ```text
-(fun x' -> (fun y' -> ...) |> y) |> x
+channel C  -> signal A -> signal B -> signal D
+channel K  -> signal X -> signal Y
 ```
 
-shows that a later computation may first wait for one input and only later expose another dependency.
+If channel `C` fires, the runtime should only need to consider `A`, `B`, and
+`D`, in dependency order. Signals `X` and `Y` can be left untouched because they
+cannot observe anything that happened in this step.
 
-So there is a difference between:
+The graph edges should represent the currently active dependencies inside each
+signal's current tail:
 
-- a conservative set of possible future dependencies
-- the currently active dependencies that matter in the present step
+| Later form | Active dependency |
+| --- | --- |
+| `never` | none |
+| `wait c` | channel `c` |
+| `tail s` | signal `s` |
+| `watch s` | signal `s`, guarded by `s.updated && s.head is Some` |
+| `sync l1 l2` | union of dependencies from `l1` and `l2` |
+| `f |> l` / `laterapp f l` | same active dependencies as `l` |
 
-This pushes the design toward a runtime graph of current subscriptions, rather than only a static over-approximation.
+This is enough to support the desired optimization: a step on a channel only
+starts from signals subscribed to that channel, then propagates through signal
+dependencies.
 
-## 6. Scheduling and lifetime management should be separated
+## What the older note got right
 
-The linked list currently mixes two concerns:
+The older reasoning was right on the main constraints:
 
-- finding signals to update
-- keeping live signals reachable for freeing, reuse, debugging, and global bookkeeping
+- a graph over clocks alone is too coarse
+- dependency information is present in `Later` values
+- signal identity must remain stable across updates
+- dependencies can change after a signal updates
+- new signals created during a step must not be processed in that same step
 
-Even if scheduling becomes graph-based, it still likely makes sense to retain some simpler all-signals structure for lifetime management.
+Those are real constraints in the runtime.
 
-This is especially relevant because deallocation and reference counting are orthogonal to the topological structure of the current active dependencies.
+## What should be simplified
 
-## 7. Parallel steps are only safe under extra conditions
+The graph does not need to start as a full general-purpose graph runtime with
+components, parallel scheduling, and complex clock summaries.
 
-Disconnected components suggest parallelism, but the runtime cannot safely become parallel just because the graph is disconnected on paper.
+The first useful version can be much smaller:
 
-Extra concerns include:
+1. keep the linked list or another all-signals structure for lifetime/debugging
+2. add subscriber lists beside the current heap:
+   - `channel -> signals waiting on that channel`
+   - `signal -> signals depending on tail/watch of that signal`
+3. when a channel steps, seed a worklist from the channel subscriber list
+4. process reachable signals in topological order
+5. after a signal updates, re-extract dependencies from its new tail and update
+   the subscriber lists
 
-- shared global scheduler state
-- reference count updates on shared objects
-- mutation of graph indices during rewiring
-- deterministic output ordering for registered output signals
+This keeps the proposed change close to the current runtime. It changes the
+scheduling structure first, not the signal object model.
 
-So the graph makes parallelism plausible, but not automatic.
+## Why a pure clock graph is not enough
 
-## Proposed solution
+A clock graph can say that a signal may eventually depend on a channel, but the
+runtime needs to know the active same-step dependency.
 
-The safest design is a hybrid one.
+For example:
 
-## 1. Keep stable signal cells as the fundamental runtime object
+- `wait c` directly depends on channel `c`
+- `tail s` depends on whether `s` updated in this step
+- `watch s` depends on whether `s` updated and whether the new head is `Some`
+- `sync l1 l2` may update from either side, and `advance` must still know which
+  side ticked
 
-Signals should remain heap objects with stable identity.
+So clock summaries can be useful as an optimization or static approximation,
+but they should not replace the active dependency graph.
 
-Their payload can continue to be:
+## Stable signal cells matter
 
-- `head`
-- `tail`
-- `updated`
+Signals in Rizzo behave like mutable runtime cells. Other values can hold
+references to a signal, and those references must keep pointing to the same
+signal after a time step.
 
-The current signal object model still fits the semantics well.
+That is why the current runtime copies the head and tail from an intermediate
+signal back into the original signal. A graph scheduler must preserve that:
 
-## 2. Keep a simple all-signals structure for lifetime management
+- graph nodes should be stable signal cells
+- intermediate signals created by `advance` should not become permanent graph
+  nodes unless they are genuinely retained by the program
+- after copy-back, the original signal's subscriptions must be updated from its
+  new tail
 
-Even if the runtime no longer schedules by scanning a linked list, it is still useful to have a structure that contains all live signals for:
+## Dynamic rewiring
 
-- deallocation bookkeeping
-- debug printing
-- output registration
-- fallback validation of invariants
+The graph is not static. A signal's active dependencies are determined by its
+current tail, and the tail can change whenever the signal updates.
 
-This structure could remain the existing linked list, or become a simpler live-set.
+After updating a signal, the scheduler must:
 
-The key point is that it no longer needs to be the primary scheduler.
+1. remove the signal from its old subscriber lists
+2. inspect the new tail stored in the same stable signal cell
+3. register the new active dependencies
 
-## 3. Add explicit dependency indices for scheduling
+This is the real cost of the optimization. The key empirical question is
+whether maintaining these indices is cheaper than scanning the entire signal
+heap on every step.
 
-The new scheduling structure should represent current active dependencies.
+## Same-step activation
 
-At minimum it needs:
+The linked list currently enforces a phase boundary with the heap cursor.
+Signals created during an update are inserted into the already-processed part
+of the list, so they are not visited again in the same traversal.
 
-- channel -> signals waiting on that channel
-- signal -> dependents that use `tail`
-- signal -> dependents that use `watch`
+A graph scheduler needs an explicit equivalent. The simplest design is an
+epoch field:
 
-It is likely useful to distinguish edge kinds, because `watch` has a stronger guard than `tail`.
+```text
+signal.active_from_epoch
+```
 
-## 4. Rewire dependencies from the signal tail
+A signal created during epoch `n` can be registered in the dependency indices
+immediately, but it must not be eligible for processing until epoch `n + 1`.
 
-Dependency discovery should be performed by traversing the current tail.
+## Topological order
 
-That traversal should be used in two situations:
+The current list works because a signal only depends on signals that are already
+in the now heap. In graph terms, same-step dependencies should therefore be
+acyclic and ordered from older prerequisites to newer dependents.
 
-- when a genuinely new stable signal is created
-- when an existing signal has just been updated and received a new tail
+The graph scheduler can preserve this in one of two ways:
 
-For updates, the correct order is:
+- maintain creation/list order as a topological order and process reachable
+  signals according to that order
+- compute a topological order for the reachable subgraph on each step
 
-1. advance the old tail to produce an intermediate signal
-2. copy head and tail from the intermediate signal back into the original signal cell
-3. remove the original signal's previous subscriptions
-4. traverse the new tail now stored in the original signal
-5. register the original signal's new subscriptions
-6. free or drop the intermediate signal as usual
+The first option is likely the better initial design because it is closest to
+the current implementation. The dependency indices would decide which signals
+are relevant; the existing order would still decide how to process them.
 
-This preserves stable identity while making the graph reflect the new active dependencies.
+## Recommended first implementation
 
-## 5. Make activation explicit with epochs or pending sets
+The least risky implementation plan is:
 
-Newly created signals must not become eligible in the same step.
+1. keep stable `rz_signal_t` cells and the current list for lifetime management,
+   output registration, and debugging
+2. add dependency extraction for `Later` values
+3. store active subscriptions:
+   - `wait c`: subscribe the owner signal to channel `c`
+   - `tail s`: subscribe the owner signal as a dependent of `s`
+   - `watch s`: subscribe the owner signal as a guarded dependent of `s`
+   - `sync`: recurse into both sides
+   - `laterapp`: recurse into the later argument
+4. on `rz_step(chan, v)`, collect the reachable set from `chan`
+5. process only that reachable set, in the existing heap order
+6. after each updated signal, rewire its subscriptions from the new tail
+7. keep a full-heap scan mode as a debug oracle until the graph scheduler is
+   validated
 
-The cleanest replacement for the current cursor-based behaviour is an explicit activation discipline, for example:
-
-- each signal has an `active_from_epoch`
-- the scheduler processes only signals active in the current epoch
-- signals created during the step are registered immediately but only activated in the next epoch
-
-This makes the previous implicit invariant explicit.
-
-## 6. Schedule reachable components, not the whole heap
-
-When a channel fires, the runtime should:
-
-1. seed a worklist from the signals subscribed to that channel
-2. propagate through dependency edges to find the reachable active subgraph
-3. evaluate signals in topological order inside each reachable component
-4. leave all other components untouched
-
-This is where the asymptotic win comes from.
-
-## 7. Treat clock information as an optimization aid, not the whole model
-
-Clock-like summaries are still useful.
-
-They could support:
-
-- fast rejection of obviously irrelevant components
-- cached summaries of possible channels a tail may eventually depend on
-- second-level shortcuts for skipping disjoint regions
-
-But they should not replace the current active dependency graph entirely.
+This would make the desired semantics explicit: stepping a channel only affects
+signals reachable from that channel for that time step.
 
 ## Expected benefits
 
-- avoid full-heap scans when only a small component is affected
-- preserve the intended dependency ordering more explicitly
-- make disconnected components visible to the runtime
-- create a cleaner route toward future parallel stepping
-- keep the semantics centred around stable signal cells
+- avoids full-heap scans when a program has independent signal subgraphs
+- makes the dependency ordering visible instead of implicit in one list
+- keeps the stable signal-cell semantics unchanged
+- creates a cleaner path to later parallelization of independent components
 
 ## Expected costs
 
-- tail traversal on creation and rewiring
-- dynamic maintenance of dependency indices
-- extra memory for adjacency data and activation metadata
-- more complex free/reuse logic because subscriptions must be removed as well as payload references
-- more complicated debugging and invariant checking
+- extra memory for subscriber lists and per-signal subscription metadata
+- extra work when a signal's tail changes and dependencies must be rewired
+- more complicated deallocation, because a signal must be removed from
+  subscriber lists as well as from the signal heap
+- more invariants to test, especially around `watch`, `sync`, and signals
+  created during an update
 
-## What still needs validation
+## Open questions
 
-Before implementing this design, the following questions should be checked empirically.
+- How often do representative Rizzo programs contain independent channel-rooted
+  subgraphs?
+- How often do signal tails rewire to substantially different dependencies?
+- Is processing the reachable set in existing heap order fast enough, or is a
+  dedicated topological scheduler needed?
+- Can dependency extraction be made cheap enough to beat repeated full-heap
+  scans?
 
-- How often are components truly disconnected in representative Rizzo programs?
-- How often do signal updates significantly rewire dependencies?
-- Is the runtime cost of extracting dependencies from tails lower than the cost of repeated full-heap scans?
-- Is a full graph needed, or would a lighter-weight shortcut structure already capture most of the benefit?
-
-## Recommended implementation order
-
-The least risky path is:
-
-1. keep the current all-signals linked list unchanged
-2. add dependency extraction from `Later` values
-3. add channel and signal subscriber tables beside the list
-4. build a single-threaded incremental scheduler using those tables
-5. only then consider parallel evaluation of disconnected components
-
-This keeps the first version semantically close to the current runtime.
-
-## Mermaid diagrams
-
-```mermaid
-flowchart TD
-    subgraph Storage[Storage and lifetime layer]
-        L[All live signals list]
-        S1[Signal cell S1\nhead tail updated]
-        S2[Signal cell S2\nhead tail updated]
-        S3[Signal cell S3\nhead tail updated]
-        L --> S1
-        L --> S2
-        L --> S3
-    end
-
-    subgraph Scheduling[Scheduling layer]
-        C1[Channel A subscribers]
-        C2[Channel B subscribers]
-        D1[S1 dependents]
-        D2[S2 dependents]
-    end
-
-    C1 --> S1
-    C2 --> S3
-    S1 -->|tail| S2
-    S2 -->|watch| S3
-    D1 --> S2
-    D2 --> S3
-```
+## Mermaid sketch
 
 ```mermaid
 flowchart LR
-    CA[Channel A] --> SA[S_A]
-    SA -->|tail| SB[S_B]
-    SB -->|watch| SC[S_C]
+    C1["channel console"] --> A["signal A"]
+    A -->|tail| B["signal B"]
+    B -->|watch guard| D["signal D"]
 
-    CX[Channel X] --> SX[S_X]
-    SX -->|tail| SY[S_Y]
-
-    classDef componentA fill:#d9edf7,stroke:#31708f,color:#000
-    classDef componentB fill:#dff0d8,stroke:#3c763d,color:#000
-
-    class SA,SB,SC,CA componentA
-    class SX,SY,CX componentB
+    C2["channel timer"] --> X["signal X"]
+    X -->|tail| Y["signal Y"]
 ```
 
-```mermaid
-sequenceDiagram
-    participant Ch as Fired channel
-    participant W as Worklist scheduler
-    participant S as Stable signal cell
-    participant T as Current tail
-    participant I as Intermediate signal
-
-    Ch->>W: start step(epoch n)
-    W->>W: seed from channel subscribers
-    W->>S: process reachable signal
-    S->>T: check ticked
-    T-->>S: ticked = true
-    S->>I: advance tail
-    I-->>S: new head and new tail
-    S->>W: remove old subscriptions
-    S->>W: add subscriptions from new tail
-    W->>S: active_from_epoch = n for old cell
-    W->>I: drop intermediate signal
-    W->>W: newly created stable cells become active at epoch n+1
-```
+If `console` steps, only `A`, `B`, and possibly `D` are considered. The timer
+subgraph is untouched for that step.
