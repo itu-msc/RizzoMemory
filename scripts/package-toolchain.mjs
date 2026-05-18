@@ -145,6 +145,7 @@ function main() {
   const compilerSource = path.resolve(repoRoot, args.compiler ?? path.join("_build", "default", "src", "bin", "main.exe"));
   const lspSource = path.resolve(repoRoot, args.lsp ?? path.join("_build", "default", "src", "bin", "rizzolsp.exe"));
   const runtimeSource = path.join(repoRoot, "src", "runtime");
+  const dotnetRuntimeSource = path.join(repoRoot, "src", "runtime_dotnet");
   const stdlibSource = path.join(repoRoot, "src", "stdlib");
 
   ensureExists(compilerSource, "compiler executable");
@@ -165,6 +166,7 @@ function main() {
   copyFileSync(compilerSource, path.join(stageDir, "bin", targetCompilerName));
   copyFileSync(lspSource, path.join(stageDir, "bin", targetLspName));
   copyMatchingFiles(runtimeSource, path.join(stageDir, "lib", "rizzoc", "runtime"), (entry) => entry.endsWith(".h"));
+  copyMatchingFiles(dotnetRuntimeSource, path.join(stageDir, "lib", "rizzoc", "runtime_dotnet"), (entry) => entry.endsWith(".cs"));
   copyMatchingFiles(stdlibSource, path.join(stageDir, "lib", "rizzoc", "stdlib"), (entry) => entry === "manifest.txt" || entry.endsWith(".rizz"));
 
   writeFileSync(path.join(stageDir, "VERSION"), `${version}\n`);

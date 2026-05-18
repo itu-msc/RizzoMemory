@@ -20,4 +20,5 @@ let () =
     "RESET REUSE TESTS", Test_reset_reuse.reset_reuse_tests;
     "WINDOWS RUNTIME TESTS", Test_runtime_windows.windows_runtime_tests;
     "END TO END TESTS", Test_end_to_end.end_to_end_tests;
+    "DOTNET BACKEND TESTS", Test_dotnet_backend.tests;
   ]

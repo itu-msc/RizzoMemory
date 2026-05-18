@@ -54,6 +54,11 @@ jobs:
         with:
           ocaml-compiler: 5
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
       - name: Install OCaml dependencies
         run: opam install . --deps-only --with-test --yes
 

@@ -75,10 +75,23 @@ type generated_c_compiler_invocation = {
   arguments : string list;
 }
 
+type generated_dotnet_publish_invocation = {
+  command : string;
+  arguments : string list;
+}
+
+type backend =
+  | C
+  | Dotnet
+
+let dotnet_assembly_name = Backend_dotnet.assembly_name
+
 let c_compiler_candidates = ["gcc"; "clang"]
 
 let runtime_installed_relative_parts = [".."; "lib"; "rizzoc"; "runtime"]
 let runtime_dev_relative_parts = [".."; ".."; ".."; ".."; "src"; "runtime"]
+let dotnet_runtime_installed_relative_parts = [".."; "lib"; "rizzoc"; "runtime_dotnet"]
+let dotnet_runtime_dev_relative_parts = [".."; ".."; ".."; ".."; "src"; "runtime_dotnet"]
 
 let path_exists path =
   Sys.file_exists path
@@ -109,6 +122,21 @@ let resolve_default_runtime_root ?executable_path () =
   | None ->
       let tried = String.concat ", " (candidate_runtime_roots ?executable_path ()) in
       failwith (Printf.sprintf "Could not locate runtime directory. Looked in: %s" tried)
+
+let candidate_dotnet_runtime_roots ?executable_path:maybe_executable_path () =
+  let resolved_executable_path = Option.value maybe_executable_path ~default:(executable_path ()) in
+  let executable_dir = Filename.dirname resolved_executable_path in
+  [ join_path executable_dir dotnet_runtime_dev_relative_parts;
+    join_path executable_dir dotnet_runtime_installed_relative_parts;
+  ]
+  |> List.map realpath
+
+let resolve_default_dotnet_runtime_root ?executable_path () =
+  match List.find_opt is_directory (candidate_dotnet_runtime_roots ?executable_path ()) with
+  | Some root -> root
+  | None ->
+      let tried = String.concat ", " (candidate_dotnet_runtime_roots ?executable_path ()) in
+      failwith (Printf.sprintf "Could not locate .NET runtime directory. Looked in: %s" tried)
 
 let is_executable_file path =
   Sys.file_exists path && not (Sys.is_directory path)
@@ -179,6 +207,15 @@ let generated_c_compiler_invocation ?compiler ?(runtime_include = "src/runtime")
 let to_shell_command { compiler; arguments } =
   Printf.sprintf "%s %s" compiler (String.concat " " (List.map Filename.quote (arguments)))
 
+let generated_dotnet_publish_invocation ?(dotnet = "dotnet") ~project_dir ~publish_dir () =
+  if not (command_exists dotnet) then
+    failwith (Printf.sprintf "Configured dotnet command is not available on PATH: %s" dotnet);
+  { command = dotnet;
+    arguments = ["publish"; project_dir; "-c"; "Release"; "-o"; publish_dir; "--nologo"] }
+
+let dotnet_to_shell_command { command; arguments } =
+  Printf.sprintf "%s %s" command (String.concat " " (List.map Filename.quote arguments))
+
 module Language_service = struct
 include Language_service
 end
@@ -218,10 +255,10 @@ type ast_dump_format =
 
 let print_ast_dump = ref None
 
-let rec compile_from_files ?executable_path ?stdlib_path ?(include_paths = []) input_files output_file =
+let rec compile_from_files ?executable_path ?stdlib_path ?(include_paths = []) ?(backend = C) input_files output_file =
   try
     let program = Source_units.parse_source_units (source_units_for_compile ?executable_path ?stdlib_path ~include_paths input_files) in
-    compile program output_file
+    compile ~backend program output_file
   with
   | Source_units.Validation_failed errors ->
       Source_units.report_validation_errors errors;
@@ -237,13 +274,13 @@ let rec compile_from_files ?executable_path ?stdlib_path ?(include_paths = []) i
       Fmt.epr "@{<red>Error@}: %s@." msg;
       failwith "Compilation failed"
 
-and compile_from_file ?executable_path ?stdlib_path ?(include_paths = []) input_file output_file =
-  compile_from_files ?executable_path ?stdlib_path ~include_paths [input_file] output_file
+and compile_from_file ?executable_path ?stdlib_path ?(include_paths = []) ?(backend = C) input_file output_file =
+  compile_from_files ?executable_path ?stdlib_path ~include_paths ~backend [input_file] output_file
   
-and compile_from_string input_string output_file =
+and compile_from_string ?(backend = C) input_string output_file =
   try
     let program = Parser.parse_string input_string in
-    compile program output_file
+    compile ~backend program output_file
   with
   | Source_units.Validation_failed errors ->
       Source_units.report_validation_errors errors;
@@ -259,7 +296,7 @@ and compile_from_string input_string output_file =
       Fmt.epr "@{<red>Error@}: %s@." msg;
       failwith "Compilation failed"
 
-and compile parsed_program output_file =
+and compile_to_ref_counted parsed_program =
   let print_section title pp value =
 	  Fmt.pr "@[<v>@{<cyan>%s@}@,%a@]@.@." title pp value
   in
@@ -292,7 +329,7 @@ and compile parsed_program output_file =
     let rc_env, rc_program = ref_count ctor_mappings transformed in
     if !print_ast_dump = Some Dump_all || !print_ast_dump = Some Dump_ref_counted then
       print_section "------- Reference counted -------" (RefCount.pp_ref_counted_program ~ownerships:(Some rc_env)) rc_program;
-		emit rc_program output_file
+		rc_program
 	with
 	| Lexer.Error (loc, msg) ->
 			Location.show_error_context loc msg;
@@ -300,3 +337,9 @@ and compile parsed_program output_file =
 	| Parser.Error (loc, msg) ->
 			Location.show_error_context loc msg;
 			failwith "Parsing failed"
+
+and compile ?(backend = C) parsed_program output_file =
+  let rc_program = compile_to_ref_counted parsed_program in
+  match backend with
+  | C -> emit rc_program output_file
+  | Dotnet -> Backend_dotnet.emit_project rc_program output_file

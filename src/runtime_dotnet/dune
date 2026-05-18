@@ -1,0 +1,5 @@
+(install
+ (section lib)
+ (package rizzoc)
+ (files
+  (RizzoRuntime.cs as rizzoc/runtime_dotnet/RizzoRuntime.cs)))

@@ -2,7 +2,7 @@
 
 MSc thesis project implementing **Rizzo**, a programming language based on the work of [Rizzo by Patrick Bahr](https://bahr.io/pubs/entries/rizzo.html), with a focus on memory management and safety. The project includes:
 
-- A compiler that translates Rizzo source code to C, leveraging reference counting for memory management.
+- A compiler that translates Rizzo source code to C or C#/.NET, leveraging reference counting for memory management.
 - A C runtime library that provides memory management primitives, safety checks and the Rizzo advance and update semantics.
 - A VS Code extension that integrates the Rizzo compiler and language server for an enhanced development experience with diagnostics, hover information, and code navigation (Rough implementation; not the focus of the MSc thesis).
 
@@ -11,6 +11,7 @@ MSc thesis project implementing **Rizzo**, a programming language based on the w
 - **OCaml** (4.14+) and **opam** — for building the compiler
 - **Dune** — OCaml build system (usually installed via opam)
 - **GCC** or **Clang** — for compiling generated C code
+- **.NET SDK** — optional, for compiling generated C# from the .NET backend
 - **Node.js** and **npm** — for the VS Code extension (optional)
 
 ## Installation
@@ -81,13 +82,21 @@ By default the compiler is quiet and only emits `output.c`. To inspect the inter
 
 ## How to Compile and Run Rizzo Programs
 
-The compiler translates Rizzo source files (`.rizz`) to C (`output.c`), and triggers a C compile with either `gcc` or `clang` to produce an executable.
+The compiler translates Rizzo source files (`.rizz`) to C (`output.c`) by default, and triggers a C compile with either `gcc` or `clang` to produce an executable. It can also target .NET by emitting a small C# project and publishing it with the `dotnet` CLI.
 
 All you need to do is invoke the compiler on your Rizzo source file(s), and it will handle the rest:
 
 ```bash
 rizzoc [more-files.rizz ...] <entrypoint.rizz>
 ```
+
+To use the .NET backend:
+
+```bash
+rizzoc --backend dotnet -o myprog [more-files.rizz ...] <entrypoint.rizz>
+```
+
+This writes generated C# under `myprog.dotnet/`, publishes into `myprog.dotnet/publish/`, and reports the published executable path.
 
 For help run:
 

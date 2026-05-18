@@ -1,6 +1,6 @@
 open! Rizzoc
 
-let usage_msg = "Usage: rizzoc [--version] [--overwrite-stdpath <path>] [--print-ast[:parsed|typed|transformed|rc|all]] [-I <path>] [more-files.rizz ...] <entrypoint.rizz>"
+let usage_msg = "Usage: rizzoc [--version] [--backend c|dotnet] [--overwrite-stdpath <path>] [--print-ast[:parsed|typed|transformed|rc|all]] [-I <path>] [more-files.rizz ...] <entrypoint.rizz>"
 
 let ansi_of_tag = function
 	| "red" -> "\027[31m"
@@ -67,9 +67,19 @@ let () =
 	let debug_info = ref false in
 	let heap_info = ref false in
 	let out_name = ref "output" in
+	let backend = ref C in
+	let set_backend value =
+		match String.lowercase_ascii value with
+		| "c" -> backend := C
+		| "dotnet" | "cs" | "csharp" -> backend := Dotnet
+		| other ->
+			Fmt.epr "@{<red>Error@}: unsupported backend '%s'. Expected 'c' or 'dotnet'.@." other;
+			exit 1
+	in
 
 	Arg.parse
 		[ ("--version", Arg.Unit print_version, "Print compiler version and exit")
+		; ("--backend", Arg.String set_backend, "Select backend: c or dotnet")
 		; ("--overwrite-stdpath", Arg.String set_stdlib_path, "Override the implicit stdlib with a .rizz file or stdlib directory")
 		; ("--print-ast", Arg.Unit (set_ast_dump Dump_ref_counted), "Print the reference-counted AST during compilation")
 		; ("--print-ast:parsed", Arg.Unit (set_ast_dump Dump_parsed), "Print the parsed AST during compilation")
@@ -99,23 +109,47 @@ let () =
 		exit 1
 	);
 	let output_name = Filename.remove_extension !out_name in
-	let output_c = output_name ^ ".c" in
-	let output_file = 
-		if Filename.extension !out_name = "" && Sys.win32 then output_name ^ ".exe"
-		else !out_name
-	in
-	Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files output_c;
-	let runtime_include = "src/runtime" in
-	let shellCommand = Rizzoc.to_shell_command (
-			Rizzoc.generated_c_compiler_invocation
-				~runtime_include ~input_file:output_c ~output_file 
-				~debug_malloc:!debug_malloc ~debug_info:!debug_info ~heap_info:!heap_info ()
-	) in
-	let returnCode = Sys.command shellCommand in
-	if returnCode <> 0 then (
-		Fmt.epr "@{<red>Error@}: C compilation failed with exit code %d.@." returnCode;
-		Fmt.epr "Command: %s@." shellCommand;
-		exit 1
-	) else (
-		Fmt.pr "Compilation successful! Executable generated at: %s@." output_file
-	)
+	match !backend with
+	| C ->
+		let output_c = output_name ^ ".c" in
+		let output_file = 
+			if Filename.extension !out_name = "" && Sys.win32 then output_name ^ ".exe"
+			else !out_name
+		in
+		Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths input_files output_c;
+		let runtime_include = "src/runtime" in
+		let shellCommand = Rizzoc.to_shell_command (
+				Rizzoc.generated_c_compiler_invocation
+					~runtime_include ~input_file:output_c ~output_file 
+					~debug_malloc:!debug_malloc ~debug_info:!debug_info ~heap_info:!heap_info ()
+		) in
+		let returnCode = Sys.command shellCommand in
+		if returnCode <> 0 then (
+			Fmt.epr "@{<red>Error@}: C compilation failed with exit code %d.@." returnCode;
+			Fmt.epr "Command: %s@." shellCommand;
+			exit 1
+		) else (
+			Fmt.pr "Compilation successful! Executable generated at: %s@." output_file
+		)
+	| Dotnet ->
+		if !debug_malloc || !debug_info || !heap_info then
+			Fmt.epr "@{<yellow>Warning@}: C runtime debug flags are ignored by the dotnet backend.@.";
+		let project_dir = output_name ^ ".dotnet" in
+		let publish_dir = Filename.concat project_dir "publish" in
+		Rizzoc.compile_from_files ?stdlib_path:!stdlib_path ~include_paths:!include_paths ~backend:Dotnet input_files project_dir;
+		let shellCommand =
+			Rizzoc.dotnet_to_shell_command
+				(Rizzoc.generated_dotnet_publish_invocation ~project_dir ~publish_dir ())
+		in
+		let returnCode = Sys.command shellCommand in
+		if returnCode <> 0 then (
+			Fmt.epr "@{<red>Error@}: .NET publish failed with exit code %d.@." returnCode;
+			Fmt.epr "Command: %s@." shellCommand;
+			exit 1
+		) else (
+			let executable =
+				Filename.concat publish_dir
+					(if Sys.win32 then Rizzoc.dotnet_assembly_name ^ ".exe" else Rizzoc.dotnet_assembly_name)
+			in
+			Fmt.pr "Compilation successful! Executable generated at: %s@." executable
+		)
