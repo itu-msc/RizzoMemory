@@ -114,13 +114,14 @@
 
 \begin{abstract}
 
-This thesis presents an implementation of Rizzo with reference counting as the memory-management strategy. Building on the reference counting of \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021}, we develop a compiler that automatically inserts reference counting and memory-reuse instructions. 
+This thesis presents an implementation of Rizzo by \citeauthor{rizzo_modal_2025}~\cite{rizzo_modal_2025}. We extend Rizzo with the reference counting and memory reuse as presented by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021}.
+We develop a compiler which transforms Rizzo programs to a shape that adhere to the structural requirements of \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} and output C-code.
 
-%Is that really our main contribution?? What is the main contribution
-The main contribution of this work is showing that reference counting enables the immediate erasure of signals, which is necessary to avoid duplicate work. We also show that reusing the memory of signals is generally limited, since most signal combinators are recursively defined in terms of their input, which prevents safe reuse.
+The main contribution of this work is showing that reference counting enables the immediate erasure of signals, which is necessary to avoid duplicate work.
+We also show that reusing the memory of signals is generally limited, since most signal combinators are recursively defined in terms of their input, which prevents safe reuse.
 In contrast, reuse of general values work well, and signal head values can sometimes even be reused repeatedly.
 
-We think we have succeeded in our goal of showing that reference counting works for Rizzo, and that we have built a functional demo of the language.
+We think we have succeeded in our goal of showing that reference counting works for Rizzo, and that we have built a functional implementation of the language.
 
 
 \end{abstract}
