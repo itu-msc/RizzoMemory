@@ -2,7 +2,7 @@
 
 % To obtain additional debug information about the memory management in Rizzo, we instrument the runtime with logging of various extra information using the \texttt{\_\_RZ\_DEBUG\_MALLOC} compilation flag. This flag enables logging of all calls to \texttt{malloc}, \texttt{free}, and \texttt{realloc} in the runtime, which allows us to track the allocation and deallocation of memory in more detail.
 
-As mentioned in \todo{add reference}, then there are not many cases where we can reuse Signals in Rizzo. However reuse on other objects is more common. To show reuse in action, we can use the following Rizzo program, which reads integers from the console and stores them in a list. The program then outputs the list of integers to the console.
+As mentioned in Sections~\ref{section:beans:examples} and~\ref{section:refcount:beans:counting} there are not many cases in which signals can be reused. However, reuse of other constructor values is more common. To show reuse in action, we use the Rizzo program on Figure~\ref{figure:reuse_program_hell_yea}, which reads integers from the console and stores them in a list. The program then outputs the list of integers to the console.
 
 \begin{figure}
     \begin{lstlisting}
@@ -18,6 +18,7 @@ As mentioned in \todo{add reference}, then there are not many cases where we can
             start_event_loop ()
     \end{lstlisting}
     \caption{A Rizzo program that reads integers from the console and stores them in a list. The program then outputs the list of integers to the console.}
+    \label{figure:reuse_program_hell_yea}
 \end{figure}
 
 The \texttt{list\_append} function recursively deconstructs the first list by separating the head cell from the tail. After this separation, the original cell is no longer referenced by the remaining input list, which makes it eligible for reuse. The generated code below illustrates the relevant part of \texttt{list\_append}: \texttt{lst1} is reset before the recursive call on the tail, allowing its storage to be reused when constructing the resulting list cell from the original head and the recursive result.
@@ -44,7 +45,7 @@ The \texttt{list\_append} function recursively deconstructs the first list by se
             ret var97
 \end{lstlisting}
 
-We then run the program with the \texttt{\_\_RZ\_DEBUG\_MALLOC} flag enabled and the input "4", "5", and "6" to the console. The program will then show debug information for each allocation, deallocation, and reuse of memory. To make it more convenient to analyse the debug output, we can filter the output for lines that contain "reuse" and extract the addresses of the reused memory. We can then group these addresses and count how many times each address was reused. The script to do this is shown in Figure \ref{fig:reuse_run_script}.
+We then run the program with the \texttt{--debug-malloc} flag enabled and the input "4", "5", and "6" to the console. The program will then show debug information for each allocation, deallocation, and reuse of memory. To make it more convenient to analyse the debug output, we can filter the output for lines that contain "reuse" and extract the addresses of the reused memory. We can then group these addresses and count how many times each address was reused. The script to do this is shown in Figure~\ref{fig:reuse_run_script}.
 
 \begin{figure}
     \begin{verbatim}
