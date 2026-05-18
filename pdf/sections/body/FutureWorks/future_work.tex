@@ -11,6 +11,13 @@
 
 \todo{Another possible solution is to instead keep a cache of signals. When a signal is erased and removed from the signal heap, instead of calling \texttt{free} on it we put it into a cache. Then when a signal is created we check if a signal is available for reuse and if so, we pop it \dots}
 
+\subsection{Indirections en masse}
+
+Another optimisation to avoid \textit{some} of the allocations of intermediate signals would be to introduce \textit{indirect} signals. An indirect signal is a reference to some other live signal which may itself be an indirect signal.
+The optimisation builds on the observation that some signal combinators such as\ $switch \; xs \; ys$ eventually produce a reference to some other signal $ys$ and when it happens it results in two copies of $ys$ existing in the heap at the same time. 
+This is not a problem when $ys$ is unique since it will be immediately reclaimed by the reference counting but when $ys$ is not unique and therefore cannot be immediately erased, the extra allocation means wasted time and space. It wastes time because the update semantics must then be applied to two identical copies of $ys$ and space since the same data is stored twice.
+This will require changing the semantics of $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ to navigate the indirections until they find a signal value. 
+
 \subsection{Improving the runtime cost/overhead}
 
 \todo{Distinguishing between CONCRETE signals and just signal indirections. See mail 3rd of March 2026}
