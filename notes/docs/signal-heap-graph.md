@@ -64,9 +64,10 @@ signal's current tail:
 | `sync l1 l2` | union of dependencies from `l1` and `l2` |
 | `f |> l` / `laterapp f l` | same active dependencies as `l` |
 
-This is enough to support the desired optimization: a step on a channel only
-starts from signals subscribed to that channel, then propagates through signal
-dependencies.
+This is enough to support the desired optimization as a relevance filter: a
+step on a channel only starts from signals subscribed to that channel, then
+propagates through signal dependencies. It is not, by itself, enough to replace
+the heap order with an arbitrary topological sort.
 
 ## What the older note got right
 
@@ -92,12 +93,42 @@ The first useful version can be much smaller:
    - `channel -> signals waiting on that channel`
    - `signal -> signals depending on tail/watch of that signal`
 3. when a channel steps, seed a worklist from the channel subscriber list
-4. process reachable signals in topological order
+4. process reachable signals in the existing heap order
 5. after a signal updates, re-extract dependencies from its new tail and update
    the subscriber lists
 
 This keeps the proposed change close to the current runtime. It changes the
 scheduling structure first, not the signal object model.
+
+## Counterexample to an edge-only topological order
+
+The active `Later` graph is not a complete data-dependency graph for all reads
+that can happen while advancing a tail.
+
+For example, the standard library defines:
+
+```rizz
+fun sample xs ys = map (fun x -> (x, head ys)) xs
+```
+
+The resulting signal ticks when `xs` ticks. Its active `Later` dependency is
+therefore on `xs`, not on `ys`. However, when the delayed function is advanced,
+it reads the current head of `ys`.
+
+If `xs` and `ys` can both update in the same time step, then the result of
+`sample xs ys` depends on whether `ys` has already been processed. The current
+linked-list scheduler handles this through heap order. A graph scheduler that
+only sees the `tail xs` edge could incorrectly process the sampled signal before
+`ys`, unless it preserves the existing heap order or also tracks head-read
+dependencies inside delayed functions.
+
+This is the main correction to the simplified DAG story:
+
+- the graph over active `Later` dependencies is enough to decide which signals
+  can possibly update after a channel step
+- the existing heap order should remain the first scheduler order
+- replacing that order with a pure graph topological sort requires a richer
+  dependency analysis that includes same-step `head` reads
 
 ## Why a pure clock graph is not enough
 
@@ -171,11 +202,136 @@ The graph scheduler can preserve this in one of two ways:
 
 - maintain creation/list order as a topological order and process reachable
   signals according to that order
-- compute a topological order for the reachable subgraph on each step
+- compute a topological order for the reachable subgraph on each step, but only
+  after the graph also accounts for same-step reads such as `head ys` inside
+  delayed functions
 
 The first option is likely the better initial design because it is closest to
 the current implementation. The dependency indices would decide which signals
 are relevant; the existing order would still decide how to process them.
+
+## Practical proof sketch
+
+The first graph scheduler can be proved correct by showing that it is equivalent
+to the current heap scan except that it skips signals whose tails cannot tick.
+
+Let `Reach(c)` be the set of active signal nodes reachable from channel `c` by
+following:
+
+- channel subscriptions from `wait c`
+- signal subscriptions from `tail s`
+- guarded signal subscriptions from `watch s`
+- both sides of `sync`
+- the later argument of `laterapp`
+
+For a step on channel `c`, process only signals in `Reach(c)`, but process them
+in the same relative order as the current linked list.
+
+The proof obligation is then:
+
+1. Soundness of skipping: if a signal is not in `Reach(c)`, then its current
+   tail cannot tick on this step. The old heap scan would only set its
+   `updated` flag to false, so skipping it is observationally equivalent only
+   if all signals are treated as not updated at the beginning of the step,
+   unless they are processed and updated in this step.
+2. Completeness of processing: if a signal's tail can tick because of channel
+   `c`, then it is in `Reach(c)`. This follows by structural induction on the
+   current `Later` value: `wait` is seeded directly, `tail` and `watch` are
+   reached through the source signal's update edge, `sync` is the union of its
+   arguments, and `laterapp` has the same tick condition as its later argument.
+3. Order preservation: every processed signal is evaluated in the same order as
+   the linked-list scheduler. Therefore reads of `updated` flags and reads of
+   signal heads inside delayed functions observe the same state as before.
+4. Stable identity: updates still copy the intermediate signal's head and tail
+   back into the original signal cell, so references to signals remain valid.
+5. Dynamic rewiring: after updating a signal, its old subscriptions are removed
+   and its new tail is inspected to install the subscriptions for future steps.
+   This maintains the definition of `Reach(c)` for the next step.
+6. Phase separation: signals created during epoch `n` are not eligible until
+   epoch `n + 1`, matching the current cursor discipline.
+
+This proof supports the conservative version: dependency indices plus existing
+heap order. A stronger scheduler that computes its own topological order would
+need an additional proof that its graph includes every same-step ordering
+dependency, including `head` reads hidden inside delayed functions.
+
+## What the Lean metatheory tells us
+
+The Lean formalisation in `rizzo-metatheory` is useful because it separates the
+semantic facts from the implementation choices.
+
+The key definitions line up with the graph idea:
+
+- `Term.ticked` is structurally defined over `wait`, `trig`/`watch`, `never`,
+  `sync`, `appE`, and `tail`
+- `appE` has the same tick condition as its later argument
+- `tail` and `trig`/`watch` inspect whether another signal in the now heap has
+  ticked
+- `Update.skip` moves a signal unchanged into the now heap but sets its ticked
+  flag to false
+- `Update.adv` advances a ticking tail, reads the intermediate signal, and
+  writes the ticked result back at the original location
+
+This supports the reachability proof for active `Later` dependencies. We can
+define a dependency extraction function over `Val` and prove:
+
+```text
+t.ticked now c = true -> owner is reachable from c
+owner not reachable from c -> t.ticked now c = false
+```
+
+The proof should be by structural induction on the `Later` value, following the
+same cases as `Term.ticked`.
+
+The Lean semantics also shows why the optimized runtime needs epoch-style
+updates. In the formal `skip` rule, a skipped signal is explicitly moved to the
+now heap with `ticked = false`. If an implementation simply avoids touching
+unreachable signals, their previous `updated = true` flag could survive into the
+next step and make `tail` or `watch` dependents tick incorrectly.
+
+A concrete bad shape is:
+
+```rizz
+sync (wait c) (tail y)
+```
+
+If `y` updated in the previous step, but not in the current step, then the
+`tail y` side must be false. A graph scheduler that does not clear or epoch the
+updated flag could incorrectly treat both sides of the `sync` as ticking.
+
+The practical implementation should therefore prefer:
+
+```text
+signal.updated_epoch : Nat
+current_epoch : Nat
+signal.updated = (signal.updated_epoch == current_epoch)
+```
+
+Then non-reachable signals are automatically not updated in the current step
+without requiring a full heap pass to clear booleans.
+
+The Lean semantics also confirms the limitation of an edge-only scheduler.
+`Eval.head` reads from the now heap, and `Adv.appE` evaluates an arbitrary
+delayed function after the later argument has advanced. So delayed functions can
+contain same-step `head` reads that are not visible in the active `Later`
+dependency graph. That is the formal version of the `sample xs ys`
+counterexample above.
+
+The most defensible formal route is:
+
+1. define `deps : Val -> DepSet` for active `Later` dependencies
+2. define `Reach(c)` from those dependencies
+3. define an optimized update relation that:
+   - treats all old tick flags as false by epoch
+   - updates only signals in `Reach(c)`
+   - processes those signals in the same order as `Updates`
+   - rewires dependencies after each update
+4. prove the optimized relation produces the same final heap and channel context
+   as `ReactStep`
+
+Once that equivalence theorem exists, the existing Lean theorems about
+determinism, preservation, productivity, and causality should transfer to the
+graph scheduler.
 
 ## Recommended first implementation
 
