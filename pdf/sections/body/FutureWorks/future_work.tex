@@ -25,8 +25,6 @@ This will require changing the semantics of $\mathsf{head}$, $\mathsf{tail}$, an
 
 \subsection{Improving the runtime cost/overhead}
 
-\todo{Distinguishing between CONCRETE signals and just signal indirections. See mail 3rd of March 2026}
-
-\todo{Optimising the heap representation. Could we do a DAG in some way? A DAG for each channel? Or at least somehow encode the \textit{clocks} of later values in to the heap structure. This would (possibly greatly) limit the amount of signals to check for each time step?}
-
-\todo{\dots}
+The current signal heap representation is quite simple but it is not very efficient. As a linked list the advance semantics must traverse the entire heap to find the signals that need to be updated. This causes the runtime complexity of the advance semantics to be linear in the number of signals in the heap.
+This means the more signals a program has, the more time each step takes to execute. 
+We believe that for the language to be practical for big server applications, games or user interfaces, the runtime complexity of the advance semantics should be sub-linear in the number of signals in the heap. Further work would therefor be needed to find a more efficient representation of the signal heap, that allows the update semantics to skip or ignore signals that are not used in the current step.
