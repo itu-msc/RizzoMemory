@@ -196,45 +196,6 @@ static inline rz_object_t *rz_reuse_signal(rz_object_t *obj, rz_box_t head, rz_b
     return obj;
 }
 
-#ifdef __RZ_DEBUG_INFO
-static inline void rz_debug_print_heap()
-{
-    printf("(size: %zu) ", rz_heap_size);
-    for (rz_signal_t *sig = &rz_heap_head; sig != NULL; sig = (rz_signal_t *)rz_unbox_ptr(sig->next))
-    {
-        if (sig == &rz_heap_head || sig == &rz_heap_tail)
-        {
-            if (sig == rz_heap_cursor)
-                printf("(|) ");
-            else
-                printf("| ");
-        }
-        else if (rz_unbox_int(sig->updated))
-        {
-            printf("[%zu] ", rz_unbox_int(sig->debug_index));
-        }
-        else
-        {
-            if (sig == rz_heap_cursor)
-                printf("(%zu) ", rz_unbox_int(sig->debug_index));
-            else
-                printf("%zu ", rz_unbox_int(sig->debug_index));
-        }
-    }
-    printf("\n");
-}
-#endif
-
-static void rz_debug_print_signal(rz_box_t box)
-{
-    rz_signal_t *signal = (rz_signal_t *)rz_unbox_ptr(box);
-    printf("signal(ref: %d, head: ", signal->_base.refcount);
-    rz_debug_print_box(signal->head);
-    printf(", tail: ");
-    rz_debug_print_box(signal->tail);
-    printf(", updated: %"PRId64")", rz_unbox_int(signal->updated));
-}
-
 static inline rz_box_t rz_signal_eq(rz_object_t *a, rz_object_t *b) 
 {
     if (rz_object_get_type(a) != RZ_SIGNAL || rz_object_get_type(b) != RZ_SIGNAL) 

@@ -122,7 +122,7 @@ let emit_c_code (RefProg{functions; _} as p:program) (filename:string) =
         Printf.sprintf 
         "    rz_box_t res = rz_call(%s, 1, (rz_box_t[]){ RZ_UNIT });\n" entry_name (* TODO: notice, should we have this line here?*)
       ^ "#ifdef __RZ_DEBUG_INFO\n"
-      ^ "    printf(\"result: \"); rz_debug_print_box(res); printf(\"\\n\"); \n"
+      ^ "    printf(\"result: \"); rz_print_box(res); printf(\"\\n\"); \n"
       ^ "#endif\n"
       ^ "    return rz_unbox_int(res);\n}\n")
     | None -> failwith "No entry point found"

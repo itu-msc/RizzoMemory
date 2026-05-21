@@ -46,7 +46,7 @@ let run_console_program ?(delay_s = 0.) ?(debug_malloc = false) ~program ~input 
               (Rizzoc.generated_c_compiler_invocation ~input_file:output_file
                  ~output_file:binary_file ~debug_malloc ())
           in
-          if debug_malloc then command ^ " -D__RZ_DEBUG_INFO" else command
+          command
         in
         let status = Sys.command command in
         if status <> 0

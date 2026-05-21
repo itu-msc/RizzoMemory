@@ -10,6 +10,7 @@
 #include "core.h"
 #include "heap.h"
 #include "later.h"
+#include "print.h"
 #include "channel.h"
 #include "tcp.h"
 #include "timer.h"
@@ -96,7 +97,7 @@ static inline void rz_step(rz_channel_t chan, rz_box_t v)
 
 #ifdef __RZ_DEBUG_INFO
     printf("step %.4" PRIu64 ", channel %" PRIu64 ", Sig index %" PRIu64 ", ", rz_debug_heap_step_count, chan, rz_debug_signal_next_index);
-    rz_debug_print_heap();
+    rz_print_heap();
 #endif
 }
 
@@ -122,7 +123,7 @@ static rz_box_t rz_start_event_loop()
 
 #ifdef __RZ_DEBUG_INFO
     printf("After initialization, Sig index %" PRIu64 ", ", rz_debug_signal_next_index);
-    rz_debug_print_heap();
+    rz_print_heap();
 #endif
 
     while (!rz_should_quit)
@@ -188,7 +189,7 @@ static inline rz_box_t rz_register_output_signal(size_t num_args, rz_box_t *args
     rz_box_t sig = args[0];
     if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL)
     {
-        rz_debug_print_box(sig);
+        rz_print_box(sig);
         fprintf(stderr, "Runtime error: rz_register_output_signal got a non-signal value (%d)\n", sig.kind);
         exit(1);
     }
@@ -205,7 +206,7 @@ static inline rz_box_t rz_register_port_output_signal(size_t num_args, rz_box_t 
     rz_box_t sig = args[1];
     if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL)
     {
-        rz_debug_print_box(sig);
+        rz_print_box(sig);
         fprintf(stderr, "Runtime error: rz_register_port_output_signal got a non-signal value (%d)\n", sig.kind);
         exit(1);
     }
@@ -227,7 +228,7 @@ static inline rz_box_t rz_register_output_signal_deferred(size_t num_args, rz_bo
     rz_box_t sig = args[0];
     if (sig.kind != RZ_BOX_PTR || rz_object_get_type(rz_unbox_ptr(sig)) != RZ_SIGNAL)
     {
-        rz_debug_print_box(sig);
+        rz_print_box(sig);
         fprintf(stderr, "Runtime error: rz_register_output_signal_deferred got a non-signal value (%d)\n", sig.kind);
         exit(1);
     }
@@ -249,7 +250,7 @@ static inline void rz_print_registered_output_head(rz_signal_t *sig, bool force)
 {
     if (rz_unbox_int(sig->updated) || force)
     {
-        rz_debug_print_box(sig->head);
+        rz_print_box(sig->head);
         printf("\n");
         fflush(stdout);
     }
