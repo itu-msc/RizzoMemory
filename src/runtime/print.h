@@ -16,7 +16,11 @@ static inline void rz_print_box(rz_box_t box) {
 			printf("%" PRId64 "", box.as.i64);
 		} break;
 		case RZ_BOX_STRING_LITERAL: {
+#ifdef __RZ_DEBUG_INFO
+			printf("string-literal@%p(%s)", (void*)rz_unbox_str_lit(box), rz_unbox_str_lit(box));
+#else
 			printf("%s", rz_unbox_str_lit(box));
+#endif
 		} break;
 		case RZ_BOX_PTR: {
 			switch (rz_object_get_type(rz_unbox_ptr(box))) {

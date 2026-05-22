@@ -18,10 +18,54 @@ Performing this inlining would potentially prevent us from allocating signals fo
 
 \subsection{The gain of indirections}
 
-Another optimisation to avoid \textit{some} of the allocations of intermediate signals would be to introduce \textit{indirect} signals. An indirect signal is a reference to some other live signal which may itself be an indirect signal.
-The optimisation builds on the observation that some signal combinators such as\ $switch \; xs \; ys$ eventually produce a reference to some other signal $ys$ and when it happens it results in two copies of $ys$ existing in the heap at the same time. 
-This is not a problem when $ys$ is unique since it will be immediately reclaimed by the reference counting but when $ys$ is not unique and therefore cannot be immediately erased, the extra allocation means wasted time and space. It wastes time because the update semantics must then be applied to two identical copies of $ys$ and space since the same data is stored twice.
-This will require changing the semantics of $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ to navigate the indirections until they find a signal value. 
+\todo{switch has never been mentioned before this point}
+
+There are some signal combinators that can leave the signal heap with duplicates. This is inefficient because the update semantics must then be applied to each duplicate, wasting both time and space.  
+Consider the program of Listing~\ref{listing:future_work:switch}. 
+It defines a global signal $c$ that produces the stream of values received from the console. Inside the entry point, it defines a signal $s$ which, by using $switch$, initially behaves like the constant signal and then switches to match $c$ once input is received on the console.
+
+\begin{lstlisting}[caption={Rizzo program using the switch combinator.}, label={listing:future_work:switch}]
+let c = "" :: mk_sig (wait console)
+fun entry () = 
+    let s = switch (const "switch!") (tail c) in
+    let _ = console_out_signal s in
+    start_event_loop ()
+\end{lstlisting}
+
+Compiling and running the program with the \texttt{--debug-info} flag produces the output shown in Figure~\ref{figure:future_work:switch_out}.
+We follow the same colour scheme as earlier, where blue denotes user input and green denotes program output.
+After initialisation, there are three signals in the heap: $0$ is the signal $c$; $1$ is the constant signal of the string \textit{switch!}; and $2$ is the signal $s$. 
+The first step is triggered by the user input \textit{hi}. This produces a new head for signal $c$, causing $s$ to switch to the behaviour of $c$. The new head of $s$ is then output to the console. The constant signal, no longer needed by $s$, is discarded and so the heap shrinks.
+
+The next two lines in Figure~\ref{figure:future_work:switch_out}, those beginning with \textit{signal}, show the data of the live signals $c$ and $s$.
+The signals store pointers to dynamic memory, so the values themselves are not interesting but what matters is that they are identical across the two signals.
+This creates inefficiency, because future time steps must apply the update semantics to both signals even though they refer to the same underlying data.
+
+\begin{figure}
+\begin{Verbatim}[commandchars=\\\{\}]
+\textcolor{greencomments}{switch!}
+After init | [0] [1] [2] (|)
+\textcolor{blue}{hi}
+\textcolor{greencomments}{hi}
+step 0001 | [0] [2] (|)
+signal 0 \{ head = 0x61b5e6e6cf00, tail = 0x61b5e6e6c440 \}
+signal 2 \{ head = 0x61b5e6e6cf00, tail = 0x61b5e6e6c440 \}
+\end{Verbatim}
+\caption{The output of running the program of Listing~\ref{listing:future_work:switch} with the \texttt{--debug-info} flag enabled. Blue denotes user input and green denotes output.}
+\label{figure:future_work:switch_out}
+\end{figure}
+% \textcolor{blue}{hi again}
+% \textcolor{greencomments}{hi again}
+% step 0002 | [0] [2] (|)
+% signal 0 \{ head = 0x61b5e6e6c570, tail = 0x61b5e6e6c5c0 \}
+% signal 2 \{ head = 0x61b5e6e6c570, tail = 0x61b5e6e6c440 \}
+
+A possible solution to this problem would be to change the representation of signals so that a signal is either a \textit{full} signal, containing its head, tail, previous, and next fields, or an \textit{indirect} signal, containing only a pointer to another signal.
+The main benefit of an indirect signal is that it does not need to be updated directly, since updates propagate through the pointer. 
+Creating indirections would become part of the update semantics. Before any data is written, it should check whether the intermediate signal is unique.
+If it is unique, the update should proceed as normal, otherwise an indirection should be created instead. 
+In the example of Figure~\ref{figure:future_work:switch_out}, this would allow the runtime to replace $s$ (signal $2$) with an indirection after it switches.
+However, this optimisation would require a change in semantics, because $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until they reach a full signal.
 
 \subsection{Improving the runtime cost/overhead}
 
