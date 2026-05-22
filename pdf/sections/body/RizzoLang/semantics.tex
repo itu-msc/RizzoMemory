@@ -83,7 +83,7 @@ There is one additional adjustment required for \texttt{Delayed} values. In part
 
 %GOAL: Where do we reference count in reactive semantics? Signals are created, data is overwritten. Immediate erasure of intermediate signals. This must be managed.
 This leaves us with the interaction between reference counting and the reactive semantics.
-Although we treat the advance semantics as a black-box, its interface must consume an RC token of any the later value it receives. When the update semantics call advance on a signal's tail, advance is therefore responsible for decrementing that tail once it is no longer needed.
+Although we treat the advance semantics as a black-box, its interface must consume an RC token of any later value it receives. When the update semantics call advance on a signal's tail, advance is therefore responsible for decrementing that tail once it is no longer needed.
 This ensures later values, and the data they reference, are released as early as possible. This is crucial for the success of \textbf{reset}/\textbf{reuse}. If advance only borrowed the later value, the update semantics would have to perform the decrement after advance returned, which would block reuse of memory captured inside the later.
 We base these requirements on the result of running the program in Appendix~\ref{appendix:advance_func} through the reference counting algorithm of Section~\ref{section:refcount} to achieve the pseudo-code from Appendix~\ref{appendix:advance_ir}.
 
