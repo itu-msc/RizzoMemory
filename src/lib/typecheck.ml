@@ -146,10 +146,12 @@ and free_tvar_ids_env : unit -> IntSet.t Type_env.t = fun () ->
   let* global_free = free_tvar_ids_env_scheme env.global in
   let* local_free = free_tvar_ids_env_scheme env.local in
   return (IntSet.union global_free local_free)
-and free_type_vars_typ : typ -> StringSet.t Type_env.t = function
+and free_type_vars_typ : typ -> StringSet.t Type_env.t = fun t ->
+  let* t = Type_env.apply_subst t in
+  match t with
   | TError -> return StringSet.empty
   | TVar _ -> return StringSet.empty
-  | TTuple (t1, t2) -> 
+  | TTuple (t1, t2) ->
     let* t1_free = free_type_vars_typ t1 in
     let* t2_free = free_type_vars_typ t2 in
     return (StringSet.union t1_free t2_free)
@@ -357,9 +359,10 @@ and infer : type stage. stage expr -> typed expr Type_env.t = fun e ->
   | EError (msg, ann) ->
     let* _ = error ann msg in
     return (EError (msg, Ann_typed (get_location ann, TError)))
-  | EAnno (e, t, ann) -> 
+  | EAnno (e, t, ann) ->
     let* () = is_valid_type ann t in
     let* te = check e t in
+    let* t = Type_env.apply_subst t in
     return (EAnno (te, t, Ann_typed (get_location ann, t)))
   | ELet ((name, name_ann), rhs, body, ann) ->
     let* trhs = infer rhs in

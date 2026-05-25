@@ -186,6 +186,21 @@ let test_annotated_list_map_typechecks () =
   in
   Alcotest.(check bool) "typed program contains no unresolved weak vars" false (program_has_tvar typed_program)
 
+let test_local_annotation_preserves_outer_type_param () =
+  let typed_program =
+    parse_and_typecheck
+      "fun magic x =\n\
+      \  let x' : 'a = x in\n\
+      \  x'\n"
+  in
+  match typed_program with
+  | [TopLet (("magic", Ann_typed (_, TFun (Cons1 (param_type, []), return_type))), _, _)] ->
+      Alcotest.(check bool)
+        "magic preserves annotated parameter type"
+        true
+        (Ast.eq_typ param_type return_type)
+  | _ -> Alcotest.fail "unexpected typed AST for magic"
+
 let test_duplicate_function_parameter_names_report_error () =
   let parsed = Parser.parse_string "fun dup x x = x\n" in
   let { type_errors; _ } : TypeCheck.typing_result = TypeCheck.typecheck parsed in
@@ -231,6 +246,7 @@ let location_tests = [
   "typecheck normalizes inner annotations", `Quick, test_typecheck_normalizes_inner_annotations;
   "projection partial application survives refcount", `Quick, test_projection_partial_app_survives_refcount;
   "annotated list_map typechecks", `Quick, test_annotated_list_map_typechecks;
+  "local annotation preserves outer type parameter", `Quick, test_local_annotation_preserves_outer_type_param;
   "duplicate parameter names report error", `Quick, test_duplicate_function_parameter_names_report_error;
   "duplicate names in parameter pattern report error", `Quick, test_duplicate_names_inside_parameter_pattern_report_error;
   "duplicate names in match pattern report error", `Quick, test_duplicate_names_inside_match_pattern_report_error;
