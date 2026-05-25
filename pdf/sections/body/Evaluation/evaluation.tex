@@ -5,7 +5,7 @@
 We originally set out to solve the memory management problem in Rizzo. 
 With a pipeline for transforming Rizzo programs and inserting reference counting, we investigate the resulting programs and their memory performance.
 %GOAL: Let's add a quick oh by the way, there is a C-runtime ...
-To do so, we provide a \verb|C| runtime that implements the semantics described in Section~\ref{section:rizzolang:semantics}, and we emit \verb|C|-code based on the Reference counted IR of fully transformed programs.
+To do so, we provide a \verb|C| runtime that implements the semantics described in Section~\ref{section:rizzolang:semantics}, and we emit \verb|C|-code based on the reference counted IR of fully transformed programs.
 
 %GOAL: to evaluate we do the following ... 
 For this evaluation, our focus will be on the absence of space leaks and the proper timing of signal clean-up so that unnecessary work is avoided. 
