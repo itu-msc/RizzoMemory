@@ -8,13 +8,10 @@ Bahr mentioned in \cite{rizzo_modal_2025} that it should be `simple' to prevent 
 This means we would have to perform the optimisation at compile time using a new static analysis or use our existing static analysis to determine which signals are intermediate signals. We would lean towards using our existing reference counting, and more specifically the reset/reuse logic, to determine which signals are intermediate signals. For us to do so, we would need to inline the advance semantics into the tails of the signals. Simply inlining the advance semantics is not enough, as the function part of the Later application (LaterApp) is a back box and could be recursive which would be problematic to inline unless protected by a $\mathsf{delay}$.
 
 In order to inline the advance semantics in Rizzo itself, we would need to add some features to the language. We would need mutable references or specialised private functions for manipulating the signals, and polymorphic types for type checking. 
-If we added these, then the tails of the signals would be quite large, and the code of the advance semantics would be duplicated in all signals, increasing the compile time and potentially the runtime as well.
+Even if we added these, then the tails of the signals would be quite large, and the code of the advance semantics would be duplicated in all signals, increasing the compile time and potentially the runtime as well.
 % We would also need to inline the logic of the LaterApp, which would further increase the compile time and runtime.
 
 Performing this inlining would potentially prevent us from allocating signals for the intermediate signals created by the advance semantics, but it would also increase the compile time and runtime complexity of the program. The code of the advance semantics is quite large and complex, and inlining it in all the tails of the signals would increase the size of the code significantly. 
-
-
-\todo{One possible solution is to inline the code/logic of the particular later constructor, when it is created. Requires that we write the advance semantics in Rizzo itself (see todo below). If it can be done in such a way that the reference of the signal TO BE updated is in scope when evaluated the inlined advance logic is evaluated, it could then we reused \dots meaning no need for a fresh allocation that is then de-allocated.}
 
 \subsection{The gain of indirections}
 

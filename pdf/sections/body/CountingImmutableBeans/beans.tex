@@ -25,8 +25,7 @@ By using new \textbf{reset} and \textbf{reuse} instructions and ownership annota
 
 % which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
 
-\todo{move this?}
-In this section, we will be using the term \textit{RC token} (Reference Counting token).
+Later in this section, we will be using the term \textit{RC token} (Reference Counting token).
 An RC token is one counted reference to an object.
 A token is created when the reference count is incremented, and it is consumed when the reference count is decremented, either directly or by being passed to a context that eventually decrements it, such as a function or a memory allocated value.
 

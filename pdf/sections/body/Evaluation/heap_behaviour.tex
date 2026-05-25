@@ -1,7 +1,7 @@
 % \todo{\dots we ran this Rizzo program X (code of which is in the appendix). The program does \textbf{something}. We enabled  with compiler flags `\_\_RZ\_DEBUG\_INFO', the output is shown in \dots}
 
 In order to evaluate the behaviour of the signal heap, we will be running a small Rizzo program. To show our signal heap can grow and shrink in a predictable way, we will make the program such that it changes which signals are actively used. For this, we have made a program with two modes. It has an English and Danish mode, and will echo back any input given to it in the respective language. 
-The full source can be found in Appendix \todo{X}.
+The full source can be found in Appendix \ref{appendix:heap_behaviour}.
 
 \begin{lstlisting}[caption={The entry point of the Rizzo program used to evaluate the heap behaviour.}]
 fun entry unused =
