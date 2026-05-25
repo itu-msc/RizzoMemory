@@ -7,7 +7,6 @@ With a pipeline for transforming Rizzo programs and inserting reference counting
 %GOAL: Let's add a quick oh by the way, there is a C-runtime ...
 To do so, we provide a \verb|C| runtime that implements the semantics described in Section~\ref{section:rizzolang:semantics}, and we emit \verb|C|-code based on the Reference counted IR of fully transformed programs.
 
-% \todo{We did x,y,z \dots}
 %GOAL: to evaluate we do the following ... 
 For this evaluation, our focus will be on the absence of space leaks and the proper timing of signal clean-up so that unnecessary work is avoided. 
 In Section~\ref{section:eval:heap_behaviour} we execute a small/simple Rizzo program and inspect the signal heap at regular intervals and greater detail.

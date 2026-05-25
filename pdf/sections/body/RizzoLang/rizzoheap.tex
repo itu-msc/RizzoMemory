@@ -44,7 +44,7 @@ The signal heap is implemented as a doubly-linked list rather than a contiguous 
     \item \textbf{Ordered iteration}: Signals must be updated in the order they were created to respect dependencies. For example, if signal $s_2$ depends on $s_1$, then $s_1$ must be updated before $s_2$. A linked list naturally preserves insertion order, while an array would require additional bookkeeping to maintain order during insertions and deletions.
     % Signals must be updated in creation order to respect dependencies. A linked list naturally preserves insertion order.
 
-    \item \textbf{Efficient insertion}: New signals created during an update must be inserted at the current position in the iteration \todo{in the now heap?}. With a linked list, this is O(1).
+    \item \textbf{Efficient insertion}: New signals created during an update must be inserted at the end of the now heap, which is at the current position in the iteration. With a linked list, this is O(1).
 
     \item \textbf{Efficient removal}: When a signal's reference count drops to zero, it must be removed from the heap. Doubly-linked lists support O(1) removal.
 
