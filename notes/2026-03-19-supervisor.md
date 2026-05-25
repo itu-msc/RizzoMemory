@@ -25,7 +25,7 @@ Fix:
 - We have this memory layout in C - because Rizzo says we must do this and that
     - Answer: We have to say that CTOR and our specialised signal are heap allocated
     - How far can we get away with this informally? Well, we have already started. We have mentioned inc/dec/reset/reuse in section 2.
-    In Section 3, Rizzolang: we can then say we add htree additional (Signal, Later, Delay) constructors (or how we map these). Mention that we handle signal (cons) in special way: they are also heap allocated and reference counted but importantly they also go into the linked list
+    In Section 3, RizzoLang: we can then say we add three additional (Signal, Later, Delay) constructors (or how we map these). Mention that we handle signal (cons) in special way: they are also heap allocated and reference counted but importantly they also go into the linked list
 - This is probably best explained with a conceptual example
     - Show the heap structure, show CTOR values, and our signal value. Show how the linked list is built in the regular heap. Then show of our `heap_base` points in the heap ... Show how the heap jumps. 
 ```

@@ -70,7 +70,7 @@ We believe that for the language to be practical for big server applications, ga
 
 \subsection{Specialised implementations of primitive combinators}
 
-While all signal combinators can be implemented in\ \todo{RizzoLang}, some of these may allocate more memory than necessary.
+While all signal combinators can be implemented in RizzoLang, some of these may allocate more memory than necessary.
 As an example consider the definition of $mk\_sig$ from Section~\ref{section:frp:rizzo}, 
 If we unfold the $\triangleright$ operator, its definition becomes:
 \[mk\_sig \; d = \mathsf{laterapp} \; (\mathsf{delay} \; (\lambda a. \, a :: mk\_sig \; d)) \; d\]

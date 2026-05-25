@@ -1,7 +1,7 @@
 % This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
 % We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).
 
-For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become \todo{RizzoLang}, rather than a comprehensive explanation of each. 
+For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become RizzoLang, rather than a comprehensive explanation of each. 
 To do so, we first provide an abstract description of the semantics, then give a more concrete account of how this is implemented in the runtime of the language, and finally how reference counting is fitted in.
 
 % Therefore, we focus on the necessary adjustments and the unavoidable parts such as the signal heap.
