@@ -1,6 +1,3 @@
-\section{Future work}
-
-
 \subsection{Improving reuse of intermediate signals}
 
 Bahr mentioned in \cite{rizzo_modal_2025} that it should be `simple' to prevent the allocation of many of the intermediate signals created by the advance semantics. This however does not seem to be so simple after all. At runtime We don't easily know the difference between an intermediate signal and a regular signal. Even if we knew, then we don't have a reference to the original signal where we now create a new signal but instead would want to reuse the original signal.
