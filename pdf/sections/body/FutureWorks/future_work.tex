@@ -1,4 +1,4 @@
-\section{Future work \dots}
+\section{Future work}
 
 
 \subsection{Improving reuse of intermediate signals}
@@ -62,7 +62,7 @@ If it is unique, the update should proceed as normal, otherwise an indirection s
 In the example of Figure~\ref{figure:future_work:switch_out}, this would allow the runtime to replace $s$ (signal $2$) with an indirection after it switches.
 However, this optimisation would require a change in semantics, because $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until they reach a full signal.
 
-\subsection{Improving the runtime cost/overhead}
+\subsection{Improving the structure of the signal heap}
 
 The current signal heap representation is quite simple but it is not very efficient. As a linked list the advance semantics must traverse the entire heap to find the signals that need to be updated. This causes the runtime complexity of the advance semantics to be linear in the number of signals in the heap.
 This means the more signals a program has, the more time each step takes to execute. 
