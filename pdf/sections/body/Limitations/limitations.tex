@@ -22,11 +22,11 @@ A current workaround is to turn the affected later computation into a signal and
 \[
 \mathsf{tail} \; (\texttt{""} :: mk\_sig \; (\mathsf{wait} \; console))
 \]
-This works because, according to the reactive semantics of $\mathsf{tail}$, advancing a $\mathsf{tail}$ value returns a pointer to the signal it was given.
+This works because, according to the reactive semantics of $\mathsf{tail}$, advancing a value $\mathsf{tail} \; s$ returns exactly $s$.
 This effectively means that the result of the later application is cached in the signal that we create as part of the workaround.
 % For us to use $\mathsf{tail}$ we need to turn the \texttt{Later (Signal String)} from $mk\_sig$ into a \texttt{Signal String}. To do this, we take the \texttt{LaterApp} from \texttt{mk\_sig}, and apply it to the signal constructor (\texttt{::}) with a dummy head value (in this case the empty string). This instantiates a signal in the current time step, which we can use the \texttt{tail} constructor on to effectively cache the result of the later application. 
-The downside is that we abandon the lazy signal creation. This means that if the signal is never used (\todo{never used? Or if the later never ticks?}), we have unnecessarily created a signal and allocated memory for it.
-However, if the signal is used multiple times, we save on the redundant later applications and the associated memory allocations, which can be a significant improvement in performance and memory usage.
+The downside is that we abandon the lazy signal creation. If the signal never produces a value, the allocation is unnecessary.
+However, when the signal is used multiple times, we avoid repeated evaluation of the same later application and the associated memory allocations, which can significantly improvement performance and reduce memory usage.
 
 A proper fix would be to make $\mathsf{laterapp}$ values behave like lazy values, so that the result is cached after the first evaluation.
 However, the result may only be cached until a future time step when the $\mathsf{laterapp}$ produces a new value.
