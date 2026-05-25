@@ -14,7 +14,7 @@ In Rizzo~\cite{rizzo_modal_2025} the operational semantics is split in two: The 
 
 The evaluation semantics follow a standard eager evaluation strategy. The only exception being $\text{delay} \; e$ for which the argument $e$ is lazily evaluated.
 % We have slightly different evaluation semantics because we allow general recursion.
-We change the semantics presented by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} \todo{only a little}. We exclude the $\textbf{fix}\text{(-point)}$ construct which is used to guarantee productivity by guarding recursion with the \texttt{Delayed} type. That is, our implementation makes no guarantees about productivity, a trade-off we are willing to make given the usefulness of general recursion in functional programming.
+We make one deliberate deviation from the semantics presented by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025}. We omit the \textbf{fix}-point construct, which is used to guarantee productivity by guarding recursion with the \texttt{Delayed} type. That is, our implementation makes no guarantees about productivity, a trade-off we are willing to make given the usefulness of general recursion in functional programming.
 
 %Trying to say something like: Rizzo~\cite splits the reactive semantics in three: *which? What is their purpose*. We'll point our focus to the update semantics, since this is the most important for the problem at hand
 The reactive semantics define the reactive behaviour of Rizzo, i.e.\ what happens when any channel has produced a value and time is moved forward. 
@@ -87,28 +87,29 @@ Although we treat the advance semantics as a black-box, its interface must consu
 This ensures later values, and the data they reference, are released as early as possible. This is crucial for the success of \textbf{reset}/\textbf{reuse}. If advance only borrowed the later value, the update semantics would have to perform the decrement after advance returned, which would block reuse of memory captured inside the later.
 We base these requirements on the result of running the program in Appendix~\ref{appendix:advance_func} through the reference counting algorithm of Section~\ref{section:refcount} to achieve the pseudo-code from Appendix~\ref{appendix:advance_ir}.
 
-With this interface in place, reference counting in the update semantics proceeds as: if a signal does not produce a new value, then there is nothing to do. If it does produce a value, the original head is decremented before advancing the tail, because it is stale and it may hold onto references, which could block reuse. The head and tail of the intermediate signal are incremented before being copied back into the original signal.
-Once the entire heap has been updated, the value that triggered the update process is decremented to release it.
+With this interface in place, reference counting in the update semantics proceeds as follows.
+If a signal does not produce a new value, nothing further happens. 
+Otherwise, we first decrement the original head, since it is now stale and may still hold references that would block reuse. We then advance the tail, which consumes the reference and yields an intermediate signal. The head and tail of that intermediate signal are incremented before being copied back into the original signal, after which the intermediate signal itself is decremented.
+Once the entire heap has been updated, we finally decrement the value that triggered the update process.
 
 % \todo{is this a better spot to show the heap? We could show example of general heap to show how the signal heap is just a subset}
 
-Figure~\ref{figure:semantics:heap_vis} visualises the Rizzo heap as a sequence of mappings from location $l_i$ to value and reference counter $C_i$. The heap stores regular constructor values alongside signal values. 
-The signal heap is linked together by the \texttt{prev} and \texttt{next} fields.
+Having established the semantics of the language, we can make the distinction between the heap and the signal heap concrete. Figure~\ref{figure:semantics:heap_vis} visualises the Rizzo heap as a sequence of mappings from location $l_i$ to value and reference counter $C_i$. Regular constructor values and signal values share the same heap. The signal heap is a linked list of signal values within the full heap, beginning at the heap base. The \texttt{prev} and \texttt{next} fields link the signal values together and define that list.
+
 In Figure~\ref{figure:semantics:heap_vis}, the heap base is $l_2$, whose \texttt{prev} field is empty and whose \texttt{next} field forms the signal heap $l_2, l_n, l_m$.
-\todo{Make the above part flow better. I think its a fine spot to bring this up. We have introduced all the necessary information/concepts but it reads weird.}
 
 \begin{figure}[h]
     \centering
     \[\begin{array}{rcl}
-        l_0 &\to& \textbf{ctor}_0(),\ C_0 \\
-        l_1 &\to& \textbf{ctor}_0(42, 12),\ C_1 \\
-        l_2 &\to& \textbf{signal}(l_0, l_1),\ \texttt{prev}=\cdot,\ \texttt{next}=l_n,\ C_2 \\
-        l_3 &\to& \textbf{ctor}_0(),\ C_3 \\
-        l_4 &\to& \textbf{ctor}_1(5),\ C_4 \\
-        l_5 &\to& \textbf{ctor}_0(l_3, l_4),\ C_5 \\
+        l_0 &\mapsto& \textbf{ctor}_0(),\ C_0 \\
+        l_1 &\mapsto& \textbf{ctor}_0(42, 12),\ C_1 \\
+        l_2 &\mapsto& \textbf{signal}(l_0, l_1),\ \texttt{prev}=\cdot,\ \texttt{next}=l_n,\ C_2 \\
+        l_3 &\mapsto& \textbf{ctor}_0(),\ C_3 \\
+        l_4 &\mapsto& \textbf{ctor}_1(5),\ C_4 \\
+        l_5 &\mapsto& \textbf{ctor}_0(l_3, l_4),\ C_5 \\
         \vdots & & \vdots \\
-        l_{n-1} &\to& \textbf{ctor}_6(l_{n-2}, l_{n-3}),\ C_{n-1} \\
-        l_n &\to& \textbf{signal}(\texttt{"Hello, World!"}, l_{n-1}),\ \texttt{prev}=l_5,\ \texttt{next}=l_m,\ C_n
+        l_{n-1} &\mapsto& \textbf{ctor}_6(l_{n-2}, l_{n-3}),\ C_{n-1} \\
+        l_n &\mapsto& \textbf{signal}(\texttt{"Hello, World!"}, l_{n-1}),\ \texttt{prev}=l_5,\ \texttt{next}=l_m,\ C_n
     \end{array}\]
     \caption{The Rizzo heap storing both constructor- and signal values. The signal heap is linked together by the \texttt{prev} and \texttt{next} fields}\label{figure:semantics:heap_vis}
 \end{figure}
