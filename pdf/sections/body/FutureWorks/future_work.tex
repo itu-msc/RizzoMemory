@@ -15,8 +15,6 @@ Performing this inlining would potentially prevent us from allocating signals fo
 
 \subsection{The gain of indirections}
 
-\todo{switch has never been mentioned before this point}
-
 There are some signal combinators that can leave the signal heap with duplicates. This is inefficient because the update semantics must then be applied to each duplicate, wasting both time and space.  
 Consider the program of Listing~\ref{listing:future_work:switch}. 
 It defines a global signal $c$ that produces the stream of values received from the console. Inside the entry point, it defines a signal $s$ which, by using $switch$, initially behaves like the constant signal and then switches to match $c$ once input is received on the console.

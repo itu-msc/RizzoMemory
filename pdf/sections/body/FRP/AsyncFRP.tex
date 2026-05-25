@@ -58,6 +58,31 @@ Let us take it one step further and define the familiar $map$ function.
 
 In our definition of $map$ we make use of pattern matching on signals. We could alternatively have used explicit $\mathsf{head}$ and $\mathsf{tail}$ operations to extract $x$ and $xs$ respectively.
 
+The previous combinators transform a single signal without changing where future values come from. 
+In reactive programs we often need a signal to follow one behaviour until some later computation produces a new signal. We call this operation $switch$.
+
+To define it, we use Rizzo's $\mathsf{sync}$ primitive. Given two delayed computations, which may produce values asynchronously, $\mathsf{sync}$ waits until either one produces a value. 
+Its result records whether the left, right, or both computations produced a value:
+\[
+sync \;x\;y :
+\texttt{Later }(\texttt{Sync }(a,\;b))
+\]
+where $\texttt{Sync }(a,\;b)$ has constructors
+$\texttt{Left }a$, $\texttt{Right }b$, and $\texttt{Both }a\;b$.
+
+The $switch$ combinator initially behaves like its first signal. When the signal ticks, if the default $Left$ case of $\mathsf{sync}$ is triggered, $switch$ recursively continues to behave like the first signal. If the $Right$ case is triggered, $switch$ immediately switches to the new signal. If both cases are triggered in the same time step, $switch$ also immediately switches to the new signal.
+\begin{align*}
+&switch : \texttt{Signal }a \rightarrow \texttt{Later }(\texttt{Signal }a) \rightarrow \texttt{Signal }a \\
+&switch \; (x :: xs) \; d = x :: (cont \triangleright sync \; xs \; d) \\
+&\hspace{5mm}\textbf{where }
+\begin{aligned}[t]
+    &\texttt{cont} : \texttt{Sync }( \texttt{Signal } a,\; \texttt{Signal } a) \rightarrow \texttt{Signal } a \\
+    &\texttt{cont } (\texttt{Left } xs') = \texttt{switch} \; xs' \; d \\
+    &\texttt{cont } (\texttt{Right } d') = d' \\
+    &\texttt{cont } (\texttt{Both } \_ \; d') = d' \\
+\end{aligned}
+\end{align*}
+
 Let us return to what makes Rizzo different, its semantics of signals. 
 Because signals are updated in place as mutable references rather than stored as immutable sequences, it becomes possible to define combinators such as $sample$:
 \begin{align*}
