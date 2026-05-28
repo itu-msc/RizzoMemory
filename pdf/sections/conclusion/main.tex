@@ -1,19 +1,54 @@
 \clearpage
 \section{Conclusion}\label{section:conclusion}
 
-\todo{Below are our notes/thoughts on what this section should contain.}
+% Summarize what we did? Bit like the introduction but a little more detail on exactly what we did, so the reader remembers.
 
-Summarize what we did? Bit like the introduction but a little more detail on exactly what we did, so the reader remembers.
+In short we have made an implimentation of the Rizzo language by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025}, with a reference counting memory management system based on \cite{ullrich_counting_2021}, and a transpiler to C. In C we have implemented the step, update and advance semantics of Rizzo, which we have tested and evaluated on a number of examples compiled from RizzoLang to C.
+
+% Evaluation - what did we figure out
+
+During our evaluations we identified both sucesses and limitations of our implementation and the Rizzo language in general. We found that unused signals, like intermediate signals in the signal constructor, is imidiately deallocated by the reference counting instructions. This solves the issue we set out to fix in this paper, as it ensures we dont update dead signals during the step semantics. 
+In our evaluation of the memory we were not able to find any signs of memory leaks or space leaks. Which makes us confident in our reference counting implimentation. 
+
+% Which shows we live up to the expectations of memory safety that \cite{rizzo_modal_2025} was trying to achieve with the mutable signals.  
+
+For the reuse of memory we have identified a quirk in the semantics of Rizzo, and an issue caused by a limitation in our implimentation.
+
+The quirk in the semantics is causing signals passed to signal combinators, to be unable for reuse, like we can with lists and other constructors.
+For example, the signal combinator, $map \; f \; s$, will result in a new signal $s'$, which will have a dependency on a future value of $s$. This makes it impossible to reuse the signal $s$ for $s'$, as we would lose the future value of $s$ that $s'$ is depending on if we did.
+The issue in the implimentation is with intermediate signals. These signals are created as part of the update semantics, but are often only created to store the updated valuees, before copying them back to the signal that was updated. This is often wasteful and should be avoidable, but the compiler does not have enough knowledge about the usage of the object in the advance semantics.
+To prevent this issue, we have proposed a possible solution. The solution gives the compiler more information, which should allow the compiler to better reuse the intermediate signals.
 
 
-Evaluation - what did we figure out
+% The quirk in Rizzo cant be solved. For the second issue with intermediate signals, we have proposed a possible solution, that gives the compiler more information, which should be able to allow for reuse of the intermediate signals.
+
+% The first issue is with the signals passed to signal combinators, that cant be reused like we can with lists and other constructors.
+
+% For the reuse of memory we have 2 issues with reuse of signals. 
+% The first issue is with signals passed to signal combinators. 
+
+% We first have an issue with the incomming signals not being able to be reused like we can with lists and other constructors. 
+% Which is because we need the incomming signal to exist in the future, as future values of the signal we are about to compute is depending on the incomming signals values in the future. 
+
+% The intermediate signal that is then created, is also not able to be reused, as the compiler does not have enough information about the usage of the signals. Where idealy the creation of these intermediate signals where skipped and instead we would have just directly overwritten the signal itself.
+% The first issue with the incomming signals is not something that can be solved, but the issue with the intermediate signals we propose a possible solution for giving the compiler more information to allow for reuse of the signals.
+% However, we found that values stored in the head of signals can be reused, even though the signals themselves cannot be reused. 
+
+% We then were able to show the reuse of memory of values saved in the head of signals, even though we cannot reuse the signals themselves.
+
+We also identified issues with the semantics of Rizzo that makes the data structure of the signal heap very restricted. We propose the idea of \dots
 
 
-1-2 limitations that we feel are the most interesting. 1-3 lines. Comments on these. Could be:
-\begin{itemize}
-    \item The improved signal heap. Cool language but it is held back by its own semantics enforcing a structure of its signal heap. 
-    \item (In general) Difficult to reuse signals but there may be options to reuse more in custom runtime implementations such as $mk\_sig$
-\end{itemize}
+% 1-2 limitations that we feel are the most interesting. 1-3 lines. Comments on these. Could be:
+% \begin{itemize}
+%     \item The improved signal heap. Cool language but it is held back by its own semantics enforcing a structure of its signal heap. 
+%     \item (In general) Difficult to reuse signals but there may be options to reuse more in custom runtime implementations such as $mk\_sig$
+% \end{itemize}
 
 
-What was the end product? Did we accomplish what we set out to do? We implemented something that works and solves the issue of these immediate signals.
+% What was the end product? Did we accomplish what we set out to do? We implemented something that works and solves the issue of these immediate signals.
+
+
+
+
+All together we believe we have successfully met our goals of making an implementation of Rizzo that ensures intermediate signals are deallocated and not reevaluated. While also identifying possible futher improvements and optimisations to the language.
