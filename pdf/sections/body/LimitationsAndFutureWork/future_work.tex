@@ -1,6 +1,7 @@
 \subsection{Improving reuse of intermediate signals}
+\label{section:future_work:reuse}
 
-Bahr mentioned in \cite{rizzo_modal_2025} that it should be `simple' to prevent the allocation of many of the intermediate signals created by the advance semantics. This however does not seem to be so simple after all. At runtime We don't easily know the difference between an intermediate signal and a regular signal. Even if we knew, then we don't have a reference to the original signal where we now create a new signal but instead would want to reuse the original signal.
+Bahr mentioned in \cite{rizzo_modal_2025} that it should be `simple' to prevent the allocation of many of the intermediate signals created by the advance semantics. This however does not seem to be so simple after all. At runtime We don't easily know the difference between an intermediate signal and a regular signal. Even if we knew, then we don't have a reference to the original signal. This means we create a new intermediate signal, where we instead would want to reuse the original signal.
 
 This means we would have to perform the optimisation at compile time using a new static analysis or use our existing static analysis to determine which signals are intermediate signals. We would lean towards using our existing reference counting, and more specifically the reset/reuse logic, to determine which signals are intermediate signals. For us to do so, we would need to inline the advance semantics into the tails of the signals. Simply inlining the advance semantics is not enough, as the function part of the Later application (LaterApp) is a back box and could be recursive which would be problematic to inline unless protected by a $\mathsf{delay}$.
 
@@ -11,6 +12,8 @@ Even if we added these, then the tails of the signals would be quite large, and 
 Performing this inlining would potentially prevent us from allocating signals for the intermediate signals created by the advance semantics, but it would also increase the compile time and runtime complexity of the program. The code of the advance semantics is quite large and complex, and inlining it in all the tails of the signals would increase the size of the code significantly. 
 
 \subsection{The gain of indirections}
+
+The issue in this section is similar to the issue from section~\ref{section:future_work:reuse}, but they differ in how often and how long the extra signals are kept alive. In the case of intermediate signals, they are only kept alive during the advance semantics, and then they are discarded. The issue in this section is about duplicate signals that are kept alive by the runtime until they are no longer needed, which could be for a long time.
 
 There are some signal combinators that can leave the signal heap with duplicates. This is inefficient because the update semantics must then be applied to each duplicate, wasting both time and space.  
 Consider the program of Listing~\ref{listing:future_work:switch}. 
@@ -58,6 +61,8 @@ Creating indirections would become part of the update semantics. Before any data
 If it is unique, the update should proceed as normal, otherwise an indirection should be created instead. 
 In the example of Figure~\ref{figure:future_work:switch_out}, this would allow the runtime to replace $s$ (signal $2$) with an indirection after it switches.
 However, this optimisation would require a change in semantics, because $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until they reach a full signal.
+
+The issue is mostly tied to the signal existing twice and thus the later value will be evaluated twice. This also means the issue can mostly be prevented by the the work mentioned in Section~\ref{sec:later_applications_forget}, where we proposed to cache the result of later applications for one time step. It would still cost a bit of extra time and memory to have the duplicate signals, but it would prevent the repeated evaluation of the later application.
 
 \subsection{Improving the structure of the signal heap}
 
