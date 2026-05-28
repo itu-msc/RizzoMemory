@@ -1,7 +1,7 @@
 % This section should prepare the reader for why we have structured the heap the way we have and why we have chosen to add a signal constructor to the AST.
 % We do this by first listing all the semantics we need to adhere to, and how we have done so (this also forms the base of why we have the memory structure we have chosen).
 
-For our language implementation to work we must combine the semantics of Rizzo~\cite{rizzo_modal_2025} with the reference counting semantics of \citetitle{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become RizzoLang, rather than a comprehensive explanation of each. 
+For our language implementation we combine the semantics of Rizzo~\cite{rizzo_modal_2025} and the reference counted semantics of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. This section aims to provide a description of how these two worlds merge to become RizzoLang, rather than a comprehensive explanation of each. 
 To do so, we first provide an abstract description of the semantics, then give a more concrete account of how this is implemented in the runtime of the language, and finally how reference counting is fitted in.
 
 % Therefore, we focus on the necessary adjustments and the unavoidable parts such as the signal heap.
@@ -84,7 +84,7 @@ There is one additional adjustment required for \texttt{Delayed} values. In part
 %GOAL: Where do we reference count in reactive semantics? Signals are created, data is overwritten. Immediate erasure of intermediate signals. This must be managed.
 This leaves us with the interaction between reference counting and the reactive semantics.
 Although we treat the advance semantics as a black-box, its interface must consume an RC token of any later value it receives. When the update semantics call advance on a signal's tail, advance is therefore responsible for decrementing that tail once it is no longer needed.
-This ensures later values, and the data they reference, are released as early as possible. This is crucial for the success of \textbf{reset}/\textbf{reuse}. If advance only borrowed the later value, the update semantics would have to perform the decrement after advance returned, which would block reuse of memory captured inside the later.
+This ensures later values, and the data they reference, are released as early as possible. This is crucial for the success of \textbf{reset}/\textbf{reuse}. If advance only borrowed the later value, the update semantics would have to perform the decrement after advance which would block the reuse of memory captured by later value.
 We base these requirements on the result of running the program in Appendix~\ref{appendix:advance_func} through the reference counting algorithm of Section~\ref{section:refcount} to achieve the pseudo-code from Appendix~\ref{appendix:advance_ir}.
 
 With this interface in place, reference counting in the update semantics proceeds as follows.
@@ -94,9 +94,11 @@ Once the entire heap has been updated, we finally decrement the value that trigg
 
 % \todo{is this a better spot to show the heap? We could show example of general heap to show how the signal heap is just a subset}
 
-Having established the semantics of the language, we can make the distinction between the heap and the signal heap concrete. Figure~\ref{figure:semantics:heap_vis} visualises the Rizzo heap as a sequence of mappings from location $l_i$ to value and reference counter $C_i$. Regular constructor values and signal values share the same heap. The signal heap is a linked list of signal values within the full heap, beginning at the heap base. The \texttt{prev} and \texttt{next} fields link the signal values together and define that list.
-
-In Figure~\ref{figure:semantics:heap_vis}, the heap base is $l_2$, whose \texttt{prev} field is empty and whose \texttt{next} field forms the signal heap $l_2, l_n, l_m$.
+Having established the semantics of the language, we can make the distinction between the heap and the signal heap concrete. 
+Figure~\ref{figure:semantics:heap_vis} illustrates an example of the Rizzo heap as a sequence of mappings from locations $l_i$ to values and reference counters $C_i$.
+Notice that regular constructor values and signal values exist in the same heap.
+The signal heap is the linked-list structure formed by the \texttt{prev} and \texttt{next} fields of signal values and it is rooted at the heap base.
+In this example, the heap base is $l_2$, whose \texttt{prev} field is empty, and following along the \texttt{next} pointers we get the signal heap $l_2, l_n, l_m$.
 
 \begin{figure}[h]
     \centering
