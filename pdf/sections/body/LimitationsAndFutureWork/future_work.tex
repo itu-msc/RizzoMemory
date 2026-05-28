@@ -13,7 +13,7 @@ Performing this inlining would potentially prevent us from allocating signals fo
 
 \subsection{The gain of indirections}
 
-The issue in this section is similar to the issue from section~\ref{section:future_work:reuse}, but they differ in how often and how long the extra signals are kept alive. In the case of intermediate signals, they are only kept alive during the advance semantics, and then they are discarded. The issue in this section is about duplicate signals that are kept alive by the runtime until they are no longer needed, which could be for a long time.
+% The issue in this section is similar to the issue from section~\ref{section:future_work:reuse}, but they differ in how often and how long the extra signals are kept alive. In the case of intermediate signals, they are only kept alive during the advance semantics, and then they are discarded. The issue in this section is about duplicate signals that are kept alive by the runtime until they are no longer needed, which could be for a long time.
 
 There are some signal combinators that can leave the signal heap with duplicates. This is inefficient because the update semantics must then be applied to each duplicate, wasting both time and space.  
 Consider the program of Listing~\ref{listing:future_work:switch}. 
@@ -55,14 +55,16 @@ signal 2 \{ head = 0x61b5e6e6cf00, tail = 0x61b5e6e6c440 \}
 % signal 0 \{ head = 0x61b5e6e6c570, tail = 0x61b5e6e6c5c0 \}
 % signal 2 \{ head = 0x61b5e6e6c570, tail = 0x61b5e6e6c440 \}
 
-A possible solution to this problem would be to change the representation of signals so that a signal is either a \textit{full} signal, containing its head, tail, previous, and next fields, or an \textit{indirect} signal, containing only a pointer to another signal.
+A possible solution to this problem would be to change the representation of signals so that a signal is either a \textit{concrete} signal, containing its head, tail, previous, and next fields, or an \textit{indirect} signal, containing only a pointer to another signal.
 The main benefit of an indirect signal is that it does not need to be updated directly, since updates propagate through the pointer. 
 Creating indirections would become part of the update semantics. Before any data is written, it should check whether the intermediate signal is unique.
 If it is unique, the update should proceed as normal, otherwise an indirection should be created instead. 
 In the example of Figure~\ref{figure:future_work:switch_out}, this would allow the runtime to replace $s$ (signal $2$) with an indirection after it switches.
-However, this optimisation would require a change in semantics, because $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until they reach a full signal.
+However, this optimisation would require a change in semantics, since $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until reaching a concrete signal. The cost of such traversals should be reduced by doing \textit{path-compression} which would update indirections during reads so that they point to the concrete signal, once it has been found.
 
-The issue is mostly tied to the signal existing twice and thus the later value will be evaluated twice. This also means the issue can mostly be prevented by the the work mentioned in Section~\ref{sec:later_applications_forget}, where we proposed to cache the result of later applications for one time step. It would still cost a bit of extra time and memory to have the duplicate signals, but it would prevent the repeated evaluation of the later application.
+This solution would also partially solve the same issue discussed in Section~\ref{section:future_work:reuse}, since indirections do not have tails to advance, thereby eliminating some of the intermediate signals allocated during a heap update.
+
+% The issue is mostly tied to the signal existing twice and thus the later value will be evaluated twice. This also means the issue can mostly be prevented by the the work mentioned in Section~\ref{sec:later_applications_forget}, where we proposed to cache the result of later applications for one time step. It would still cost a bit of extra time and memory to have the duplicate signals, but it would prevent the repeated evaluation of the later application.
 
 \subsection{Improving the structure of the signal heap}
 
