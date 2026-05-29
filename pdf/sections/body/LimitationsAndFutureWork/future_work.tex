@@ -1,15 +1,21 @@
-\subsection{Improving reuse of intermediate signals}
+\subsection{To avoid allocating intermediate signals}
 \label{section:future_work:reuse}
 
-Bahr mentioned in \cite{rizzo_modal_2025} that it should be `simple' to prevent the allocation of many of the intermediate signals created by the advance semantics. This however does not seem to be so simple after all. At runtime We don't easily know the difference between an intermediate signal and a regular signal. Even if we knew, then we don't have a reference to the original signal. This means we create a new intermediate signal, where we instead would want to reuse the original signal.
+\citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} states that when an efficient implementation of Rizzo is updating a signal $s$, it can avoid the allocation of an intermediate signal by `\textit{simply}' writing the data directly into $s$. This, however, does not seem to be so simple.
+When a $\mathsf{laterapp}$ value is advanced, the runtime cannot easily identify which of the allocated signals is going be used to update $s$.
+Furthermore, even if the runtime could make this distinction, the signal $s$ is not in scope when the allocation happens and is therefore not reusable.
 
-This means we would have to perform the optimisation at compile time using a new static analysis or use our existing static analysis to determine which signals are intermediate signals. We would lean towards using our existing reference counting, and more specifically the reset/reuse logic, to determine which signals are intermediate signals. For us to do so, we would need to inline the advance semantics into the tails of the signals. Simply inlining the advance semantics is not enough, as the function part of the Later application (LaterApp) is a back box and could be recursive which would be problematic to inline unless protected by a $\mathsf{delay}$.
+% \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} mentions that it should be `\textit{simple}' to prevent the allocation of many of the intermediate signals created by the advance semantics during heap update. This however does not seem to be so simple after all. At runtime we don't easily know the difference between an intermediate signal and a regular signal. Even if we knew, then we don't have a reference to the original signal. This means we create a new intermediate signal, where we instead would want to reuse the original signal.
 
-In order to inline the advance semantics in Rizzo itself, we would need to add some features to the language. We would need mutable references or specialised private functions for manipulating the signals, and polymorphic types for type checking. 
-Even if we added these, then the tails of the signals would be quite large, and the code of the advance semantics would be duplicated in all signals, increasing the compile time and potentially the runtime as well.
+This means that the optimisation would have to be performed at compile time using either a new static analysis step or better yet by reusing the \textbf{reset}/\textbf{reuse} insertion logic. To reuse this logic, we would need to inline the advance semantics into the tails of signals. However, simply inlining the advance semantics is not enough, since functions inside $\mathsf{laterapp}$ values are black boxes that prevent the insertion of \textbf{reset}/\textbf{reuse}, so those must also be inlined. Inlining these functions may mean unfolding recursive definitions which could be problematic unless these are guarded by a $\mathsf{delay}$. 
+
+To achieve the inlining, we would need some representation of the advance semantics that can be inserted during compilation. One such representation would \textit{code} written in either Rizzo itself or perhaps in the RC IR. Either way, we would need to add some language features. In particular, we would need mutable references or specialised private functions for manipulating the signals, and polymorphic recursion for type checking.
+A downside of this approach would be the increased program size caused by the duplication of inserting the advance semantics in the tail of every signal. This increase in size would cause longer compile times\ \todo{and potentially worsen runtime performance}.
+However, the inlining would allow us to reuse the \textbf{reset}/\textbf{reuse} logic to avoid the allocation of intermediate signals.
+% Even if we added these, then the tails of the signals would be quite large, and the code of the advance semantics would be duplicated in all signals, increasing the compile time and potentially the runtime as well.
 % We would also need to inline the logic of the LaterApp, which would further increase the compile time and runtime.
 
-Performing this inlining would potentially prevent us from allocating signals for the intermediate signals created by the advance semantics, but it would also increase the compile time and runtime complexity of the program. The code of the advance semantics is quite large and complex, and inlining it in all the tails of the signals would increase the size of the code significantly. 
+% Performing this inlining would potentially prevent us from allocating signals for the intermediate signals created by the advance semantics, but it would also increase the compile time and runtime complexity of the program. The code of the advance semantics is quite large and complex, and inlining it in all the tails of the signals would increase the size of the code significantly. 
 
 \subsection{The gain of indirections}
 
