@@ -78,7 +78,7 @@ The \textbf{signal} constructor is evaluated like any other $\textbf{ctor}_i$, e
 When a signal is later erased, its fields are decremented and the signal is removed from the signal heap. Similarly, when a signal is reset, it is removed from the signal heap, and its fields are decremented. This makes reuse possible by overwriting the fields and reinserting the signal into the signal heap like a new signal.
 
 %GOAL: the delay constructor should have call-by-name semantics.
-There is one additional adjustment required for \texttt{Delayed} values. In particular, the constructor $\mathsf{delay} \; e$ should behave as call-by-name, but this is not enforced by the operational semantics since such values are treated as $\textbf{ctor}_i$ values. Instead, the AST is rewritten so that expressions of the form $\mathsf{delay} \; e$ become $\mathsf{delay} \; (\lambda x.e)$.
+There is one additional adjustment required for \texttt{Delayed} values. In particular, the constructor $\mathsf{delay} \; e$ should behave as call-by-name, but this is not enforced by the operational semantics since such values are treated as $\textbf{ctor}_i$ values. Instead, the AST is rewritten so that expressions of the form $\mathsf{delay} \; e$ become $\mathsf{delay} \; (\lambda x.e)$, effectively wrapping $e$ in a thunk.
 % \todo{This instead costs runtime memory, since we must effectively allocate a closure AND a constructor value for $\mathsf{delay}$}.
 
 %GOAL: Where do we reference count in reactive semantics? Signals are created, data is overwritten. Immediate erasure of intermediate signals. This must be managed.
