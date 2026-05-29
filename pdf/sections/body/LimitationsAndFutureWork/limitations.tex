@@ -1,6 +1,6 @@
 \section{Limitations and Future Work}\label{sec:limitationsAndFutureWork}
 
-\subsection{Reuse of Rizzo beans}
+\subsection{Reference counting overhead in signal combinators}\label{section:limitationsAndFutureWork:too_many_instructions}
 
 As we described in Section~\ref{section:refcount:beans:counting}, the reactive semantics limit reuse in signal combinators to non-recursive combinators such as $stop$. In recursive combinators, the \textbf{reset} instructions are still inserted even though they will never succeed and these then force the insertion of additional \textbf{inc} instructions. 
 The reason is that the reference counting algorithms always insert \textbf{reset}/\textbf{reuse} pairs whenever they encounter a suitable constructor expression, even if the memory will be needed again later.
