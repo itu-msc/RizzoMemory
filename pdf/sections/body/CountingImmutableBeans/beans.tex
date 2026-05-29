@@ -6,7 +6,7 @@
 %  - then finally list the constraints required by the "counting immutable beans" algorithm
 
 This section introduces reference counting as a memory management strategy and explains how the approach of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} uses \textbf{reset}/\textbf{reuse} instructions to reduce memory allocations and reference ownership information to reduce the overhead of reference counting.
-We then present the constraints required by the algorithm of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} since these become important when we later adapt the algorithm to Rizzo in Section~\ref{section:refcount}.
+We then present the constraints required by the algorithm of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, since these become important when we later adapt the algorithm to Rizzo in Section~\ref{section:refcount}.
 
 % In Rizzo signal combinators create new signals as an intermediate step in the computation. These intermediate signals are often only used for a short period of time, to copy over the new computed value to the head of the original signal. Given the intermediate nature of these signals, it is important to reclaim the memory used by them as soon as they are no longer needed, otherwise they will also be triggered alongside the original signal. The retrigger of the signals will lead to performance issues, memory leaks and unexpected side effects \todo{We will get back to why this is important in section XXX where we describe the structure of the heap}. To address the issue, we need a way to efficiently manage the memory used by these intermediate signals and ensure that it is reclaimed as soon as it is no longer needed.
 
@@ -16,12 +16,12 @@ We then present the constraints required by the algorithm of \citeauthor*{ullric
 % what does it mean to reference count
 Early work on reference counting like that of \citeauthor*{collins_method_1960} \cite{collins_method_1960}
 %and \citetitle{bacon_computing_2001} \cite{bacon_computing_2001} 
-introduce the idea of reference counting as an alternative to other memory management methods like tracing garbage collection. The basic idea of reference counting is to attach a counter to each object in memory, that keeps track of how many references point to the object. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
+introduced the idea of reference counting as an alternative to other memory management methods like tracing garbage collection. The basic idea of reference counting is to attach a counter to each object in memory that keeps track of how many references point to the object. When a new reference is created, the counter is incremented, and when a reference is destroyed, the counter is decremented. When the counter reaches zero, it means that there are no more references to the object, and it can be safely deallocated.
 
-Early implementations were implemented in the runtime system of the programming language. This was a common approach but it is hard to optimize.
+Early implementations were implemented in the runtime system of the programming language. This was a common approach, but it is hard to optimize.
 Newer techniques, like the one proposed by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, do static analysis during compilation in order to achieve better performance and more efficient memory management. 
 
-By using new \textbf{reset} and \textbf{reuse} instructions and ownership annotations, the compiler can determine when memory of immutable data can be safely overwritten and when increment/decrement instructions can be safely omitted, and when they cannot.
+By using new \textbf{reset} and \textbf{reuse} instructions and ownership annotations, the compiler can determine when memory of immutable data can be safely overwritten, and when increment/decrement instructions can or cannot be safely omitted.
 
 % which parts of the program are responsible for managing the memory of each object, the compiler can determine when an object can be safely deallocated, and optimize reference counting operations accordingly. The optimisation comes from knowing when work (incrementing or decrementing reference counts) can be safely omitted, and when it cannot.
 
@@ -35,9 +35,9 @@ A token is created when the reference count is incremented, and it is consumed w
 
 \subsubsection{Naïve reference counting}
 
-In a naïve reference counting implementation, every time a new reference to an object is created, the reference count of that object is incremented. This means the creator of the object has to increment the reference count and every time the object is taken as input, the reference count has to be incremented. We have to do this as we cant be sure if the object is shared or not, and we have to be safe. This can lead to a lot of unnecessary increments and decrements, especially in cases where many short-lived objects are created and destroyed, or an object is passed multiple times to a function.
+In a naïve reference counting implementation, every time a new reference to an object is created, the reference count of that object is incremented. This means the creator of the object has to increment the reference count, and every time the object is taken as input, the reference count has to be incremented. We have to do this because we cannot be sure if the object is shared or not, and we have to be safe. This can lead to a lot of unnecessary increments and decrements, especially in cases where many short-lived objects are created and destroyed, or an object is passed multiple times to a function.
 
-Using a notation close to the reference counted intermediate language generated by the compiler, we can write an example of a naïve reference counting implementation. Lets assume we have a function $f$ that takes an object as input, and then we use it from the main function.
+Using a notation close to the reference counted intermediate language generated by the compiler, we can write an example of a naïve reference counting implementation. Let us assume we have a function $f$ that takes an object as input, and then we use it from the main function.
 
 \begin{spacing}{0.8}
 \begin{Verbatim}
@@ -59,13 +59,13 @@ As we can see, the reference to the object is being incremented twice and decrem
 
 \subsection{Counting immutable beans}
 
-\citeauthor*{ullrich_counting_2021} \cite{ullrich_counting_2021} gains their performance improvements by using a combination of ownership annotations, and new \textbf{reset} and \textbf{reuse} instructions.
-The ownership annotations in \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} work by distinguishing between $\mathbb{O}wned$ and $\mathbb{B}orrowed$ references, and lets the compiler track which parts of the program are responsible for managing the memory of each object. The compiler can then use this knowledge to determine when an object needs to be incremented or decremented, which reduces the number of reference counting operations that need to be performed.
+\citeauthor*{ullrich_counting_2021} \cite{ullrich_counting_2021} gain their performance improvements by using a combination of ownership annotations, and new \textbf{reset} and \textbf{reuse} instructions.
+The ownership annotations in \citetitle{ullrich_counting_2021} \cite{ullrich_counting_2021} work by distinguishing between $\mathbb{O}wned$ and $\mathbb{B}orrowed$ references, and let the compiler track which parts of the program are responsible for managing the memory of each object. The compiler can then use this knowledge to determine when an object needs to be incremented or decremented, which reduces the number of reference counting operations that need to be performed.
 For owned references we need to ensure that the object is alive as long as we need it, which is similar to the naïve reference counting implementation.
-If we instead borrow an object, then we assume that the caller has the responsibility to ensure that the object is alive as long as we need it. This means we can avoid incrementing the reference count of the object, which is a great performance improvement when we go deeper in a scope where all the functions can borrow their parameters. In this case, we can increment the reference count once at the top of the scope, instead of incrementing it for each function call like we would need if it was owned
+If we instead borrow an object, then we assume that the caller has the responsibility to ensure that the object is alive as long as we need it. This means we can avoid incrementing the reference count of the object, which is a great performance improvement in nested scopes where all the functions can borrow their parameters. In this case, we can increment the reference count once at the top of the scope, instead of incrementing it for each function call as we would need to if it was owned.
 We can typically borrow an object when we only need to read from it, and then own the object if we intend to reuse it.
 
-We can then extend this with the new \textbf{reset} and \textbf{reuse} instructions. These instructions allow the compiler to optimize memory allocations of new objects, by reusing memory from old objects that are no longer needed, instead of always allocating new memory for each object. This leads to performance improvements, especially in cases where many short-lived objects or nested objects are created and destroyed.
+We can then extend this with the new \textbf{reset} and \textbf{reuse} instructions. These instructions allow the compiler to optimize memory allocations of new objects by reusing memory from old objects that are no longer needed, instead of always allocating new memory for each object. This leads to performance improvements, especially in cases where many short-lived objects or nested objects are created and destroyed.
 
 The paper defines three main steps for implementing their reference counting technique, where each step depends on the previous one:
 
@@ -146,7 +146,7 @@ fun stop f (x :: xs) : ('a -> Bool) -> Signal 'a -> Signal 'a =
     else x :: (stop f |> xs)
 \end{lstlisting}
 
-In the `then' branch, the input signal $(x :: xs)$ is not used. This makes it possible reuse the memory cell to store the new signal $x :: \mathsf{never}$, avoiding an allocation. 
+In the `then' branch, the input signal $(x :: xs)$ is not used. This makes it possible to reuse the memory cell to store the new signal $x :: \mathsf{never}$, avoiding an allocation. 
 
 Not every signal combinator admits this optimisation. For a function such as $map$, the input signal must remain alive because its tail is needed to produce future values:
 

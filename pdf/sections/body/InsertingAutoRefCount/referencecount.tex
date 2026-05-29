@@ -1,9 +1,9 @@
 \section{Automatic reference counting of Rizzo}\label{section:refcount}
 
-The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} are defined over the calculi $\lambda_{pure}$ and $\lambda_{RC}$, where the $\lambda_{RC}$ extends $\lambda_{pure}$ with reference counting instructions.
+The algorithms by \citeauthor{ullrich_counting_2021}~\cite{ullrich_counting_2021} are defined over the calculi $\lambda_{pure}$ and $\lambda_{RC}$, where $\lambda_{RC}$ extends $\lambda_{pure}$ with reference counting instructions.
 Figure~\ref{figure:refcount_IR} shows the reference counting intermediate representation (RC IR) used in our compiler, where Rizzo-specific extensions are highlighted in green.
 
-In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global constant $c$, $\texttt{ctor}_i \; \bar p$ constructs a value of some erased type with tag $i$, and $\texttt{proj}_i \; x$ projects the $i\text{-th}$ field from constructor value $x$. Fully applied calls and partial applications may only be performed by global constants and variable application is defined separately for only a single argument.
+In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global constant $c$, $\texttt{ctor}_i \; \bar p$ constructs a value of some erased type with tag $i$, and $\texttt{proj}_i \; x$ projects the $i\text{-th}$ field from a constructor value $x$. Fully applied calls and partial applications may only be performed by global constants, and variable application is defined separately for only a single argument.
 
 \begin{figure}[ht]
   \centering
@@ -46,24 +46,24 @@ In this IR, $\texttt{pap}\; c \; \bar p$ denotes partial application of a global
 Observe that the IR is defined in A-normal form~\cite{flanagan_essence_1993}, where expressions are non-recursive and are only allowed on the right-hand-side of let-bindings. 
 Our representation keeps this shape but introduces \textit{Primitives} so that variables and literals (i.e.~integers, booleans, strings, and \texttt{never}) can appear directly in returns and as arguments in function/constructor application. This makes translation easier and avoids bindings such as $\texttt{let} \; x = 20; \; \texttt{ret} \; x$ when $\texttt{ret}\;20$ is enough.
 We additionally add a specialised $\texttt{signal}$ constructor that can be used in places where $\texttt{ctor}_i$ is expected. 
-This allows runtime to know the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). 
-Finally, we add top level values as mappings from constants to $FnBody$ where the $FnBody$ is run at program start up to initialise the value. This way, we can reuse the automatic reference counting of Section~\ref{section:refcount:beans}.
+This allows the runtime to know that the fresh memory cell should be stored in the signal heap (see Section~\ref{section:frp:signal_heap}). 
+Finally, we add top-level values as mappings from constants to $FnBody$ where the $FnBody$ is run at program startup to initialise the value. This way, we can reuse the automatic reference counting of Section~\ref{section:refcount:beans}.
 
 To perform automatic reference counting on a Rizzo program, 
 we first apply the transformations of Section~\ref{section:refcount:transforms} to get the program into a shape that satisfies the syntactic constraints of the IR and the invariants from Section~\ref{sec:background:beans:assumptions}. 
 We then lower the transformed program to the reference-counting IR and apply the three algorithms from Section~\ref{section:refcount:beans} in the order:
   $R$, which inserts \textbf{reset}/\textbf{reuse} pairs; 
-  $collect_{\mathbb{O}}$ which infers the borrow signatures of functions; 
+  $collect_{\mathbb{O}}$, which infers the borrow signatures of functions; 
   and $C$, which inserts \textbf{inc}/\textbf{dec} instructions~\cite{ullrich_counting_2021}.
 
 \subsection{Transformations}\label{section:refcount:transforms}
 %Goal of section: pretty little flow chart showing how we chain transformations together and an explanation of why/what in relation the assumptions}
-To achieve the correct AST shape, we apply the transformation pipeline shown in Figure~\ref{figure:refcount:transformations}. Most of these transformations are standard compiler steps but all of them bring the AST closer to satisfying the invariants of the algorithm by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. Each transformation performs a separate pass over the AST, allowing us to apply them in the correct order.
+To achieve the correct AST shape, we apply the transformation pipeline shown in Figure~\ref{figure:refcount:transformations}. Most of these transformations are standard compiler steps, but all of them bring the AST closer to satisfying the invariants of the algorithm by \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}. Each transformation performs a separate pass over the AST, allowing us to apply them in the correct order.
 
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=\textwidth]{flowchart_transformations.png}
-	\caption{Compiler passes that a Rizzo program goes through when running the compiler. Transformations inside the green (upper) box receive Rizzo programs as input and in the blue (lower) box they operate on the RC IR.}\label{figure:refcount:transformations}
+	\caption{The compiler steps a Rizzo program goes through in order to be reference counted. Transformations inside the green (upper) box receive Rizzo programs as input, and in the blue (lower) box they operate on the RC IR.}\label{figure:refcount:transformations}
 \end{figure}
 
 The compiler performs consecutive lambda elimination, lambda lifting, copy propagation, alpha-renaming, pattern lowering, dead let elimination, and A-normalization. Consecutive lambda elimination is not strictly required but reduces the number of lambdas to be lifted. 
@@ -71,7 +71,7 @@ The compiler performs consecutive lambda elimination, lambda lifting, copy propa
 The lowering of patterns into let-bindings may not directly contribute to any invariant, however it is required since there is no pattern matching in the IR.
 The result of translating a match such as \lstinline|match s with x :: xs -> e| is shown in Listing~\ref{listing:refcount:elim_pattern}. 
 When translating signal patterns, we delay the binding of the tail until its first use in $e$, since binding it too early may lead to \textbf{reset} instructions placed such that they prevent reuse.
-The match expression must be kept around as it is the only point where \textbf{reset}/\textbf{reuse} pairs can be inserted, we will discuss this further in Section~\ref{section:refcount:beans}.
+The match expression must be kept around because it is the only point where \textbf{reset}/\textbf{reuse} pairs can be inserted; we will discuss this further in Section~\ref{section:refcount:beans}.
 
 \begin{figure*}
 \begin{lstlisting}[
@@ -84,7 +84,7 @@ match s with
 \end{lstlisting}
 \end{figure*}
 
-While some of the invariants are clearly fulfilled by the transformation pipeline, such as the requirement that all lambdas be lifted or that trivial bindings like \lstinline|let x = y| have been eliminated, some of them are not so obvious. 
+While some of the invariants are clearly fulfilled by the transformation pipeline, such as the requirement that all lambdas be lifted or that trivial bindings like \lstinline|let x = y| have been eliminated, some of them are less obvious. 
 In particular, the ones about application shape. The RC IR assumes unary variable applications and that applications on global constants are never over-applied. 
 Therefore, when \textit{converting to IR} variable applications are rewritten such that \lstinline|x y z| becomes \lstinline|(x y) z| and over-applied global constants are rewritten to a call followed by a series of unary variable applications.
 
@@ -105,10 +105,10 @@ The first step of this process is to insert \textbf{reset}/\textbf{reuse} pairs.
 The algorithm will try to insert \textbf{reset}/\textbf{reuse} pairs for the scrutinee of each \textbf{match} expression.
 For each arm of the \textbf{match} expression, such pairs are inserted by first locating the point where the scrutinee is \textit{dead}, i.e.\ not used for the remainder of the function body, and then by looking for a \textit{suitable} constructor expression. If such a constructor is found then a \textbf{reset} is inserted at the point where the scrutinee is dead and the constructor expression is substituted with a \textbf{reuse}. Otherwise the code is left unchanged.
 
-The shape of a constructor is \textit{suitable} when the number of arguments $|\bar p|$ is equal to the number of fields of the scrutinee in the particular branch. Note the distinction between arguments and fields, here an argument is the value given to the application of the constructor (creation) while a field is a place where a value is stored inside of a heap allocated object. 
+The shape of a constructor is \textit{suitable} when the number of arguments $|\bar p|$ is equal to the number of fields of the scrutinee in the particular branch. Note the distinction between arguments and fields: here, an argument is the value given to the application of the constructor (creation), while a field is a place where a value is stored inside of a heap-allocated object. 
 
 % The goal of the example is to show the field vs. argument point. When a scrutinee can be reused/when it cannot 
-Consider the example program shown in Listing~\ref{listing:refcount:reuse_example}. The $sync\_fold$ programs applies a function $f$ to a \texttt{Sync}, passing the arguments as optional values. 
+Consider the example program shown in Listing~\ref{listing:refcount:reuse_example}. The $sync\_fold$ program applies a function $f$ to a \texttt{Sync}, passing the arguments as optional values. 
 The program is shown after inserting \textbf{reset}/\textbf{reuse} pairs.
 In the first branch $s$ is a $\mathsf{Left}(x)$ value with a single field $x$, meaning $s$ can be reused when wrapping $x$ in a $\mathsf{Some}$. 
 In the third branch $s$ is a $\mathsf{Both}(x,y)$ with two fields. The algorithm will try to reuse $s$ in a constructor taking exactly two arguments but there is no such expression, so $s$ isn't reused.
@@ -149,14 +149,14 @@ fun map f s =
     ret res
 \end{lstlisting}
  
-However, all is not good with this $map$, since the $xs$ (the constructor $\mathsf{tail} \; s$) needs the input signal $s$ to live for its duration, so reusing the memory of $s$ would be unsafe. We return to this in Section~\ref{section:refcount:beans:counting} when discussing the insertion of \textbf{inc}/\textbf{dec} instructions. 
+However, this is not safe for $map$, since $xs$ (the constructor $\mathsf{tail} \; s$) needs the input signal $s$ to live for its duration, so reusing the memory of $s$ would be unsafe. We return to this in Section~\ref{section:refcount:beans:counting} when discussing the insertion of \textbf{inc}/\textbf{dec} instructions. 
 For now, recall that a $\textbf{reuse} \; x \; \textbf{in ctor}_i \; \bar p$ instruction may fail to reuse $x$ when $x$ is not unique at the time of \textbf{reset}. In the $map$ function $s$ must not be unique at the time of $\textbf{reset} \; s$ because $xs$ needs a valid reference to $s$.
 
 
 \subsubsection{Can I borrow that?}\label{section:refcount:beans:collect}
 
 %GOAL OF SECTION: How do we infer parameter ownerships. We didn't change much.
-We distinguish between two kinds of references, $\mathbb{B}\text{orrrowed}$ and $\mathbb{O}\text{wned}$. Owned references participate in reference counting in the usual way, so the number of live references matches the counter stored in the object. Borrowed references, by contrast, are not counted, they are instead assumed to be kept alive by some surrounding owned reference.
+We distinguish between two kinds of references, $\mathbb{B}\text{orrowed}$ and $\mathbb{O}\text{wned}$. Owned references participate in reference counting in the usual way, so the number of live references matches the counter stored in the object. Borrowed references, by contrast, are not counted; they are instead assumed to be kept alive by some surrounding owned reference.
 
 %CONSIDER: why is it safe to have the user always assign? If I make everything borrowed, then reset becomes problematic, no?
 The distinction exists to reduce the number of \textbf{inc}/\textbf{dec} instructions generated by the algorithm in Section~\ref{section:refcount:beans:counting}. 
@@ -167,11 +167,11 @@ Although these signatures could be declared by programmers, it is more convenien
 %GOAL: explain the heuristic
 The heuristic marks a variable $x$ as owned if either $x$ or one of its projections are used in a \textbf{reset}, appears in a partial or variable application, or is passed to a function that takes ownership. 
 This heuristic fits with our modifications and requires no further changes.
-Applying this heuristic recursively over the body a function collects the set of all variables that must be owned. Once this set is computed, any parameter in the set is marked as owned in the function signature and the rest are marked as borrowed.
+Applying this heuristic recursively over the body of a function collects the set of all variables that must be owned. Once this set is computed, any parameter in the set is marked as owned in the function signature and the rest are marked as borrowed.
 
 %GOAL: quickly explain our call-graph approach, the recursive function problem
 However, the borrow signature of a function depends on the signatures of the functions it calls. Recursive functions are also problematic, since their final signatures may depend on their own body.
-To handle this, we build a call graph, that records for each function $f$, the set of functions that call $f$.
+To handle this, we build a call graph that records, for each function $f$, the set of functions that call $f$.
 We then iterate over the functions, collecting owned variables and updating signatures until we reach a fixed point where no signature changes any further.
 
 % \todo{Do we mention that if a function has any borrowed parameters in its signature and is used in a partial application then we create a wrapper with all parameters owned?}
@@ -202,9 +202,9 @@ Global variables are treated as borrowed for the purpose of \textbf{inc}/\textbf
 
 %GOAL: Circle back to the map example - TRY to explain why we can never reuse and why that is CORRECT with regards to the semantics of Rizzo.
 Returning to the map example from earlier. Listing~\ref{listing:refcount:incdec_map} shows the final compiled version of the map combinator.
-It also shows the result of borrow signature inference where both $f$ and $x$ are annotated as owned. We show the  reference counts of the variables $x$, $s$, and $f$ assuming they are all unique when map is called. 
-Notice, that because $xs$ is a $\mathsf{tail} \; s$ value it needs $s$ to live for its duration, meaning $s$ must be incremented before the implicit decrement performed by $\textbf{reset} \; s$. 
-This increment sets the reference count of $s$ to two, making it so $s$ can never be unique at the time of $\textbf{reset} \; s$.
+It also shows the result of borrow signature inference where both $f$ and $x$ are annotated as owned. We show the reference counts of the variables $x$, $s$, and $f$ assuming they are all unique when map is called. 
+Notice that because $xs$ is a $\mathsf{tail} \; s$ value, it needs $s$ to live for its duration, meaning $s$ must be incremented before the implicit decrement performed by $\textbf{reset} \; s$. 
+This increment sets the reference count of $s$ to two, so $s$ can never be unique at the time of $\textbf{reset} \; s$.
 
 \begin{lstlisting}[
   caption={The map combinator with \textbf{inc}/\textbf{dec} instructions. The inferred ownership annotations for the arguments of map are shown on the first line. The output has been simplified for readability.},
@@ -232,7 +232,7 @@ It may seem unfortunate that map can never reuse any memory but this is in fact 
 To make this concrete, consider the program in Listing~\ref{listing:refcount:map_prog}. The program uses the $map$-combinator to append exclamation marks to user input before echoing it to the console.
 
 \begin{lstlisting}[
-  caption={A program that uses maps to append exclamation marks to input read from the console.},
+  caption={A program that uses map to append exclamation marks to input read from the console.},
   label={listing:refcount:map_prog}
 ]
 let c = "init" :: mk_sig (wait console) in
@@ -268,7 +268,7 @@ For this and the following visualisations we have unfolded the definitions of $m
 
 At some point the $console$ channel produces a value $v$.
 This triggers a full heap update and so the heap cursor is set to point at $L_1$ and its tail is advanced.
-The $\mathsf{laterapp}$ is advanced by first advancing the $\mathsf{wait} \; console$ and getting the value $v$, then applying the delayed function on $v$. The result is a new signal $\texttt{"Hello"} :: mk\_sig \; (\mathsf{wait} \; console)$ stored in memory at location $L_3$. This signal is then inserted into the signal heap just before $L_1$ which is currently the heap cursor.
+The $\mathsf{laterapp}$ is advanced by first advancing the $\mathsf{wait} \; console$ and getting the value $v$, then applying the delayed function to $v$. The result is a new signal $\texttt{"Hello"} :: mk\_sig \; (\mathsf{wait} \; console)$ stored in memory at location $L_3$. This signal is then inserted into the signal heap just before $L_1$, which is currently the heap cursor.
 The heap looks like: 
 \begin{center}
 \begin{tabular}{ |c|c|c|c| } 
@@ -304,7 +304,7 @@ The heap looks like:
 
 The data of $L_3$ is written back into $L_1$ and the reference count of $L_3$ is decremented by one, discarding it. 
 Since the update of $L_1$ is finished, the heap cursor is moved forward so it points at $L_2$.
-The same process is applied to $L_2$ but this time the right operand of the $\mathsf{laterapp}$ is a $\mathsf{tail}$ value which, when advanced, returns the location $L_1$. This location is passed to partial application of map, creating a new signal $f \, v :: map \, f \, \triangleright \; \mathsf{tail} \; L_1$ at some fresh location $L_4$. 
+The same process is applied to $L_2$, but this time the right operand of the $\mathsf{laterapp}$ is a $\mathsf{tail}$ value which, when advanced, returns the location $L_1$. This location is passed to the partial application of map, creating a new signal $f \, v :: map \, f \, \triangleright \; \mathsf{tail} \; L_1$ at some fresh location $L_4$. 
 The heap now looks like:
 \begin{center}
 \begin{tabular}{ |c|c|c|c| } 
@@ -339,5 +339,5 @@ Again, the data of $L_4$ is written into $L_2$ and $L_4$ is decremented, discard
 
 The example shows that if the $map$ combinator were to reuse its input (in this case variable $c$ and by extension $L_1$), then the only reference to the console would be overwritten, and it would no longer be possible to advance $L_2$.
 Therefore, when the algorithm decides to deny reuse in signal combinators such as $map$, it is making a correct and safe choice.
-However, this choice also results in unnecessary reference counting overhead. In particular, for the IR of $map$ in Listing~\ref{listing:refcount:incdec_map}, we see that the algorithm has denied the $\textbf{reset} \; s$ by inserting an $\textbf{inc} \; s$ instruction. Neither of these these instructions should ideally have been inserted. Assuming $map$ takes an owned reference to the input $s$, it is sufficient to consume this owned reference by simple passing it to the $\textbf{ctor}_2(s)$ expression. 
+However, this choice also results in unnecessary reference counting overhead. In particular, for the IR of $map$ in Listing~\ref{listing:refcount:incdec_map}, we see that the algorithm has denied the $\textbf{reset} \; s$ by inserting an $\textbf{inc} \; s$ instruction. Ideally, neither of these instructions should have been inserted. Assuming $map$ takes an owned reference to the input $s$, it is sufficient to consume this owned reference by simply passing it to the $\textbf{ctor}_2(s)$ expression. 
 We return to this limitation in Section~\ref{section:limitationsAndFutureWork:too_many_instructions}. 

@@ -4,34 +4,34 @@ Reactive programs are interactive programs that communicate with the environment
 
 Functional Reactive Programming (FRP) is a programming paradigm that combines functional programming with reactive programming. It allows developers to create programs that can react to changes in data over time, making it easier to handle asynchronous events and manage state in a declarative way. 
 
-The main abstraction of FRP is the \textit{signal}, which models time-varying values. Conceptually, a signal is a sequence of values produced by interacting with the environment. Signals can be transformed, combined and manipulated using familiar functional techniques.
+The main abstraction of FRP is the \textit{signal}, which models time-varying values. Conceptually, a signal is a sequence of values produced by interacting with the environment. Signals can be transformed, combined, and manipulated using familiar functional techniques.
 
 %Problems of FRP
-However, representing signals as infinite streams makes it easy to write declarative programs that cannot be run effectively. Such programs may violate one of the three main properties \textit{causality} (computations are not dependent on the results of future computations), \textit{productivity} (computations eventually produce an output), and the \textit{absence of space leaks}. 
+However, representing signals as infinite streams makes it easy to write declarative programs that cannot be run effectively. Such programs may violate one of the three main properties: \textit{causality} (computations are not dependent on the results of future computations), \textit{productivity} (computations eventually produce an output), and the \textit{absence of space leaks}. 
 
-To overcome these issues, there exists a family of FRP languages~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} which use \textit{modal types} to guarantee these properties. In the literature~\cite{bahr_asynchronous_2023,rizzo_modal_2025}, these modal types are the `later' (written $\bigcirc a$) and the `box' (written $\square a$) type constructors. The type $\bigcirc a$ expresses a promise that a value of type $a$ will become available at some later time step, whereas the $\square a$ describes a value of type $a$ that is \textit{time-independent} and therefore safe to keep across time steps.
+To overcome these issues, there exists a family of FRP languages~\cite{neel_krishnaswami_2013,bahr_asynchronous_2023,rizzo_modal_2025} that use \textit{modal types} to guarantee these properties. In the literature~\cite{bahr_asynchronous_2023,rizzo_modal_2025}, these modal types are the `later' (written $\bigcirc a$) and the `box' (written $\square a$) type constructors. The type $\bigcirc a$ expresses a promise that a value of type $a$ will become available at some later time step, whereas $\square a$ describes a value of type $a$ that is \textit{time-independent} and therefore safe to keep across time steps.
 
-Given these types it is possible to define a signal as a tuple of a current value (head) and a delayed computation (tail) for computing future values: $\text{type} \; \texttt{Signal }a = a \times \texttt{Later }(\texttt{Signal }a)$.
+Given these types, it is possible to define a signal as a tuple of a current value (head) and a delayed computation (tail) for computing future values: $\text{type} \; \texttt{Signal }a = a \times \texttt{Later }(\texttt{Signal }a)$.
 
 \subsection{Rizzo}\label{section:frp:rizzo}
 
-Rizzo~\cite{rizzo_modal_2025} is an asynchronous FRP language designed to provide the same properties but with a simpler type system. Rizzo changes the semantics of signals by defining them as mutable references:
+Rizzo~\cite{rizzo_modal_2025} is an asynchronous FRP language designed to provide the same properties, but with a simpler type system. Rizzo changes the semantics of signals by defining them as mutable references:
 
 \[\text{type} \texttt{ Signal }a = \texttt{Ref }(a \times \texttt{Later }(\texttt{Signal }a))\]
 
-Signals are updated in place whenever the environment produces a value that is relevant for the signal. These updates are done, not by the programmer, but by the reactive semantics of Rizzo, see Section~\ref{section:frp:signal_heap}. For convenience we define the signal constructor as an infix operator: 
+Signals are updated in place whenever the environment produces a value that is relevant for the signal. These updates are performed not by the programmer, but by the reactive semantics of Rizzo; see Section~\ref{section:frp:signal_heap}. For convenience, we define the signal constructor as an infix operator: 
 \[\_ :: \_ : a \rightarrow \texttt{Later }(\texttt{Signal }a) \rightarrow \texttt{Signal }a\]
 
 Rizzo, like other languages~\cite{bahr_asynchronous_2023}, differentiates between two variants of the `later' type. 
-In Rizzo there is the $\texttt{Later } a$ which describes a value of type $a$ becoming available at some future time step. The ``some'' here is existential; we do not know exactly when the value will arrive, only that it may eventually arrive.
-And then there is the $\texttt{Delayed }a$ which describe a value of type $a$ that is available at \emph{all} (universally quantified) future time steps. This universally quantified nature makes \texttt{Delayed} values safe to use across time boundaries.
+Rizzo has $\texttt{Later } a$, which describes a value of type $a$ becoming available at some future time step. The ``some'' here is existential; we do not know exactly when the value will arrive, only that it may eventually arrive.
+It also has $\texttt{Delayed }a$, which describes a value of type $a$ that is available at \emph{all} (universally quantified) future time steps. This universally quantified nature makes \texttt{Delayed} values safe to use across time boundaries.
 
 % \todo{This delay type is how Rizzo can guarantee \textit{productivity}. It guards recursion with a delay, ensuring recursion cannot happen until a future time step is produced. This is useful in the formal model but a functional language without general recursion is inconvenient to work with and so going forward we assume general recursion. \dots I suspect this block is malplaced + also what are the ramifications?}
 
-Rizzo has a number of constructors for working with delayed computations~\cite{rizzo_modal_2025}. We shall present some of them here but for a full overview see Section~\ref{section:rizzolang:types}.
+Rizzo has a number of constructors for working with delayed computations~\cite{rizzo_modal_2025}. We shall present some of them here, but for a full overview, see Section~\ref{section:rizzolang:types}.
 Starting with the $\texttt{Delayed}$ type, its main constructor is $\mathsf{delay} : a \rightarrow \texttt{Delayed }a$ which simply pushes any value into the future. 
 Then for the $\texttt{Later}$ type, we may use the constructor $\mathsf{wait} : \texttt{Chan}\;a \rightarrow \texttt{Later}\;a$, which is used to wait for the environment to produce input on a particular channel. One can think of a channel ($\texttt{Chan}$ type) as an opening through which the environment can pass values to Rizzo programs.
-Another later constructor is the $\mathsf{tail} : \texttt{Signal}\;a \rightarrow \texttt{Later }(\texttt{Signal}\;a)$, which lets us access the delayed computation for the future value of a signal. 
+Another later constructor is $\mathsf{tail} : \texttt{Signal}\;a \rightarrow \texttt{Later }(\texttt{Signal}\;a)$, which lets us access the delayed computation for the future value of a signal. 
 However, probably the most useful of all is the applicative action on $\texttt{Later}$ computations:
 
 \[\mathsf{laterapp} \; f \; x : \texttt{Delayed }(a \rightarrow b) \rightarrow \texttt{Later}\;a \rightarrow \texttt{Later}\;b\]
@@ -42,7 +42,7 @@ Intuitively, $\mathsf{laterapp}$ delays the application of a function until the 
 f &\triangleright x = \mathsf{laterapp} \; (\mathsf{delay} \; f) \; x
 \end{align*}
 
-With these constructors we already have the necessary tools to define some signal combinators! We first define the $mk\_sig$ that lets us create a signal from any delayed computation:
+With these constructors, we already have the necessary tools to define some signal combinators! We first define $mk\_sig$, which lets us create a signal from any delayed computation:
 \begin{align*}
     &mk\_sig : \texttt{Later }a \rightarrow \texttt{Later }(\texttt{Signal }a) \\
     &mk\_sig \; d = (\lambda x. x :: mk\_sig \; d) \triangleright d
@@ -61,7 +61,7 @@ In our definition of $map$ we make use of pattern matching on signals. We could 
 The previous combinators transform a single signal without changing where future values come from. 
 In reactive programs we often need a signal to follow one behaviour until some later computation produces a new signal. We call this operation $switch$.
 
-To define it, we use Rizzo's $\mathsf{sync}$ primitive. Given two delayed computations, which may produce values asynchronously, $\mathsf{sync}$ waits until either one produces a value. 
+To define it, we use Rizzo's $\mathsf{sync}$ primitive. Given two delayed computations which may produce values asynchronously, $\mathsf{sync}$ waits until either one produces a value. 
 Its result records whether the left, right, or both computations produced a value:
 \[
 sync \;x\;y :
@@ -99,7 +99,7 @@ If signals were immutable, the combinator would instead reuse the first value of
 % This is what we need precise clean-up for, and that is why reference counting. 
 
 In Rizzo, time steps forward when a value is produced by any channel. This could happen because of a network message, a sensor reading, or user input from the console. 
-Time steps are discrete and sequential, meaning they happen one-after-the-other and never at the same time. 
+Time steps are discrete and sequential, meaning they happen one after another and never at the same time. 
 
 When time steps forward, the data stored in every signal becomes stale since it now belongs to the past. The runtime must therefore bring all signals into the new time step. It does so by iterating over the heap, evaluating each signal's tail to obtain a potentially fresh intermediate signal, and writing the resulting data back into the original signal.
 Without the proper clean-up, this process leaves both the intermediate signal and the original signal alive, both of which must then be brought into future time steps, leading to duplicate work.
