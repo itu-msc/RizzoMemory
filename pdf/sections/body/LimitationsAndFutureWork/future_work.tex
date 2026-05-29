@@ -9,8 +9,9 @@ Furthermore, even if the runtime could make this distinction, the signal $s$ is 
 
 This means that the optimisation would have to be performed at compile time using either a new static analysis step or, better yet, by reusing the \textbf{reset}/\textbf{reuse} insertion logic. To reuse this logic, we would need to inline the advance semantics into the tails of signals. However, simply inlining the advance semantics is not enough, since functions inside $\mathsf{laterapp}$ values are black boxes that prevent the insertion of \textbf{reset}/\textbf{reuse}, so those must also be inlined. Inlining these functions may mean unfolding recursive definitions, which could be problematic unless these are guarded by a $\mathsf{delay}$. 
 
-To achieve the inlining, we would need some representation of the advance semantics that can be inserted during compilation. One such representation would be \emph{code} written in either Rizzo itself or perhaps in the RC IR. Either way, we would need to add some language features. In particular, we would need mutable references or specialised private functions for manipulating the signals, and polymorphic recursion for type checking.
-A downside of this approach would be the increased program size caused by inserting duplicate copies of the advance semantics in the tail of every signal. This increase in size would cause longer compile times and potentially worsen runtime performance.
+To achieve the inlining, we would need some representation of the advance semantics that can be inserted during compilation. One such representation would be \emph{code} written in either Rizzo itself or perhaps in the RC IR.\@
+Either way, we would need to add some language features. In particular, we would need mutable references or specialised private functions for manipulating the signals, and polymorphic recursion for type checking.
+A downside of this approach would be the increased program size caused by duplicating the advance semantics in the tail of every signal. This increase in size would cause longer compile times and potentially worsen runtime performance.
 However, the inlining would allow us to reuse the \textbf{reset}/\textbf{reuse} logic to avoid the allocation of intermediate signals.
 % Even if we added these, then the tails of the signals would be quite large, and the code of the advance semantics would be duplicated in all signals, increasing the compile time and potentially the runtime as well.
 % We would also need to inline the logic of the LaterApp, which would further increase the compile time and runtime.
@@ -36,7 +37,8 @@ fun entry () =
 Compiling and running the program with the \texttt{--debug-info} flag produces the output shown in Figure~\ref{figure:future_work:switch_out}.
 We follow the same colour scheme as earlier, where blue denotes user input and green denotes program output.
 After initialisation, there are three signals in the heap: $0$ is the signal $c$; $1$ is the constant signal of the string \texttt{switch!}; and $2$ is the signal $s$. 
-The first step is triggered by the user input \texttt{hi}. This produces a new head for signal $c$, causing $s$ to switch to the behaviour of $c$. The new head of $s$ is then output to the console. The constant signal, no longer needed by $s$, is discarded, and so the heap shrinks.
+The first step is triggered by the user input \texttt{hi}. This produces a new value on signal $c$, which then also causes the $\mathsf{tail} \; c$ to produce a value, making $s$ to switch its behaviour to that of $c$. The head of $s$, which is now identical to the head of $c$, is output to console.
+The constant signal, no longer needed by $s$, is discarded, and so the heap shrinks.
 
 The last two lines of output in Figure~\ref{figure:future_work:switch_out}, those beginning with \texttt{signal}, show the data of the live signals $c$ and $s$.
 The signals store pointers to dynamic memory, so the values themselves are not interesting, but what matters is that they are identical across the two signals.
@@ -66,7 +68,7 @@ The main benefit of an indirect signal is that it does not need to be updated di
 Creating indirections would become part of the update semantics. Before any data is written, the runtime should check whether the intermediate signal is unique.
 If the intermediate signal is unique, the update should proceed as normal. Otherwise, an indirection should be created instead. 
 In the example of Figure~\ref{figure:future_work:switch_out}, this would allow the runtime to replace $s$ (signal $2$) with an indirection after it switches.
-However, this optimisation would require a change in semantics, since $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until reaching a concrete signal. The cost of such traversals should be reduced by doing \textit{path-compression}, which would update indirections during reads so that they point to the concrete signal once it has been found.
+However, this optimisation would require a change in semantics, since $\mathsf{head}$, $\mathsf{tail}$, and $\mathsf{watch}$ would then need to traverse indirections until reaching a concrete signal. The cost of such traversals can be reduced by performing \textit{path-compression}, i.e.\ updating indirections during reads so that they point directly to the concrete signal once it has been found.
 
 This solution would also partially solve the same issue discussed in Section~\ref{section:future_work:reuse}, since indirections do not have tails to advance, thereby eliminating some of the intermediate signals allocated during a heap update.
 

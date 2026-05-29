@@ -7,7 +7,7 @@ We set out to investigate whether reference counting can be used to manage the i
 More precisely, we wanted to ensure that signals which are no longer referenced are deallocated before future time steps, so that dead signals are not repeatedly updated by the step semantics.
 
 To do so, we implemented the Rizzo language by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025}, extended it with a
-reference-counting memory management system based on \cite{ullrich_counting_2021}, and built a transpiler from RizzoLang to C. The C backend implements the step, update, and advance semantics of Rizzo, which lets us evaluate the memory behaviour of compiled Rizzo programs directly.
+reference-counting memory management system based on the work of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, and built a transpiler from RizzoLang to C. The C backend implements the step, update, and advance semantics of Rizzo, which lets us evaluate the memory behaviour of compiled Rizzo programs directly.
 
 % Evaluation - what did we figure out
 
@@ -18,13 +18,13 @@ In addition to general reference counting, the approach of \citeauthor*{ullrich_
 
 One limitation comes from the semantics of Rizzo itself.
 Signals passed to recursive signal combinators cannot be reused in the same way as lists or other constructors.
-For example, the signal combinator $map \; f \; s$ results in a new signal $s'$, where future values of $s'$ depend on future values of $s$. This makes it impossible to reuse the signal $s$ for $s'$, as we would lose the future values of $s$ on which future values of $s'$ depend.
+For example, the signal combinator $map \; f \; s$ results in a new signal $s'$, where future values of $s'$ depend on future values of $s$. This makes it impossible to reuse the signal $s$ for $s'$, as we would lose the future values of $s$.
 A second limitation comes from our implementation of the update semantics and how it handles intermediate signals. These signals are created as part of the update semantics, but are often only created to store the updated values, before copying them back to the signal that was updated. This is often wasteful and should be avoidable, but the compiler does not have enough knowledge about the usage of the object in the advance semantics.
 To address this issue, we proposed a possible solution that gives the compiler more information, which should allow it to better reuse intermediate signals.
 
-We also found that some combinators can leave duplicated signals in the heap. For example, after a combinator switches one signal for another signal, both signals may remain alive while containing the same underlying head and tail data. This is inefficient because future steps may update both signals even though they represent the same behaviour. As future work, we discussed using indirect signals, where a signal can point to another signal instead of duplicating its data.
+We also found that some combinators can leave duplicate signals in the heap. For example, after a combinator switches one signal for another signal, both signals may remain alive while containing the same underlying head and tail data. This is inefficient because future steps may update both signals even though they represent the same behaviour. As future work, we discussed using indirect signals, where a signal can point to another signal instead of duplicating its data.
 
-Finally, we identified that the reactive semantics of Rizzo place strong constraints on the structure of the signal heap. In our implementation this led to a linked-list representation, which gives simple insertion, removal, and maintenance of the now/earlier split, but also means that each step must inspect the signal heap linearly. This motivates future work on heap structures that allow the runtime to skip signals that cannot be affected by the current step.
+Finally, we identified that the reactive semantics of Rizzo place strong constraints on the structure of the signal heap. In our implementation this led to a linked-list representation, which gives simple insertion, removal, and maintenance of the now/earlier split, but also means that each step must inspect the signal heap in its entirety. This motivates future work on heap structures that allow the runtime to skip signals that cannot be affected by the current step.
 
 Altogether, we believe that we have successfully met the goals of the thesis.
 We implemented a working C backend for Rizzo, showed that reference counting can deallocate intermediate dead signals before they are reevaluated, and identified concrete limitations and future optimisations for both the compiler and the runtime representation of signals.
