@@ -3,52 +3,27 @@
 
 % Summarize what we did? Bit like the introduction but a little more detail on exactly what we did, so the reader remembers.
 
-In short we have made an implimentation of the Rizzo language by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025}, with a reference counting memory management system based on \cite{ullrich_counting_2021}, and a transpiler to C. In C we have implemented the step, update and advance semantics of Rizzo, which we have tested and evaluated on a number of examples compiled from RizzoLang to C.
+We set out to investigate whether reference counting can be used to manage the intermediate signals created by the reactive semantics of Rizzo. 
+More precisely, we wanted to ensure that signals which are no longer referenced are deallocated before future time steps, so that dead signals are not repeatedly updated by the step semantics.
+
+To do so, we implemented the Rizzo language by \citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025}, extended it with a
+reference-counting memory management system based on \cite{ullrich_counting_2021}, and built a transpiler from RizzoLang to C. The C backend implements the step, update, and advance semantics of Rizzo, which let us evaluate the memory behaviour of compiled Rizzo programs directly.
 
 % Evaluation - what did we figure out
 
-During our evaluations we identified both sucesses and limitations of our implementation and the Rizzo language in general. We found that unused signals, like intermediate signals in the signal constructor, is imidiately deallocated by the reference counting instructions. This solves the issue we set out to fix in this paper, as it ensures we dont update dead signals during the step semantics. 
-In our evaluation of the memory we were not able to find any signs of memory leaks or space leaks. Which makes us confident in our reference counting implimentation. 
+To evaluate the memory management and signal heap we created a set of example programs that we could compile and run. We used debug prints to show snapshots of the heap at runtime and used valgrind to track if any memory was leaked.
+The results of these evaluations showed that the reference counting instructions properly deallocate unused signals, including intermediate signals, without signs of memory leaks or space leaks. Since these signals are removed from the signal heap, they are not updated in later time steps. This shows that we were able to solve the main issue of this thesis.
 
-% Which shows we live up to the expectations of memory safety that \cite{rizzo_modal_2025} was trying to achieve with the mutable signals.  
+In addition to general reference counting, the approach of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021} made it possible to reuse objects. Our evaluation showed that this is effective for general objects like lists, and that values stored in the heads of signals can also be reused. However, we identified limitations in the reuse of signals themselves.
 
-For the reuse of memory we have identified a quirk in the semantics of Rizzo, and an issue caused by a limitation in our implimentation.
+One limitation comes from the semantics of Rizzo itself.
+Signals passed to recursive signal combinators cannot be reused, like we can with lists or other constructors.
+For example, the signal combinator, $map \; f \; s$, will result in a new signal $s'$, where future values of $s'$ depend on future values of $s$. This makes it impossible to reuse the signal $s$ for $s'$, as we would lose the future values of $s$ on which future values of $s'$ depend.
+A second limitation comes from our implementation of the update semantics and how it handles intermediate signals. These signals are created as part of the update semantics, but are often only created to store the updated values, before copying them back to the signal that was updated. This is often wasteful and should be avoidable, but the compiler does not have enough knowledge about the usage of the object in the advance semantics.
+To address this issue, we have proposed a possible solution. The solution gives the compiler more information, which should allow the compiler to better reuse the intermediate signals.
 
-The quirk in the semantics is causing signals passed to signal combinators, to be unable for reuse, like we can with lists and other constructors.
-For example, the signal combinator, $map \; f \; s$, will result in a new signal $s'$, which will have a dependency on a future value of $s$. This makes it impossible to reuse the signal $s$ for $s'$, as we would lose the future value of $s$ that $s'$ is depending on if we did.
-The issue in the implimentation is with intermediate signals. These signals are created as part of the update semantics, but are often only created to store the updated valuees, before copying them back to the signal that was updated. This is often wasteful and should be avoidable, but the compiler does not have enough knowledge about the usage of the object in the advance semantics.
-To prevent this issue, we have proposed a possible solution. The solution gives the compiler more information, which should allow the compiler to better reuse the intermediate signals.
+We also identified that the reactive semantics of Rizzo place strong constraints on the structure of the signal heap. In our implementation this led to a linked-list representation, which gives simple insertion, removal, and maintenance of the now/earlier split, but also means that each step must inspect the signal heap linearly. 
+As future work, we discussed more flexible representations, including indirect signals and heap structures that allow the runtime to skip signals that cannot be affected by the current step.
 
-
-% The quirk in Rizzo cant be solved. For the second issue with intermediate signals, we have proposed a possible solution, that gives the compiler more information, which should be able to allow for reuse of the intermediate signals.
-
-% The first issue is with the signals passed to signal combinators, that cant be reused like we can with lists and other constructors.
-
-% For the reuse of memory we have 2 issues with reuse of signals. 
-% The first issue is with signals passed to signal combinators. 
-
-% We first have an issue with the incomming signals not being able to be reused like we can with lists and other constructors. 
-% Which is because we need the incomming signal to exist in the future, as future values of the signal we are about to compute is depending on the incomming signals values in the future. 
-
-% The intermediate signal that is then created, is also not able to be reused, as the compiler does not have enough information about the usage of the signals. Where idealy the creation of these intermediate signals where skipped and instead we would have just directly overwritten the signal itself.
-% The first issue with the incomming signals is not something that can be solved, but the issue with the intermediate signals we propose a possible solution for giving the compiler more information to allow for reuse of the signals.
-% However, we found that values stored in the head of signals can be reused, even though the signals themselves cannot be reused. 
-
-% We then were able to show the reuse of memory of values saved in the head of signals, even though we cannot reuse the signals themselves.
-
-We also identified issues with the semantics of Rizzo that makes the data structure of the signal heap very restricted. We propose the idea of \dots
-
-
-% 1-2 limitations that we feel are the most interesting. 1-3 lines. Comments on these. Could be:
-% \begin{itemize}
-%     \item The improved signal heap. Cool language but it is held back by its own semantics enforcing a structure of its signal heap. 
-%     \item (In general) Difficult to reuse signals but there may be options to reuse more in custom runtime implementations such as $mk\_sig$
-% \end{itemize}
-
-
-% What was the end product? Did we accomplish what we set out to do? We implemented something that works and solves the issue of these immediate signals.
-
-
-
-
-All together we believe we have successfully met our goals of making an implementation of Rizzo that ensures intermediate signals are deallocated and not reevaluated. While also identifying possible futher improvements and optimisations to the language.
+Altogether, we believe that we have successfully met the goals of the thesis.
+We implemented a working C backend for Rizzo, showed that reference counting can deallocate intermediate dead signals before they are reevaluated, and identified concrete limitations and future optimisations for both the compiler and the runtime representation of signals.
