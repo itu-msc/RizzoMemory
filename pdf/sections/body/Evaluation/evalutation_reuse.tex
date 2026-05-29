@@ -41,7 +41,7 @@ fun list_append(lst1, lst2) =
         ret var96
 \end{lstlisting}
 
-We then run the program with the \texttt{--debug-malloc} flag enabled and the input "4", "5", and "6" to the console. The program will then show debug information for each allocation, deallocation, and reuse of memory. To make it more convenient to analyse the debug output, we can filter the output for lines that contain "reuse" and extract the addresses of the reused memory. We can then group these addresses and count how many times each address was reused. The script to do this is shown in Figure~\ref{fig:reuse_run_script}.
+We then run the program with the \texttt{--debug-malloc} flag enabled and provide it the input "4", "5", and "6" to the console. The program will then show debug information for each allocation, deallocation, and reuse of memory. To make it more convenient to analyse the debug output, we can filter the output for lines that contain "reuse" and extract the addresses of the reused memory. We can then group these addresses and count how many times each address was reused. The script to do this is shown in Figure~\ref{fig:reuse_run_script}.
 
 \begin{figure}
     \begin{verbatim}
@@ -63,7 +63,7 @@ rizzoc .\examples\reuse.rizz --debug-malloc
     \label{fig:reuse_run_script}
 \end{figure}
 
-Running the program we see that we have a total of 12 reuse events. We see that 3 different addresses are reused 3 times, indicating the initial allocation of 3 list cells that are then reused for each new append to the list. The address reused 2 times would be the first input and the address reused once would be the second input. This shows that a general operation like list append can benefit from reuse, and that the same memory can be reused multiple times. The output of running the script of Figure \ref{fig:reuse_run_script} is shown in Figure \ref{fig:reuse_result}.
+Running the program we see that we have a total of 12 reuse events. We see that 3 different addresses are reused 3 times, indicating the initial allocation of 3 list cells that are then reused for each new append to the list. The address reused 2 times would be the first input and the address reused once would be the second input. This shows that a general operation like list append can benefit from reuse, and that the same memory can be reused multiple times. The output of running the script of Figure~\ref{fig:reuse_run_script} is shown in Figure~\ref{fig:reuse_result}.
 
 \begin{figure}
 \begin{verbatim}

@@ -55,23 +55,23 @@ Sig index 62, (size: 9) | [4] [0] [6] [1] 22 23 [52] [46] [3] (|)
     \label{fig:heap_print}
 \end{figure}
 
-From the output of the program, we can see that on initialisation, the heap contains four signals:
+From the output of the program, we see that on initialisation, the heap contains four signals:
 
 \begin{itemize}
     \item Signal $0$ is an internal signal created and watched inside the \texttt{filter\_l} function.
     \item Signal $1$ is an internal signal created and watched inside the \texttt{filter\_map\_l} function.
-    \item Signal $2$ is initial English echo signal stored in the \texttt{default} variable.
+    \item Signal $2$ is the initial English echo signal stored in the \texttt{default} variable.
     \item Signal $3$ is an internal signal representing the output from the \texttt{switch\_r} function.
 \end{itemize}
 
 The program starts in English mode, and the first two lines written are the initial greeting and the instruction for switching to Danish. This output is caused by the signal having been given an initial head value, which causes the output function to trigger on initialisation.
 
-We then send two inputs, `\textit{input 1}' and `\textit{input 2}', causing the signal heap to grow as the filters depends on this \texttt{Later} value of the console input. Before the first input, The \texttt{console\_sig} is not directly a signal yet, but a value of type \texttt{Later (Signal String)}. This means if multiple filters depends on that \texttt{Later} value, it can cause each dependence on the \texttt{Later} to create a new signal from that \texttt{Later}. The new signals $4$ and $6$ represent these signals created from the \texttt{Later} of the console input. The double \texttt{Later} evaluation issue is described more in section \ref{sec:limitationsAndFutureWork}.
+We then send two inputs, `\textit{input 1}' and `\textit{input 2}', causing the signal heap to grow as both filters depend on the \texttt{Later} value $console\_sig$. Before the first input, the \texttt{console\_sig} is not directly a signal yet, but a value of type \texttt{Later (Signal String)}. This means if multiple filters depends on that \texttt{Later} value, it can cause each dependence on the \texttt{Later} to create a new signal from that \texttt{Later}. The new signals $4$ and $6$ represent these signals created from the \texttt{Later} of the console input. The double \texttt{Later} evaluation issue is described more in Section~\ref{sec:limitationsAndFutureWork}.
 The signal $8$ is the English echo signal, that is, the signal which maps the input to the form `You typed: \textit{input}'. After this first growth from `\textit{input 1}', the next input `\textit{input 2}' satisfies the same filter conditions, so the heap size remains unchanged.
 
 When we input `\textit{da}', the filter that watches for the language codes is satisfied, and outputs a new signal with index $22$. This signal is then mapped over by the \texttt{language\_switch} function, which creates a new signal $23$ whose head is the function used to construct the new branch. Applying the new head of $23$ to \texttt{switch\_r} then creates the new Danish branch signal $24$ replacing the old English branch signal $2$. The signal $8$ is not used in switching the language, so it gets removed until the next input that is not `\textit{en}' or `\textit{da}'.
 
-Inputting `\textit{input 4}' and `\textit{input 5}' now only makes the heap grow by one signal. The new signal is the Danish echo signal $30$, which is the replacement of the old English echo signal $8$. Here wan see the signals $22$ and $23$ are still in the heap, as they are still needed for the language switching, but because the filter for switching languages is not satisfied, they are not updated in these time steps.
-When we switch back to English with `\textit{en}', the echo filer is satisfied again causing the signals $22$ and $23$ to be updated. Which causes the Danish branch signal $24$ to be replaced by the English branch signal $46$. The Danish echo signal $30$ is now not referenced by the deallocated signal $24$ and is removed, until signal $52$ is created by an input that satisfies the echo filter again.
+Inputting `\textit{input 4}' and `\textit{input 5}' now only makes the heap grow by one signal. The new signal is the Danish echo signal $30$, which is the replacement of the old English echo signal $8$. Here we see the signals $22$ and $23$ are still in the heap, as they are still needed for the language switching, but because the filter for switching languages is not satisfied, they are not updated in these time steps.
+When we switch back to English with `\textit{en}', the language filter is satisfied again causing the signals $22$ and $23$ to be updated. Which causes the Danish branch signal $24$ to be replaced by the English branch signal $46$. The Danish echo signal $30$ is now not referenced by the deallocated signal $24$ and is removed, until signal $52$ is created by an input that satisfies the echo filter again.
 
 As we can see from the heap prints, the heap grows and shrinks in a predictable way. The signals that are not needed anymore get removed from the heap, and the signals that are needed get created when they are needed. This shows that our signal heap is working as intended, and that it can handle dynamic changes in the topology of the signal graph.
