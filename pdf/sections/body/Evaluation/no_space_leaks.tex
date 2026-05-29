@@ -4,7 +4,7 @@ For this part of the evaluation, our focus is on space leaks. For this purpose, 
 Valgrind comes with a tool, \textit{memcheck}, for detecting memory errors such as reading uninitialised values, use-after-free, and most importantly memory leak detection. Valgrind cannot prove we have no space leaks, but it can give us confidence that we do not have any obvious memory we are losing track of.
 
 To get information on how many inputs the program has processed, we instrument the runtime to save the number of steps taken and the average time taken per step in microseconds. 
-This information is logged at program exit when the program is compiled with the \texttt{--info-heap} flag
+This information is logged at program exit when the program is compiled with the \texttt{--info-heap} flag.
 
 The program we will run is an interactive console application ported from \citeauthor*{gebser_asynchronous_2023}~\cite{gebser_asynchronous_2023}. Our code can be found in Appendix~\ref{appendix:valgrind_program} and the full output can be found in Appendix~\ref{appendix:valgrind_output}.
 The program maintains a counter that is incremented every time a clock ticks and can be printed to the screen when a user writes `\textit{show}'. The counter can be manipulated by writing either `\textit{negate}', to negate the current value, or a number $n$ to increase the current value by $n$. 

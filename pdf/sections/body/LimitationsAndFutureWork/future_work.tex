@@ -1,7 +1,7 @@
 \subsection{To avoid allocating intermediate signals}
 \label{section:future_work:reuse}
 
-\citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} states that when an efficient implementation of Rizzo is updating a signal $s$, it can avoid the allocation of an intermediate signal by `\textit{simply}' writing the data directly into $s$. This, however, does not seem to be so simple.
+\citeauthor*{rizzo_modal_2025}~\cite{rizzo_modal_2025} states that when an efficient implementation of Rizzo is updating a signal $s$, it can avoid the allocation of an intermediate signal by \emph{simply} writing the data directly into $s$. This, however, does not seem to be so simple.
 When a $\mathsf{laterapp}$ value is advanced, the runtime cannot easily identify which of the allocated signals is going to be used to update $s$.
 Furthermore, even if the runtime could make this distinction, the signal $s$ is not in scope when the allocation happens and is therefore not reusable.
 
@@ -9,7 +9,7 @@ Furthermore, even if the runtime could make this distinction, the signal $s$ is 
 
 This means that the optimisation would have to be performed at compile time using either a new static analysis step or, better yet, by reusing the \textbf{reset}/\textbf{reuse} insertion logic. To reuse this logic, we would need to inline the advance semantics into the tails of signals. However, simply inlining the advance semantics is not enough, since functions inside $\mathsf{laterapp}$ values are black boxes that prevent the insertion of \textbf{reset}/\textbf{reuse}, so those must also be inlined. Inlining these functions may mean unfolding recursive definitions, which could be problematic unless these are guarded by a $\mathsf{delay}$. 
 
-To achieve the inlining, we would need some representation of the advance semantics that can be inserted during compilation. One such representation would be \textit{code} written in either Rizzo itself or perhaps in the RC IR. Either way, we would need to add some language features. In particular, we would need mutable references or specialised private functions for manipulating the signals, and polymorphic recursion for type checking.
+To achieve the inlining, we would need some representation of the advance semantics that can be inserted during compilation. One such representation would be \emph{code} written in either Rizzo itself or perhaps in the RC IR. Either way, we would need to add some language features. In particular, we would need mutable references or specialised private functions for manipulating the signals, and polymorphic recursion for type checking.
 A downside of this approach would be the increased program size caused by inserting duplicate copies of the advance semantics in the tail of every signal. This increase in size would cause longer compile times and potentially worsen runtime performance.
 However, the inlining would allow us to reuse the \textbf{reset}/\textbf{reuse} logic to avoid the allocation of intermediate signals.
 % Even if we added these, then the tails of the signals would be quite large, and the code of the advance semantics would be duplicated in all signals, increasing the compile time and potentially the runtime as well.
@@ -35,10 +35,10 @@ fun entry () =
 
 Compiling and running the program with the \texttt{--debug-info} flag produces the output shown in Figure~\ref{figure:future_work:switch_out}.
 We follow the same colour scheme as earlier, where blue denotes user input and green denotes program output.
-After initialisation, there are three signals in the heap: $0$ is the signal $c$; $1$ is the constant signal of the string \textit{switch!}; and $2$ is the signal $s$. 
-The first step is triggered by the user input \textit{hi}. This produces a new head for signal $c$, causing $s$ to switch to the behaviour of $c$. The new head of $s$ is then output to the console. The constant signal, no longer needed by $s$, is discarded, and so the heap shrinks.
+After initialisation, there are three signals in the heap: $0$ is the signal $c$; $1$ is the constant signal of the string \texttt{switch!}; and $2$ is the signal $s$. 
+The first step is triggered by the user input \texttt{hi}. This produces a new head for signal $c$, causing $s$ to switch to the behaviour of $c$. The new head of $s$ is then output to the console. The constant signal, no longer needed by $s$, is discarded, and so the heap shrinks.
 
-The last two lines of output in Figure~\ref{figure:future_work:switch_out}, those beginning with \textit{signal}, show the data of the live signals $c$ and $s$.
+The last two lines of output in Figure~\ref{figure:future_work:switch_out}, those beginning with \texttt{signal}, show the data of the live signals $c$ and $s$.
 The signals store pointers to dynamic memory, so the values themselves are not interesting, but what matters is that they are identical across the two signals.
 This creates inefficiency, because future time steps must apply the update semantics to both signals even though they refer to the same underlying data.
 
