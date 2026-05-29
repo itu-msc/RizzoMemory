@@ -125,7 +125,17 @@ ret z
 
 No matching \textbf{dec} is needed afterwards, since both RC tokens are consumed by the call itself. This is the safe but cautious behaviour we get when both arguments are treated as owned.
 
-Borrowing removes some of this overhead. If the first parameter of $f$ is borrowed and the second is owned, then only one of the two uses of $y$ consumes an RC token. The borrowed use still requires the object to stay alive for the duration of the call, so the compiler inserts a temporary increment before the call and a matching decrement afterwards:
+Borrowing may remove some of this overhead. If we instead assume both parameters of $f$ are borrowed, then there will only be a single decrement instruction to clean up the $Obj$ stored in $y$:
+
+\begin{verbatim}
+let y = Obj() in
+let z = f y y in
+dec y;
+ret z
+\end{verbatim}
+
+However, sometimes it can lead to additional or at least the same overhead. 
+If the first parameter of $f$ is borrowed and the second is owned, then only one of the two uses of $y$ consumes an RC token. The borrowed use still requires the object to stay alive for the duration of the call, so the compiler inserts a temporary increment before the call and a matching decrement afterwards:
 
 \begin{verbatim}
 let y = Obj() in
