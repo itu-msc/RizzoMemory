@@ -88,6 +88,7 @@ While some of the invariants are clearly fulfilled by the transformation pipelin
 In particular, the ones about application shape. The RC IR assumes unary variable applications and that applications on global constants are never over-applied. 
 Therefore, when \textit{converting to IR} variable applications are rewritten such that \lstinline|x y z| becomes \lstinline|(x y) z| and over-applied global constants are rewritten to a call followed by a series of unary variable applications.
 
+\todo{We assume a typechecker is run before the pipeline, rejecting any program with partially applied constructors. Which would make \textit{eta-expansions} redund}
 Another non-obvious point is the \textit{eta-expansion} of constructors. This invariant is enforced by the type checker and so there is no need for a dedicated transformation.
 
 \subsection{Counting Rizzo Beans}\label{section:refcount:beans}

@@ -1,4 +1,4 @@
-In order to evaluate the behaviour of the signal heap, we will be running a small Rizzo program. To show our signal heap can grow and shrink in a predictable way, we will make the program such that it changes which signals are actively used. For this, we have made a program with two modes. It has an English and Danish mode, and will echo back any input given to it in the respective language. 
+In order to evaluate the behaviour of the signal heap, we will be running a small Rizzo program. To show our signal heap can grow and shrink in a predictable way, we will make the program such that it changes which signals are actively used. For this, we have made a program with two modes. It has an English and a Danish mode, and will echo back any input given to it in the respective language. 
 The full source can be found in Appendix \ref{appendix:heap_behaviour}.
 
 \begin{lstlisting}[caption={The entry point of the Rizzo program used to evaluate the heap behaviour.}]
@@ -17,9 +17,9 @@ fun entry unused =
 
 When compiling the program we enable the \texttt{--debug-info} flag, which enables the logging of debug information. Specifically, the flag adds unique identifiers to signals and enables printing of the signal heap after each time step.
 We compiled the program with \texttt{rizzoc examples/eval\_small.rizz --debug-info} and then run the generated executable \texttt{./output(.exe)}.
-Running the program we get the output in Figure \ref{fig:heap_print}. We have colored the user input in blue and the output from the program in green. The lines starting with `Sig index' are the debug prints of the heap. 
+Running the program we get the output in Figure~\ref{fig:heap_print}. We have coloured the user input in blue and the output from the program in green. The lines starting with `Sig index' are the debug prints of the heap. 
 The prints show the next available signal identifier, the size of the heap, and the unique identifiers of the signals in the signal heap.
-We also visualise which signals we mark as updated for the current time step, by surrounding their identifier with brackets like `$[i]$'.
+We also indicate if a signal was updated in the current time step by surrounding its identifier with brackets like $[i]$.
 
 \begin{figure}
     \begin{Verbatim}[commandchars=\\\{\}]
@@ -55,7 +55,7 @@ Sig index 62, (size: 9) | [4] [0] [6] [1] 22 23 [52] [46] [3] (|)
     \label{fig:heap_print}
 \end{figure}
 
-From the output of the language swapping program with debug info enabled, we can see that on initialisation, the heap contains four signals:
+From the output of the program, we can see that on initialisation, the heap contains four signals:
 
 \begin{itemize}
     \item Signal $0$ is an internal signal created and watched inside the \texttt{filter\_l} function.

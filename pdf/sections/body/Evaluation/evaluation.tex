@@ -5,12 +5,13 @@
 We originally set out to solve the memory management problem in Rizzo. 
 With a pipeline for transforming Rizzo programs and inserting reference counting, we investigate the resulting programs and their memory performance.
 %GOAL: Let's add a quick oh by the way, there is a C-runtime ...
-To do so, we provide a \verb|C| runtime that implements the semantics described in Section~\ref{section:rizzolang:semantics}, and we emit \verb|C|-code based on the reference counted IR of fully transformed programs.
+To do so, we have implemented the semantics described in Section~\ref{section:rizzolang:semantics} in a \verb|C| runtime and built a code generator that emits the fully transformed, reference counted IR as \verb|C|-code.
 
 %GOAL: to evaluate we do the following ... 
 For this evaluation, our focus will be on the absence of space leaks and the proper timing of signal clean-up so that unnecessary work is avoided. 
-In Section~\ref{section:eval:heap_behaviour} we execute a small/simple Rizzo program and inspect the signal heap at regular intervals and greater detail.
-Then in Section~\ref{section:eval:no_space_leaks} we zoom out, run some more complex programs for longer periods and observe the memory in general at a higher level. In Section~\ref{section:eval:reuse} we show reuse in action, by showing that we can reuse memory for values inside signals.
+In Section~\ref{section:eval:heap_behaviour} we execute a small Rizzo program and inspect the signal heap at regular intervals and greater detail.
+Then in Section~\ref{section:eval:no_space_leaks} we zoom out and run a complex program for an extended period to observe the general memory usage.
+In Section~\ref{section:eval:reuse} we show reuse in action, by showing that we can reuse memory for values inside signals.
 
 \subsection{Signal heap behaviour}\label{section:eval:heap_behaviour}
 
