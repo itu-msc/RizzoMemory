@@ -12,7 +12,7 @@ present a program similar to our $map$ combinator, but their concern is instead 
 Their solution is to reverse the order in which \textbf{reset}/\textbf{reuse} instructions and \textbf{inc}/\textbf{dec} instructions are inserted, so that \textbf{reset} instructions are only inserted when they can replace a \textbf{dec}.
 This would also solve our issue of redundant and always failing \textbf{reset} instructions. 
 
-\subsection{Specialised implementations of primitive combinators}
+\subsection{Specialised implementations of combinators}
 
 While all signal combinators can be implemented in RizzoLang, some of these may allocate more memory than necessary.
 As an example, consider the definition of $mk\_sig$ from Section~\ref{section:frp:rizzo}. 

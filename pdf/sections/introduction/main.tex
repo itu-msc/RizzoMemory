@@ -18,7 +18,7 @@ Reference counting is a strategy for managing dynamic memory that allows immedia
 % Goals of the thesis
 In this thesis, we evaluate reference counting as a memory management strategy for Rizzo. To do so, we adapt the work of \citeauthor*{ullrich_counting_2021}~\cite{ullrich_counting_2021}, who present an algorithm for reference counting functional programming languages with memory reuse for \textit{functional-but-in-place} programming. To transform Rizzo programs into the intermediate representation required by their algorithm, we develop a lexer, parser, and transformation pipeline. We then evaluate this memory management approach by observing the memory behaviour of transpiled Rizzo programs.
 
-The results of our thesis show that reference counting efficiently deallocates signals, avoiding the unnecessary work that would otherwise occur. However, our work also exposes a limitation in the reuse of signals.
+The results of our thesis show that reference counting efficiently deallocates signals, avoiding the unnecessary work that would otherwise occur. We also show that reuse works well for most objects like lists, but does not work for signals created from recursive signal combinators.
 
 % In this thesis we introduce a compiler from Rizzo code to a reference counted intermediate representation. We then include a transpiler from this intermediate representation to C code, with a library for the advance and update semantics of Rizzo.
 % \dots
